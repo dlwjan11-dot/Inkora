@@ -23,13 +23,18 @@ val Int.dp: Int get() = (this * Resources.getSystem().displayMetrics.density).ro
 val Float.dp: Float get() = this * Resources.getSystem().displayMetrics.density
 
 object Ui {
-    val PANEL = 0xF51E1E22.toInt()
-    val PANEL_ROW = 0xFF2A2A30.toInt()
-    val PANEL_ROW_ACTIVE = 0xFF2F4F86.toInt()
-    val BAR = 0xE6161619.toInt()
+    val PANEL = 0xF71C1C21.toInt()
+    val PANEL_ROW = 0xFF2A2A31.toInt()
+    val PANEL_ROW_ACTIVE = 0xFF233B63.toInt()
+    val BAR = 0xF2131316.toInt()
     val ACCENT = 0xFF4C8DFF.toInt()
+    val ACCENT_SOFT = 0x334C8DFF
     val TEXT = 0xFFF2F2F5.toInt()
     val TEXT_DIM = 0xFF9B9BA5.toInt()
+    val CARD = 0xFF25252C.toInt()
+    val CARD_HI = 0xFF2F2F38.toInt()
+    val DIVIDER = 0x1FFFFFFF
+    val DANGER = 0xFFFF6B6B.toInt()
 
     fun rounded(color: Int, radiusDp: Float, strokeColor: Int = 0, strokeDp: Int = 0) = GradientDrawable().apply {
         setColor(color)
@@ -69,6 +74,19 @@ object Ui {
         })
     }
 
+    /** small uppercase section label */
+    fun caption(ctx: Context, s: String) = text(ctx, s.uppercase(), 10.5f, TEXT_DIM, true).apply { letterSpacing = 0.08f }
+
+    /** thin divider line */
+    fun divider(ctx: Context) = View(ctx).apply { setBackgroundColor(DIVIDER) }
+
+    /** pill-shaped button; [primary] = filled with the accent color */
+    fun pill(ctx: Context, label: String, primary: Boolean = false, onClick: () -> Unit) = button(ctx, label, onClick).apply {
+        textSize = 13f
+        setPadding(14.dp, 8.dp, 14.dp, 8.dp)
+        background = rounded(if (primary) ACCENT else PANEL_ROW, 18f)
+    }
+
     /** "Label ......... [slider]" row with a live value. */
     fun sliderRow(ctx: Context, label: String, value: Float, format: (Float) -> String, onChange: (Float) -> Unit): LinearLayout {
         val row = LinearLayout(ctx).apply {
@@ -88,7 +106,10 @@ object Ui {
 
 enum class Icon { BRUSH, ERASER, LAYERS, ACTIONS, UNDO, REDO, SYMMETRY, EYEDROPPER, PLUS, EYE, EYE_OFF, UP, DOWN, LOCK, GRID,
     WAND, SELECT, TRANSFORM, SMUDGE, TEXT,
-    V_DIRECT, V_PEN, V_PENCIL, V_RECT, V_ELLIPSE, V_POLYGON, V_STAR, V_LINE, PIN, VECTOR }
+    V_DIRECT, V_PEN, V_PENCIL, V_RECT, V_ELLIPSE, V_POLYGON, V_STAR, V_LINE, PIN, VECTOR,
+    HOME, MENU, FILL, ADJUST, SPARKLE, EDIT, STAR, STAR_FILLED, CLOSE, CHECK, SETTINGS, SHARE, PHOTO, FLIP, FIT, FOCUS,
+    RULER, SHAPE, BLUR, INVERT, CONTRAST, NOISE, POSTERIZE, BW, SHARPEN, HUE, BALANCE,
+    SEL_RECT, SEL_ELLIPSE, SEL_ALL, DESELECT, SEL_INVERT, FEATHER, ROTATE, CUSTOMIZE, DRAG, EXPORT, CLOCK, COPY }
 
 /** Simple vector icons drawn in code (24x24 design grid). */
 /** Draws the app's vector icons (24x24 design grid) anywhere. */
@@ -109,6 +130,8 @@ object IconPainter {
         stroke.alpha = alpha
         fill.alpha = alpha
         stroke.strokeWidth = 1.8f
+        stroke.pathEffect = null
+        stroke.strokeCap = Paint.Cap.ROUND
         canvas.save()
         canvas.translate(cx - 12 * s, cy - 12 * s)
         canvas.scale(s, s)
@@ -324,6 +347,246 @@ object IconPainter {
                 canvas.drawLine(4f, 19f, 8f, 11f, stroke)
                 canvas.drawCircle(8f, 11f, 1.4f, fill)
             }
+            Icon.HOME -> {
+                for ((x, y) in listOf(3.5f to 3.5f, 13.5f to 3.5f, 3.5f to 13.5f, 13.5f to 13.5f))
+                    canvas.drawRoundRect(RectF(x, y, x + 7f, y + 7f), 1.8f, 1.8f, if (x == 3.5f && y == 3.5f) fill else stroke)
+            }
+            Icon.MENU -> {
+                canvas.drawCircle(5f, 12f, 2f, fill); canvas.drawCircle(12f, 12f, 2f, fill); canvas.drawCircle(19f, 12f, 2f, fill)
+            }
+            Icon.FILL -> {
+                path.reset()
+                path.moveTo(3.5f, 11f); path.lineTo(10.5f, 4f); path.lineTo(17.5f, 11f); path.lineTo(10.5f, 18f); path.close()
+                canvas.drawPath(path, stroke)
+                path.reset()
+                path.moveTo(3.5f, 11f); path.lineTo(17.5f, 11f); path.lineTo(10.5f, 18f); path.close()
+                canvas.drawPath(path, fill)
+                path.reset()
+                path.moveTo(19.8f, 13f); path.lineTo(21.8f, 17f); path.lineTo(17.8f, 17f); path.close()
+                canvas.drawPath(path, fill)
+                canvas.drawCircle(19.8f, 17.6f, 2f, fill)
+            }
+            Icon.ADJUST -> {
+                for ((x, k) in listOf(6f to 9f, 12f to 15.5f, 18f to 7f)) {
+                    canvas.drawLine(x, 3.5f, x, 20.5f, stroke)
+                    canvas.drawCircle(x, k, 2.6f, fill)
+                }
+            }
+            Icon.SPARKLE -> {
+                path.reset()
+                path.moveTo(10f, 2.5f); path.quadTo(10.6f, 9.4f, 17.5f, 10f); path.quadTo(10.6f, 10.6f, 10f, 17.5f)
+                path.quadTo(9.4f, 10.6f, 2.5f, 10f); path.quadTo(9.4f, 9.4f, 10f, 2.5f); path.close()
+                canvas.drawPath(path, fill)
+                path.reset()
+                path.moveTo(18f, 13.5f); path.quadTo(18.3f, 16.7f, 21.5f, 17f); path.quadTo(18.3f, 17.3f, 18f, 20.5f)
+                path.quadTo(17.7f, 17.3f, 14.5f, 17f); path.quadTo(17.7f, 16.7f, 18f, 13.5f); path.close()
+                canvas.drawPath(path, fill)
+            }
+            Icon.EDIT -> {
+                path.reset()
+                path.moveTo(15.5f, 3.5f); path.lineTo(19.5f, 7.5f); path.lineTo(8f, 19f); path.lineTo(3.5f, 19.5f)
+                path.lineTo(4f, 15f); path.close()
+                canvas.drawPath(path, stroke)
+                canvas.drawLine(13f, 6f, 17f, 10f, stroke)
+                canvas.drawLine(12f, 20.5f, 20.5f, 20.5f, stroke)
+            }
+            Icon.STAR, Icon.STAR_FILLED -> {
+                path.reset()
+                for (k in 0 until 10) {
+                    val a = Math.toRadians(-90.0 + 36.0 * k)
+                    val r = if (k % 2 == 0) 9.5f else 4.2f
+                    val x = 12f + r * Math.cos(a).toFloat(); val y = 12.8f + r * Math.sin(a).toFloat()
+                    if (k == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                path.close()
+                canvas.drawPath(path, if (icon == Icon.STAR_FILLED) fill else stroke)
+            }
+            Icon.CLOSE -> {
+                stroke.strokeWidth = 2.2f
+                canvas.drawLine(6f, 6f, 18f, 18f, stroke); canvas.drawLine(18f, 6f, 6f, 18f, stroke)
+            }
+            Icon.CHECK -> {
+                stroke.strokeWidth = 2.4f
+                path.reset(); path.moveTo(4.5f, 12.5f); path.lineTo(9.5f, 17.5f); path.lineTo(19.5f, 6.5f)
+                canvas.drawPath(path, stroke)
+            }
+            Icon.SETTINGS -> {
+                canvas.drawCircle(12f, 12f, 3f, stroke)
+                canvas.drawCircle(12f, 12f, 6.3f, stroke)
+                stroke.strokeWidth = 2.8f
+                stroke.strokeCap = Paint.Cap.BUTT
+                for (k in 0 until 8) {
+                    val a = Math.toRadians(22.5 + 45.0 * k)
+                    val c = Math.cos(a).toFloat(); val sn = Math.sin(a).toFloat()
+                    canvas.drawLine(12f + c * 6.2f, 12f + sn * 6.2f, 12f + c * 9.2f, 12f + sn * 9.2f, stroke)
+                }
+                stroke.strokeCap = Paint.Cap.ROUND
+            }
+            Icon.SHARE -> {
+                canvas.drawLine(17.5f, 5.5f, 6.5f, 12f, stroke); canvas.drawLine(6.5f, 12f, 17.5f, 18.5f, stroke)
+                canvas.drawCircle(17.5f, 5.5f, 2.6f, fill); canvas.drawCircle(6.5f, 12f, 2.6f, fill); canvas.drawCircle(17.5f, 18.5f, 2.6f, fill)
+            }
+            Icon.PHOTO -> {
+                canvas.drawRoundRect(RectF(3f, 4.5f, 21f, 19.5f), 2.5f, 2.5f, stroke)
+                path.reset(); path.moveTo(5f, 17.5f); path.lineTo(10f, 11.5f); path.lineTo(13.5f, 15f); path.lineTo(15.5f, 13f); path.lineTo(19f, 17.5f); path.close()
+                canvas.drawPath(path, fill)
+                canvas.drawCircle(16f, 8.8f, 1.7f, fill)
+            }
+            Icon.FLIP -> {
+                stroke.pathEffect = android.graphics.DashPathEffect(floatArrayOf(2f, 2f), 0f)
+                canvas.drawLine(12f, 3f, 12f, 21f, stroke)
+                stroke.pathEffect = null
+                path.reset(); path.moveTo(9.5f, 6f); path.lineTo(9.5f, 18f); path.lineTo(3f, 18f); path.close()
+                canvas.drawPath(path, fill)
+                path.reset(); path.moveTo(14.5f, 6f); path.lineTo(14.5f, 18f); path.lineTo(21f, 18f); path.close()
+                canvas.drawPath(path, stroke)
+            }
+            Icon.FIT -> {
+                stroke.strokeWidth = 2f
+                path.reset()
+                path.moveTo(4f, 9f); path.lineTo(4f, 4f); path.lineTo(9f, 4f)
+                path.moveTo(15f, 4f); path.lineTo(20f, 4f); path.lineTo(20f, 9f)
+                path.moveTo(20f, 15f); path.lineTo(20f, 20f); path.lineTo(15f, 20f)
+                path.moveTo(9f, 20f); path.lineTo(4f, 20f); path.lineTo(4f, 15f)
+                canvas.drawPath(path, stroke)
+                canvas.drawRoundRect(RectF(8.5f, 8.5f, 15.5f, 15.5f), 1.5f, 1.5f, fill)
+            }
+            Icon.FOCUS -> {
+                stroke.strokeWidth = 2f
+                path.reset()
+                path.moveTo(9f, 3.5f); path.lineTo(9f, 9f); path.lineTo(3.5f, 9f)
+                path.moveTo(15f, 3.5f); path.lineTo(15f, 9f); path.lineTo(20.5f, 9f)
+                path.moveTo(20.5f, 15f); path.lineTo(15f, 15f); path.lineTo(15f, 20.5f)
+                path.moveTo(9f, 20.5f); path.lineTo(9f, 15f); path.lineTo(3.5f, 15f)
+                canvas.drawPath(path, stroke)
+            }
+            Icon.RULER -> {
+                canvas.rotate(-45f, 12f, 12f)
+                canvas.drawRoundRect(RectF(1.5f, 8.5f, 22.5f, 15.5f), 1.5f, 1.5f, stroke)
+                for (k in 0 until 5) {
+                    val x = 5.5f + k * 3.3f
+                    canvas.drawLine(x, 8.5f, x, if (k % 2 == 0) 12.5f else 11f, stroke)
+                }
+            }
+            Icon.SHAPE -> {
+                canvas.drawCircle(9f, 9f, 5.8f, stroke)
+                canvas.drawRoundRect(RectF(11.5f, 11.5f, 20.5f, 20.5f), 1.8f, 1.8f, fill)
+            }
+            Icon.BLUR -> {
+                path.reset()
+                path.moveTo(12f, 2.8f); path.cubicTo(16.5f, 8f, 19f, 11.5f, 19f, 14.5f)
+                path.cubicTo(19f, 18.6f, 15.8f, 21.5f, 12f, 21.5f); path.cubicTo(8.2f, 21.5f, 5f, 18.6f, 5f, 14.5f)
+                path.cubicTo(5f, 11.5f, 7.5f, 8f, 12f, 2.8f); path.close()
+                canvas.drawPath(path, stroke)
+                fill.alpha = alpha / 2
+                canvas.drawCircle(12f, 15f, 4f, fill)
+                fill.alpha = alpha
+            }
+            Icon.INVERT -> {
+                canvas.drawRoundRect(RectF(4f, 4f, 20f, 20f), 2.5f, 2.5f, stroke)
+                path.reset(); path.moveTo(20f, 4f); path.lineTo(20f, 20f); path.lineTo(4f, 20f); path.close()
+                canvas.drawPath(path, fill)
+            }
+            Icon.CONTRAST -> {
+                canvas.drawCircle(12f, 12f, 4.2f, fill)
+                for (k in 0 until 8) {
+                    val a = Math.toRadians(45.0 * k)
+                    val c = Math.cos(a).toFloat(); val sn = Math.sin(a).toFloat()
+                    canvas.drawLine(12f + c * 7f, 12f + sn * 7f, 12f + c * 9.5f, 12f + sn * 9.5f, stroke)
+                }
+            }
+            Icon.NOISE -> {
+                val pts = floatArrayOf(5f, 5f, 11f, 4f, 18f, 6f, 7f, 10f, 14f, 9f, 19f, 12f, 4f, 15f, 10f, 14.5f, 16f, 16f, 6f, 20f, 12f, 19.5f, 19f, 19.5f)
+                var k = 0
+                while (k < pts.size) { canvas.drawCircle(pts[k], pts[k + 1], 1.5f, fill); k += 2 }
+            }
+            Icon.POSTERIZE -> {
+                canvas.drawRoundRect(RectF(4f, 15f, 20f, 19.5f), 1.2f, 1.2f, fill)
+                fill.alpha = alpha * 2 / 3
+                canvas.drawRoundRect(RectF(4f, 9.8f, 15f, 14.2f), 1.2f, 1.2f, fill)
+                fill.alpha = alpha / 3
+                canvas.drawRoundRect(RectF(4f, 4.5f, 10f, 9f), 1.2f, 1.2f, fill)
+                fill.alpha = alpha
+            }
+            Icon.BW -> {
+                canvas.drawCircle(12f, 12f, 8.5f, stroke)
+                path.reset(); path.arcTo(RectF(3.5f, 3.5f, 20.5f, 20.5f), 90f, 180f); path.close()
+                canvas.drawPath(path, fill)
+            }
+            Icon.SHARPEN -> {
+                path.reset(); path.moveTo(12f, 3f); path.lineTo(21f, 20f); path.lineTo(3f, 20f); path.close()
+                canvas.drawPath(path, stroke)
+                path.reset(); path.moveTo(12f, 9f); path.lineTo(16.5f, 17.5f); path.lineTo(7.5f, 17.5f); path.close()
+                canvas.drawPath(path, fill)
+            }
+            Icon.HUE -> {
+                canvas.drawCircle(12f, 8.5f, 5.3f, stroke); canvas.drawCircle(8.5f, 14.8f, 5.3f, stroke); canvas.drawCircle(15.5f, 14.8f, 5.3f, stroke)
+            }
+            Icon.BALANCE -> {
+                canvas.drawLine(12f, 4f, 12f, 20f, stroke); canvas.drawLine(8f, 20f, 16f, 20f, stroke); canvas.drawLine(5f, 7f, 19f, 7f, stroke)
+                for (x in listOf(5f, 19f)) {
+                    canvas.drawLine(x, 7f, x - 2.5f, 13f, stroke); canvas.drawLine(x, 7f, x + 2.5f, 13f, stroke)
+                    path.reset(); path.moveTo(x - 3.2f, 13f); path.quadTo(x, 16.5f, x + 3.2f, 13f); path.close()
+                    canvas.drawPath(path, fill)
+                }
+            }
+            Icon.SEL_RECT, Icon.SEL_ELLIPSE, Icon.SEL_ALL, Icon.DESELECT -> {
+                stroke.pathEffect = android.graphics.DashPathEffect(floatArrayOf(2.6f, 2.2f), 0f)
+                when (icon) {
+                    Icon.SEL_RECT -> canvas.drawRoundRect(RectF(4f, 6f, 20f, 18f), 1f, 1f, stroke)
+                    Icon.SEL_ELLIPSE -> canvas.drawOval(RectF(3.5f, 6f, 20.5f, 18f), stroke)
+                    else -> canvas.drawRoundRect(RectF(3.5f, 3.5f, 20.5f, 20.5f), 1f, 1f, stroke)
+                }
+                stroke.pathEffect = null
+                if (icon == Icon.SEL_ALL) canvas.drawRoundRect(RectF(8f, 8f, 16f, 16f), 1.5f, 1.5f, fill)
+                if (icon == Icon.DESELECT) { canvas.drawLine(8.5f, 8.5f, 15.5f, 15.5f, stroke); canvas.drawLine(15.5f, 8.5f, 8.5f, 15.5f, stroke) }
+            }
+            Icon.SEL_INVERT -> {
+                path.reset()
+                path.fillType = Path.FillType.EVEN_ODD
+                path.addRoundRect(RectF(3.5f, 3.5f, 20.5f, 20.5f), 2f, 2f, Path.Direction.CW)
+                path.addCircle(12f, 12f, 5f, Path.Direction.CW)
+                canvas.drawPath(path, fill)
+                path.fillType = Path.FillType.WINDING
+            }
+            Icon.FEATHER -> {
+                path.reset()
+                path.moveTo(20f, 4f); path.cubicTo(11f, 4f, 6f, 9f, 6.5f, 17.5f)
+                path.cubicTo(14f, 18f, 20f, 13f, 20f, 4f); path.close()
+                canvas.drawPath(path, stroke)
+                canvas.drawLine(3.5f, 20.5f, 15f, 9f, stroke)
+            }
+            Icon.ROTATE -> {
+                canvas.drawArc(RectF(4.5f, 4.5f, 19.5f, 19.5f), -60f, 290f, false, stroke)
+                path.reset(); path.moveTo(15.5f, 2.5f); path.lineTo(16.6f, 6.7f); path.lineTo(12.3f, 7.6f)
+                canvas.drawPath(path, stroke)
+            }
+            Icon.CUSTOMIZE -> {
+                canvas.drawRoundRect(RectF(3.5f, 3.5f, 10.5f, 10.5f), 1.8f, 1.8f, stroke)
+                canvas.drawRoundRect(RectF(13.5f, 3.5f, 20.5f, 10.5f), 1.8f, 1.8f, stroke)
+                canvas.drawRoundRect(RectF(3.5f, 13.5f, 10.5f, 20.5f), 1.8f, 1.8f, stroke)
+                stroke.strokeWidth = 2.2f
+                canvas.drawLine(17f, 13.5f, 17f, 20.5f, stroke); canvas.drawLine(13.5f, 17f, 20.5f, 17f, stroke)
+            }
+            Icon.DRAG -> {
+                for (x in listOf(9f, 15f)) for (y in listOf(6f, 12f, 18f)) canvas.drawCircle(x, y, 1.8f, fill)
+            }
+            Icon.EXPORT -> {
+                path.reset(); path.moveTo(4f, 14f); path.lineTo(4f, 20f); path.lineTo(20f, 20f); path.lineTo(20f, 14f)
+                canvas.drawPath(path, stroke)
+                canvas.drawLine(12f, 3.5f, 12f, 15f, stroke)
+                path.reset(); path.moveTo(7.5f, 8f); path.lineTo(12f, 3.5f); path.lineTo(16.5f, 8f)
+                canvas.drawPath(path, stroke)
+            }
+            Icon.CLOCK -> {
+                canvas.drawCircle(12f, 12f, 8.5f, stroke)
+                canvas.drawLine(12f, 12f, 12f, 7f, stroke); canvas.drawLine(12f, 12f, 15.5f, 14f, stroke)
+            }
+            Icon.COPY -> {
+                canvas.drawRoundRect(RectF(8f, 8f, 20f, 20f), 2f, 2f, stroke)
+                path.reset(); path.moveTo(5f, 15.5f); path.lineTo(4f, 15.5f); path.lineTo(4f, 4f); path.lineTo(15.5f, 4f); path.lineTo(15.5f, 5f)
+                canvas.drawPath(path, stroke)
+            }
             Icon.GRID -> {
                 canvas.drawRoundRect(RectF(3.5f, 3.5f, 20.5f, 20.5f), 2.5f, 2.5f, stroke)
                 canvas.drawLine(9.2f, 3.5f, 9.2f, 20.5f, stroke)
@@ -350,19 +613,40 @@ class IconView(context: Context, var icon: Icon) : View(context) {
         set(v) { field = v; invalidate() }
     var tint = Ui.TEXT
         set(v) { field = v; invalidate() }
+    /** small accent dot in the corner (e.g. "this setting is on") */
+    var dot = false
+        set(v) { field = v; invalidate() }
+    /** icon size relative to the view */
+    var iconScale = 0.58f
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var pressed = false
 
     init {
         isClickable = true
     }
 
+    override fun setPressed(p: Boolean) {
+        super.setPressed(p)
+        if (p != pressed) { pressed = p; invalidate() }
+    }
+
     override fun onDraw(canvas: Canvas) {
+        val inset = 3f.dp
+        val r = RectF(inset, inset, width - inset, height - inset)
+        val rad = minOf(r.width(), r.height()) * 0.3f
         if (active) {
-            bg.color = 0x334C8DFF
-            canvas.drawRoundRect(RectF(2.dp.toFloat(), 2.dp.toFloat(), width - 2f.dp, height - 2f.dp), 10f.dp, 10f.dp, bg)
+            bg.color = Ui.ACCENT_SOFT
+            canvas.drawRoundRect(r, rad, rad, bg)
+        } else if (pressed) {
+            bg.color = 0x22FFFFFF
+            canvas.drawRoundRect(r, rad, rad, bg)
         }
-        IconPainter.draw(canvas, icon, width / 2f, height / 2f, minOf(width, height) * 0.62f,
-            if (active) Ui.ACCENT else tint, if (isEnabled) 255 else 90)
+        IconPainter.draw(canvas, icon, width / 2f, height / 2f, minOf(width, height) * iconScale,
+            if (active) Ui.ACCENT else tint, if (isEnabled) 255 else 80)
+        if (dot) {
+            bg.color = Ui.ACCENT
+            canvas.drawCircle(width - inset - 4f.dp, inset + 4f.dp, 3f.dp, bg)
+        }
     }
 }
 

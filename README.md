@@ -1,68 +1,165 @@
-# Inkora — برنامج رسم لتابلت Samsung Galaxy Tab S11 Ultra
+<p align="center">
+  <img src="art/banner.png" alt="Inkora — a whole painting studio, in your pen" width="100%">
+</p>
 
-## طريقة التشغيل
-1. فك الضغط عن الملف `Inkora.zip` على الكمبيوتر.
-2. افتح **Android Studio** ← `File > Open` ← اختار مجلد **Inkora** ← استنى لحتى يخلص الـ Gradle Sync (أول مرة بياخد كم دقيقة لأنه بينزل الأدوات).
-3. على التابلت: فعّل **Developer options** و **USB debugging** (نفس اللي عملته لتطبيق البوصلة)، ووصله بالكمبيوتر.
-4. اختار التابلت من القائمة فوق واكبس زر **Run ▶**.
+<p align="center">
+  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.8.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.8.0"></a>
+  &nbsp;
+  <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-English_|_عربي_|_کوردی-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
+</p>
 
-إذا طلب منك Android Studio تحديث شي (AGP أو SDK 35)، وافق.
+<p align="center">
+  <img src="https://img.shields.io/badge/Android-10%2B-5fd39a?style=flat-square&logo=android&logoColor=white" alt="Android 10+">
+  <img src="https://img.shields.io/badge/size-0.9_MB-6fb3ff?style=flat-square" alt="0.9 MB">
+  <img src="https://img.shields.io/badge/made_for-S_Pen-ff6b8b?style=flat-square" alt="Made for S Pen">
+  <img src="https://img.shields.io/badge/Kotlin-no_libraries-7b5cff?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin, no libraries">
+  <img src="https://img.shields.io/badge/ads-none-aab0d6?style=flat-square" alt="No ads">
+</p>
 
-## كل الميزات
+<p align="center">
+  <a href="#english"><b>English</b></a> &nbsp;|&nbsp; <a href="#العربية"><b>العربية</b></a> &nbsp;|&nbsp; <a href="#کوردی"><b>کوردی</b></a>
+</p>
 
-> رقم النسخة الحقيقي بتشوفه **جوّا البرنامج على التابلت**: بالشاشة الرئيسية تحت كلمة Inkora (مثلاً "version 0.6.1").
-- رسم سلس بقلم S Pen مع **الضغط والميلان** (الميلان بيعطي تظليل لأقلام الرصاص والفحم)
-- **33 فرشاية** بست مجموعات: Inking، Sketching، Painting، Airbrushing، Textures & Elements (غيوم، أوراق شجر، عشب، لمعة نجوم، Halftone، Pixel…)
-- **ملمس (Grain)**: ورق، كانفس، خشن — فرش متل Watercolor و Pastel و Acrylic بتطلع عليها ملمس الورق
-- **Brush Studio**: من مكتبة الفرش اكبس "Edit brush" وعدّل StreamLine، المسافات، التبعثر، Flow، تأثير الضغط، دوران رأس الفرشاية، والملمس — مع معاينة مباشرة
-- **استيراد فراشي من النت**: ملفات Procreate (`.brush` و `.brushset`)، ملفات `.zip` فيها فراشي، أو صور PNG كختم. من ملف أو من **رابط** مباشرة (روابط Google Drive و Dropbox بتشتغل). ضغطة مطوّلة على فرشاية مستوردة = حذف
-- **زر قلم S Pen**:
-  - كبسة وحدة والقلم قريب من الشاشة = تبديل بين الفرشاية والممحاية
-  - ضغط مطوّل = **قائمة دائرية** حوالين القلم: آخر 3 فراشي، الأدوات (فرشاية، ممحاية، قطارة، تراجع، إعادة، طبقات)، وآخر الألوان. حرّك القلم فوق الخيار وفلت الزر، أو اكبس عليه
-  - مدة الضغط المطوّل بتتغير من القائمة (من 0.4 لـ 2 ثانية)
-  - إذا فتحت قائمة Air command تبع سامسونج بدل قائمتنا، طفيها من إعدادات S Pen بالتابلت
-- **حساسية ضغط القلم** (ناعم / عادي / قاسي) من قائمة الإعدادات
-- **Gallery**: كل رسماتك محفوظة بمعرض مع صور مصغّرة — فتح، إعادة تسمية، تكرار، حذف (ضغطة مطوّلة على الرسمة)
-- **التحديد (Selection)**: حر، مستطيل، دائرة، تحديد الكل، عكس، Feather — والرسم والتعبئة والفلاتر بتشتغل جوّا التحديد بس. ومنه: Copy & Paste لطبقة جديدة، Fill، Clear
-- **Transform**: سحب للتحريك، الزوايا للتكبير، النقطة الخضرا للتدوير (بتلتصق كل 45°)، إصبعين للتكبير والتدوير، قلب أفقي/عمودي، دوران 90°، ملاءمة للوحة
-- **Smudge**: تمويه وسحب الألوان بأي فرشاية (القوة = شريط الشفافية)
-- **Adjustments** (زر العصا السحرية): Hue/Saturation/Brightness، Brightness/Contrast، Color Balance، Gaussian Blur، Sharpen، Noise، Posterize، Invert، Black & White — مع معاينة مباشرة
-- **نص**: أي لغة (العربي بيطلع صح)، 9 خطوط، حجم ومحاذاة — وبعدين بتحركه وتكبره بالـ Transform
-- **Time-lapse**: البرنامج بيسجّل كل خطوة لحاله، ومن القائمة "Time-lapse: export video" بيطلّعلك فيديو MP4 بمجلد Movies/Inkora
+---
 
-شوف ملف **ROADMAP.md** للخطة الجاية (الفيكتور، الكوميكس، وأفكار تانية).
-- ممحاة بتستعمل أي فرشاية من المكتبة
-- **طبقات**: إضافة، حذف، تكرار، دمج للأسفل، مسح، تعبئة، إعادة تسمية، ترتيب، إخفاء، شفافية، **17 Blend mode**، **Alpha Lock**
-- **QuickShape**: ارسم خط أو دائرة أو مربع وخلي القلم ثابت لحظة ← بيصير الشكل مثالي (وبتقدر تكبره وتدوره قبل ما ترفع القلم)
-- **Symmetry**: عمودي، أفقي، رباعي، دائري (8)
-- **Drawing Guide** (زر الشبكة فوق على اليسار) بكل أنواعه:
-  - 2D Grid (مربعات)، Dot Grid (نقاط)، Isometric، Triangle Grid، Hexagon Grid (سداسي)، Polar (دوائر حول المركز)، Rule of Thirds
-  - منظور بنقطة واحدة، بنقطتين، وبتلات نقاط — وفيك تسحب نقاط التلاشي بإيدك (زر Move vanishing points)
-  - تتحكم بحجم الشبكة، السماكة، الشفافية واللون، وبتنحفظ مع كل لوحة لحالها
-  - **Assisted Drawing**: الخط بيلتصق تلقائياً باتجاه الشبكة الأقرب (أفقي/عمودي، زوايا الإيزومتريك، دوائر، أو باتجاه نقطة التلاشي)
-- **ColorDrop**: اسحب دائرة اللون على الرسمة لتعبي المنطقة
-- قطارة ألوان (ضغطة مطوّلة بالإصبع أو زر القطارة)
-- منتقي ألوان HSV + كود Hex + لوحة ألوان + آخر الألوان المستعملة
-- تكبير / تصغير / تدوير بإصبعين، **نقرة بإصبعين = تراجع**، **نقرة بثلاث أصابع = إعادة**
-- منع لمس الكف تلقائياً لما يتعرّف على القلم
-- حفظ تلقائي، حفظ وفتح مشاريع `.inkora`، تصدير PNG / JPEG للمعرض، مشاركة، إدراج صورة كطبقة
+<a id="english"></a>
 
-## المرحلة الجاية (لسا مش موجودة)
-التحديد والتحويل (Selection / Transform)، فرشاة الـ Smudge، تسجيل Time-lapse، معرض للأعمال، Brush Studio لتصميم فراشي جديدة، فلاتر (Blur, Hue/Saturation)، نص، وتحريك.
+## Inkora
 
-## الجديد بالنسخة 0.5 و 0.6
-- **الشاشة الرئيسية**: البرنامج بيفتح عليها — "Continue" لآخر رسمة، فلاتر (All / My drawings / Imported)، بحث، ورقم النسخة
-- **ترتيب جديد للشريط** (متل Infinite Painter):
-  - **✦ Creative**: Text، Photo، Vector layer، ColorDrop، Grid & Perspective، Assisted، QuickShape، Pen & Shapes، Symmetry، View
-  - **✎ Editing**: Selection (حر/مستطيل/دائرة، الكل، عكس، إلغاء)، Transform، وكل الفلاتر والتعديلات
-  - **⋯** القائمة: File، Export & Share، Time-lapse، Brushes، Settings
-- **الفيكتور**: طبقة فيكتور (من ＋ بالطبقات أو من Creative). أدوات: Select، Points، Pen (كبسة = زاوية، سحب = منحنى، كبسة على أول نقطة = إغلاق)، Pencil (بيتحول لمنحنيات ناعمة)، Rectangle (بزوايا دائرية)، Ellipse، Polygon، Star، Line. وStyle (لون/تدرج Linear و Radial، حدود، سماكة، منقط، شفافية)، Combine (Unite، Minus front، Intersect، Exclude)، Arrange، Align، Flip، Duplicate. تصدير SVG بيفتح بـ Illustrator و Figma
-- **زر القلم**: كبستين = القائمة الدائرية (بتضل مفتوحة). اكبس COLOR بالنص ← دولاب ألوان: **Swatches** (حلقات ألوان + رماديات باردة/دافية/حيادية + درجات اللون) و **HSL** (دائرة اللون + منزلقات منحنية)، و **+ Save** لباليتك
-- **📌 تثبيت** قائمة الطبقات والفراشي — بتنسحب وين ما بدك وبتشف وقت الرسم
-- **67 فرشاية** بمجموعات بتنطوي (▸/▾): Inking، Calligraphy (منها Qalam للعربي)، Sketching، Painting، Watercolor، Airbrushing، Textures & Elements، Effects (مطر، ثلج، فقاعات، نجوم، Hatching…)، Pixel Art
-- تصليح QuickShape، وتحديث Gradle لنسخة Android Studio الجديدة
+**Inkora is a free drawing and painting app for Android tablets.** Nothing like Procreate existed on Android, so this is an attempt at one: pressure-sensitive brushes, layers, perspective grids, vector shapes for logos and comics, and a color wheel that opens right under your pen.
 
-## الموقع
+### New in 0.8: a pro layout
 
-موقع التطبيق موجود بمجلد `docs/` ويشتغل على GitHub Pages:
-https://dlwjan11-dot.github.io/Inkora/
+<p align="center"><img src="art/interface.png" alt="The Inkora interface" width="88%"></p>
+
+| | |
+|---|---|
+| **1 · Top bar** | Gallery, menu, Creative and Editing on one side. Brush, smudge, eraser, layers and your color on the other. Tap the title to rename the artwork. |
+| **2 · Your own toolbar** | Pick up to 14 of 30 tools: selection, transform, fill, text, filters, grids, symmetry, focus mode, export… Add, remove and reorder them. Left-handed? Swap the sides in one tap. |
+| **3 · Size and opacity** | Two tall sliders by your other hand, with the eyedropper, undo and redo. |
+| **4 · Creative and Editing** | Big visual panels: a preview of every grid and symmetry type, switches for QuickShape and assisted drawing, and adjustments previewed live on your own artwork. Tap ☆ on any card to add it to your toolbar. |
+
+### The pen menu
+
+<table>
+<tr>
+<td width="46%"><img src="art/pen-menu.png" alt="Pen quick menu"></td>
+<td>
+
+Hold (or double-click) the S Pen button and everything is around your pen:
+
+- a **standard color wheel** in the middle: hue ring plus saturation/brightness square, so a color is one move away
+- your **saved colors** under it, and **+** to save the current one
+- **tools** on top, **recent brushes** at the bottom
+- **size** on the left arc, **opacity** on the right arc
+
+Move over an item and release the button, or just tap it. Holding the pen tip still on the canvas opens the same menu.
+
+| Pen | Does |
+|---|---|
+| Click | brush ⇄ eraser |
+| Hold / double-click | quick menu |
+| Draw, then pause | QuickShape: clean line, circle, box |
+
+</td>
+</tr>
+</table>
+
+### Everything a painting needs
+
+<p align="center"><img src="art/numbers.png" alt="67 brushes, 17 blend modes, 10 guides, 30 toolbar tools" width="80%"></p>
+
+- **Paint:** 67 brushes in 9 sets (inking, calligraphy with a Qalam nib for Arabic, sketching, painting, watercolor, airbrush, textures, effects, pixel art). Pressure and tilt, streamline, paper grain, and a Brush Studio to make your own. Import Procreate `.brush` / `.brushset`, zip files, or brushes from a link.
+- **Organize:** layers with 17 blend modes, alpha lock, merge, and panels you can pin over the canvas. Freehand, rectangle and ellipse selection with feathering. Transform, flip and rotate.
+- **Guide:** square, dot, isometric, triangle, hexagon and polar grids, rule of thirds, and 1, 2 and 3-point perspective. Assisted drawing snaps strokes to the guide. Vertical, horizontal, quadrant and radial symmetry.
+- **Make:** vector layers with a Bézier pen, shapes, gradients, boolean operations and SVG export. Text in any language (Arabic and Kurdish included). Adjustments and filters with live preview. Fill tool. Automatic time-lapse video. PNG, JPEG and `.inkora` project files.
+
+### Install
+
+1. Download **[Inkora-0.8.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk)** on your Android device.
+2. Open it. If Android asks, allow installs from this source.
+3. If Play Protect warns you, tap **Install anyway** — Inkora isn't on Google Play yet.
+4. Open Inkora and draw.
+
+Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too, with your finger.
+SHA-256: `9606771943be99d56f9242ee7484055bce144093182dfe1a96d1f2fb0dce4687`
+
+### Build it yourself
+
+Open the folder in **Android Studio**, let Gradle sync, then press **Run ▶** with your tablet connected (Developer options → USB debugging on). Plain Kotlin and the Android framework, no external libraries.
+
+```
+app/src/main/java/com/abdulmedia/inkora/
+  MainActivity.kt   layout, menus, dialogs        CanvasView.kt   drawing, gestures, S Pen
+  StrokeEngine.kt   brush dabs, pressure, tilt    Brushes.kt      the 67 brush presets
+  QuickMenuView.kt  pen menu                      ColorDisc.kt    standard color wheel
+  ToolDock.kt       customizable toolbar          ToolsPanel.kt   Creative / Editing panel
+  Vector*.kt        vector layers                 Guide*.kt       grids and perspective
+```
+
+What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify, layer masks, PSD, animation).
+
+---
+
+<a id="العربية"></a>
+
+<div dir="rtl">
+
+## Inkora بالعربية
+
+<p align="center"><img src="art/site-ar.png" alt="موقع Inkora بالعربية" width="100%"></p>
+
+**Inkora تطبيق رسم وتلوين مجاني لأجهزة أندرويد اللوحية.** لم يكن على أندرويد تطبيق مثل Procreate، فهذه محاولة لصنعه: فُرَش تستجيب لضغط القلم، وطبقات، وشبكات منظور، وأشكال فيكتور للشعارات والقصص المصوّرة، ودولاب ألوان يفتح تحت قلمك مباشرة.
+
+### الجديد في 0.8: واجهة احترافية
+- **الشريط العلوي:** المعرض والقائمة وCreative وEditing في جهة، والفرشاة والتمويه والممحاة والطبقات واللون في الجهة الأخرى.
+- **شريط أدواتك الخاص:** اختر حتى 14 أداة من 30، وأضفها واحذفها وغيّر ترتيبها. ووضع لليد اليسرى.
+- **Creative وEditing:** لوحات كبيرة مصوّرة، ومعاينة مباشرة للتعديلات على رسمتك، ونجمة ☆ لإضافة أي أداة إلى شريطك.
+- **قائمة القلم:** دولاب ألوان عادي في الوسط، وألوانك المحفوظة تحته، والأدوات في الأعلى، وآخر الفُرَش في الأسفل، والحجم يساراً والشفافية يميناً.
+- **أداة تعبئة** و**وضع التركيز** الذي يخفي الواجهة.
+
+### المزايا
+- 67 فرشاة في 9 مجموعات، منها قلم قصب للخط العربي. استيراد فُرَش Procreate.
+- طبقات مع 17 نمط دمج، وتحديد، وتحويل.
+- 10 أنواع شبكات ومنظور، ورسم مساعد، وQuickShape، وتناظر.
+- طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
+
+### التثبيت
+1. حمّل **[Inkora-0.8.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk)** على جهازك.
+2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
+3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
+4. افتح Inkora وابدأ الرسم.
+
+</div>
+
+---
+
+<a id="کوردی"></a>
+
+<div dir="rtl">
+
+## Inkora بە کوردی
+
+<p align="center"><img src="art/site-ckb.png" alt="ماڵپەڕی Inkora بە کوردی" width="100%"></p>
+
+**Inkora ئەپێکی بێبەرامبەری وێنەکێشان و ڕەنگکردنە بۆ تابلێتەکانی ئەندرۆید.** فڵچەی هەستیار بە پەستانی قەڵەم، چینەکان، تۆڕی پێرسپێکتیڤ، شێوەی ڤێکتەر بۆ لۆگۆ و چیرۆکی وێنەدار، و چەرخێکی ڕەنگ کە ڕاستەوخۆ لە ژێر قەڵەمەکەتدا دەکرێتەوە.
+
+### نوێ لە 0.8
+- **شریتی سەرەوە:** گەلەری، مێنیو، Creative و Editing لە لایەک؛ فڵچە، سڕەرەوە، چینەکان و ڕەنگ لە لایەکەی تر.
+- **شریتی ئامرازی خۆت:** تا ١٤ ئامراز لە ٣٠ هەڵبژێرە، زیادیان بکە، لایان ببە و ڕیزبەندییان بگۆڕە. دۆخی دەستەچەپیشی هەیە.
+- **Creative و Editing:** پانێڵی گەورەی وێنەدار و پێشبینینی ڕاستەوخۆی ڕێکخستنەکان لەسەر کارەکەت.
+- **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
+
+### دامەزراندن
+1. **[Inkora-0.8.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk)** لەسەر ئامێرەکەت دابگرە.
+2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
+3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
+4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.
+
+</div>
+
+---
+
+<p align="center">
+  Made by <a href="https://abdulmedia.com"><b>Abdulmedia</b></a> &nbsp;|&nbsp; <a href="https://dlwjan11-dot.github.io/Inkora/">dlwjan11-dot.github.io/Inkora</a>
+</p>

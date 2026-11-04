@@ -387,7 +387,7 @@ footer .sp { flex: 1; }
             <span class="pin" style="left:38%;top:1.2%">1</span>
             <span class="pin" style="right:6.5%;top:14%">2</span>
             <span class="pin" style="left:5.6%;top:14%">3</span>
-            <span class="pin" style="left:62%;top:22%">4</span>
+            <span class="pin" style="left:17%;top:9.5%">4</span>
           </div>
         </div>
         <ol class="callouts">
@@ -446,7 +446,7 @@ footer .sp { flex: 1; }
       <div class="numbers">
         <div><div class="big-num">67</div><p data-i18n="n.brushes"></p></div>
         <div><div class="big-num">17</div><p data-i18n="n.blend"></p></div>
-        <div><div class="big-num">11</div><p data-i18n="n.grids"></p></div>
+        <div><div class="big-num">10</div><p data-i18n="n.grids"></p></div>
         <div><div class="big-num">30</div><p data-i18n="n.tools"></p></div>
       </div>
       <div class="ledger">
@@ -745,8 +745,9 @@ function intro() {
   const hero = ink.getBoundingClientRect();
   const wide = hero.width > 900;
   const below = (copy.bottom - hero.top + 14) * dpr;
+  const rtlPage = document.documentElement.dir === "rtl";
   const box = wide
-    ? { x: .6 * W, y: .3 * H, w: .36 * W, h: .42 * H }
+    ? { x: (rtlPage ? .04 : .6) * W, y: .3 * H, w: .36 * W, h: .42 * H }
     : { x: .1 * W, y: below, w: .8 * W, h: Math.max(40 * dpr, H - below - 96 * dpr) };
   // a signature-like swash with one loop (cubic Bézier pieces, in 0..1 box units)
   const C = [[.02,.85],[.18,.05],[.34,.05],[.40,.50],[.46,.95],[.24,.95],[.32,.55],[.40,.15],[.70,.10],[.98,.42]];
@@ -787,7 +788,7 @@ function hex2hsv(h) {
 /* ================= quick menu (same layout as the app) ================= */
 function drawQuickMenu(ctx, S, state, hot, opts = {}) {
   // S = size in px. Geometry in "dp" units of a 380-wide menu, like the app.
-  const u = S / 380, cx = S / 2, cy = S / 2 + (opts.top ? 8 * u : 0);
+  const u = S / 410, cx = S / 2, cy = S / 2 + (opts.top ? 8 * u : 0);
   const rBase = 182 * u, rDisc = 80 * u, ring = 17 * u, rSw = 101 * u, rB = 148 * u, bR = 21 * u;
   ctx.clearRect(0, 0, S, S);
   ctx.save();
@@ -882,7 +883,10 @@ function iconImages(ids) {
   const out = {};
   return Promise.all(ids.flatMap(id => ["#f2f2f5", "#4c8dff"].map((col, k) => new Promise(res => {
     const sym = document.getElementById(id);
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${sym.getAttribute("viewBox")}" width="48" height="48" color="${col}" style="color:${col}">${sym.innerHTML.replaceAll("currentColor", col)}</svg>`;
+    // keep the symbol's own fill / stroke settings by moving them onto a group
+    const attrs = ["fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin"]
+      .filter(a => sym.hasAttribute(a)).map(a => `${a}="${sym.getAttribute(a)}"`).join(" ");
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${sym.getAttribute("viewBox")}" width="48" height="48"><g ${attrs}>${sym.innerHTML}</g></svg>`.replaceAll("currentColor", col);
     const img = new Image();
     img.onload = () => { out[k ? id + "-on" : id] = img; res(); };
     img.onerror = res;

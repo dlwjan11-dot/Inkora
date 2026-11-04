@@ -5,16 +5,12 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.ComposeShader
-import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PorterDuff
 import android.graphics.RectF
-import android.graphics.Shader
-import android.graphics.SweepGradient
 import android.view.MotionEvent
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -22,540 +18,380 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Radial quick menu around the pen (S Pen button double-click or hold).
- *  - center: current color — tap it to turn the menu into a color wheel
- *  - inner ring: tools
- *  - upper arc: last used brushes
- *  - lower arc: your saved colors + "Save"
- * It stays open until you choose something or tap outside it.
+ * Pen quick menu (S Pen button hold / double-click, or pen held still on the canvas).
+ *
+ *  center ......... standard color wheel: hue ring + saturation/brightness square — drag to pick
+ *  inner arc ...... your palette / recent colors + "+" to save the current color
+ *  top bubbles .... tools
+ *  bottom bubbles . recent brushes
+ *  left / right ... curved Size and Opacity sliders
+ *
+ * With the pen button held: move over a bubble or a color and release the button to choose it.
+ * Or simply tap. Tap outside to close.
  */
 class QuickMenuView(context: Context) : View(context) {
 
     class Item(
         val label: String,
         val icon: Icon? = null,
-        val color: Int? = null,
         val preview: Bitmap? = null,
         val active: Boolean = false,
         val action: () -> Unit
     )
 
-    private class Slot(val item: Item, val r0: Float, val r1: Float, val start: Float, val sweep: Float)
-
     var isOpen = false
         private set
-    /** live color changes from the color wheel */
+    /** live color changes (wheel or swatch) */
     var onColor: ((Int) -> Unit)? = null
-    /** "+ Save" in the color wheel */
+    /** "+" pressed: save this color to the palette */
     var onSaveColor: ((Int) -> Unit)? = null
+    /** slider values 0..1 */
+    var onSize: ((Float) -> Unit)? = null
+    var onOpacity: ((Float) -> Unit)? = null
+    var sizeLabel: (Float) -> String = { "${(it * 100).toInt()}" }
+    var opacityLabel: (Float) -> String = { "${(it * 100).toInt()}%" }
     var onClosed: (() -> Unit)? = null
-    /** center tapped: open the big color wheel there instead of the small one */
-    var onCenter: ((Float, Float) -> Unit)? = null
+
+    // ---- geometry (dp) ----
+    private val rDisc = 80f.dp
+    private val rSwatch = 101f.dp
+    private val swatchR = 9.5f.dp
+    private val rBubbles = 148f.dp
+    private val bubbleR = 21f.dp
+    private val rBase = rBubbles + bubbleR + 12f.dp
+    private val sliderW = 12f.dp
+
+    private val toolStep = 18f
+    private val brushStep = 22f
+    private val sizeArc = 158f to 202f        // canvas degrees, bottom → top
+    private val opacityArc = 22f to -22f      // bottom → top
+
+    private class Bubble(val item: Item, val angle: Float, var x: Float = 0f, var y: Float = 0f)
+    private class Swatch(val color: Int?, val angle: Float, var x: Float = 0f, var y: Float = 0f) // null = "+"
+
+    private val bubbles = ArrayList<Bubble>()
+    private val swatches = ArrayList<Swatch>()
+    private val colors = ArrayList<Int>()
+    private val disc = ColorDisc()
 
     private var cx = 0f
     private var cy = 0f
     private var openX = 0f
     private var openY = 0f
-    private val slots = ArrayList<Slot>()
-    private var center: Item? = null
-    private var hot: Item? = null
+    private var size = 0.5f
+    private var opacity = 1f
 
-    // color wheel mode
-    private var colorMode = false
-    private val hsv = FloatArray(3)
-    private var downPill = -1
+    private var hotBubble: Bubble? = null
+    private var hotSwatch: Swatch? = null
 
-    private val segPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Ui.TEXT
-        textAlign = Paint.Align.CENTER
-        textSize = 11f.dp
+    private enum class Drag { NONE, DISC, SIZE, OPACITY, BUBBLE, SWATCH }
+    private var drag = Drag.NONE
+    private var downBubble: Bubble? = null
+    private var downSwatch: Swatch? = null
+
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND }
+    private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Ui.TEXT; textAlign = Paint.Align.CENTER }
+    private val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xF0161619.toInt()
+        setShadowLayer(22f.dp, 0f, 6f.dp, 0x99000000.toInt())
     }
-    private val path = Path()
+    private val clip = Path()
 
-    private val rCenter = 38f.dp
-    private val rInner = 104f.dp
-    private val rOuter = 166f.dp
-    private val gap = 5f.dp
+    // =========================================================
+    // open / close
+    // =========================================================
 
-    fun open(x: Float, y: Float, centerItem: Item, tools: List<Item>, brushes: List<Item>, colors: List<Item>) {
-        val margin = rOuter + 8f.dp
-        cx = x.coerceIn(margin, (width - margin).coerceAtLeast(margin))
-        cy = y.coerceIn(margin, (height - margin).coerceAtLeast(margin))
+    fun open(x: Float, y: Float, color: Int, tools: List<Item>, brushes: List<Item>, swatchColors: List<Int>,
+             size: Float, opacity: Float) {
+        val mh = rBase + 8f.dp
+        cx = x.coerceIn(mh, (width - mh).coerceAtLeast(mh))
+        cy = y.coerceIn(rBase + 46f.dp, (height - mh).coerceAtLeast(rBase + 46f.dp))
         openX = x; openY = y
-        center = centerItem
-        setColor(centerItem.color ?: Color.BLACK, notify = false)
-        slots.clear()
-        if (tools.isNotEmpty()) {
-            val sweep = 360f / tools.size
-            tools.forEachIndexed { i, it -> slots.add(Slot(it, rCenter + gap, rInner, -90f - sweep / 2 + i * sweep, sweep)) }
-        }
-        if (brushes.isNotEmpty()) {
-            val sweep = 150f / brushes.size
-            brushes.forEachIndexed { i, it -> slots.add(Slot(it, rInner + gap, rOuter, 195f + i * sweep, sweep)) }
-        }
-        if (colors.isNotEmpty()) {
-            val sweep = 150f / colors.size
-            colors.forEachIndexed { i, it -> slots.add(Slot(it, rInner + gap, rOuter, 15f + i * sweep, sweep)) }
-        }
-        hot = null
-        colorMode = false
+        this.size = size.coerceIn(0f, 1f)
+        this.opacity = opacity.coerceIn(0f, 1f)
+        disc.set(color)
+        disc.layout(cx, cy, rDisc, 17f.dp)
+
+        bubbles.clear()
+        tools.forEachIndexed { i, it -> bubbles.add(Bubble(it, 270f + (i - (tools.size - 1) / 2f) * toolStep)) }
+        brushes.forEachIndexed { i, it -> bubbles.add(Bubble(it, 90f - (i - (brushes.size - 1) / 2f) * brushStep)) }
+        for (b in bubbles) place(b.angle, rBubbles).let { (px, py) -> b.x = px; b.y = py }
+
+        colors.clear()
+        colors.addAll(swatchColors.map { it or 0xFF000000.toInt() }.distinct().take(10))
+        layoutSwatches()
+
+        hotBubble = null; hotSwatch = null; drag = Drag.NONE
         isOpen = true
+        animate().cancel()
+        pivotX = cx; pivotY = cy
+        scaleX = 0.86f; scaleY = 0.86f; alpha = 0f
         visibility = VISIBLE
+        animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(170).setInterpolator(DecelerateInterpolator(1.6f)).start()
         invalidate()
     }
 
-    /** opens straight into the color picker (used by the big wheel's HSL button) */
-    fun openColor(x: Float, y: Float, current: Int, hslMode: Boolean) {
-        open(x, y, Item("Color", color = current) {}, emptyList(), emptyList(), emptyList())
-        colorMode = true
-        wheel = if (hslMode) Wheel.HSL else Wheel.SWATCHES
-        cy = cy.coerceAtMost(height - rOuter - 52f.dp)
-        invalidate()
+    private fun layoutSwatches() {
+        swatches.clear()
+        val n = colors.size + 1
+        // spread along the bottom of the inner ring, the "+" last
+        val span = min(130f, 13f * n)
+        colors.forEachIndexed { i, c -> swatches.add(Swatch(c, 90f + span / 2 - i * span / (n - 1).coerceAtLeast(1))) }
+        swatches.add(Swatch(null, if (n == 1) 90f else 90f - span / 2))
+        for (s in swatches) place(s.angle, rSwatch).let { (px, py) -> s.x = px; s.y = py }
+    }
+
+    private fun place(deg: Float, r: Float): Pair<Float, Float> {
+        val a = Math.toRadians(deg.toDouble())
+        return (cx + (cos(a) * r).toFloat()) to (cy + (sin(a) * r).toFloat())
     }
 
     fun close() {
         if (!isOpen) return
         isOpen = false
-        hot = null
-        colorMode = false
-        visibility = GONE
+        hotBubble = null; hotSwatch = null; drag = Drag.NONE
+        animate().cancel()
+        animate().alpha(0f).scaleX(0.94f).scaleY(0.94f).setDuration(90).withEndAction {
+            if (!isOpen) visibility = GONE
+        }.start()
         onClosed?.invoke()
     }
 
+    // =========================================================
+    // pen hover + button release
+    // =========================================================
+
     fun hoverAt(x: Float, y: Float) {
-        if (!isOpen || colorMode) return
-        val h = hit(x, y)
-        if (h !== hot) { hot = h; invalidate() }
+        if (!isOpen || drag != Drag.NONE) return
+        val b = bubbleAt(x, y)
+        val s = if (b == null) swatchAt(x, y) else null
+        if (b !== hotBubble || s !== hotSwatch) { hotBubble = b; hotSwatch = s; invalidate() }
     }
 
-    /**
-     * Pen button released after a hold: choose the item under the pen — but only if the pen
-     * actually moved to it. Releasing where the menu opened keeps the menu open.
-     */
+    /** pen button released after a hold: choose what is under the pen (if the pen moved there) */
     fun releaseAt(x: Float, y: Float) {
-        if (!isOpen || colorMode) return
+        if (!isOpen) return
         if (hypot(x - openX, y - openY) < 28f.dp) return
-        val h = hit(x, y)
-        if (h != null && h !== center) choose(h)
+        bubbleAt(x, y)?.let { choose(it); return }
+        swatchAt(x, y)?.let { pickSwatch(it) }
     }
 
-    private fun choose(item: Item) {
+    private fun choose(b: Bubble) {
         close()
-        item.action()
+        b.item.action()
     }
 
-    private fun hit(x: Float, y: Float): Item? {
+    private fun pickSwatch(s: Swatch) {
+        val c = s.color
+        if (c == null) {
+            val cur = disc.color
+            onSaveColor?.invoke(cur)
+            colors.remove(cur); colors.add(0, cur)
+            while (colors.size > 10) colors.removeAt(colors.size - 1)
+            layoutSwatches()
+            invalidate()
+            return
+        }
+        disc.set(c)
+        onColor?.invoke(c)
+        close()
+    }
+
+    // =========================================================
+    // hit tests
+    // =========================================================
+
+    private fun bubbleAt(x: Float, y: Float) = bubbles.firstOrNull { hypot(x - it.x, y - it.y) <= bubbleR + 5f.dp }
+    private fun swatchAt(x: Float, y: Float) = swatches.firstOrNull { hypot(x - it.x, y - it.y) <= swatchR + 4f.dp }
+
+    private fun angleOf(x: Float, y: Float) = Math.toDegrees(atan2((y - cy).toDouble(), (x - cx).toDouble())).toFloat()
+
+    /** which slider is under (x, y), if any */
+    private fun sliderAt(x: Float, y: Float): Drag {
         val d = hypot(x - cx, y - cy)
-        if (d <= rCenter) return center
-        val a = Math.toDegrees(atan2((y - cy).toDouble(), (x - cx).toDouble())).toFloat()
-        for (s in slots) {
-            if (d < s.r0 || d > s.r1) continue
-            var rel = a - s.start
-            while (rel < 0) rel += 360f
-            while (rel >= 360f) rel -= 360f
-            if (rel <= s.sweep) return s.item
-        }
-        return null
-    }
-
-    // ---------------- color wheel (Swatches + HSL modes) ----------------
-
-    private enum class Wheel { SWATCHES, HSL }
-    private var wheel = Wheel.SWATCHES
-    /** HSL state (hue kept separately so grays don't lose it) */
-    private var hue = 0f
-    private var sat = 0.8f
-    private var light = 0.5f
-    private var color = Color.BLACK
-
-    private val rChipOut = rOuter
-    private val rChipIn = 121f.dp
-    private val rGrayOut = 117f.dp
-    private val rGrayIn = 86f.dp
-    private val rToneOut = 82f.dp
-    private val rToneIn = 36f.dp
-
-    private fun pillY() = cy + rOuter + 30f.dp
-    private fun pill(i: Int): RectF {
-        val w = 70f.dp; val gapX = 6f.dp
-        val total = 4 * w + 3 * gapX
-        val x = cx - total / 2 + i * (w + gapX)
-        return RectF(x, pillY() - 15f.dp, x + w, pillY() + 15f.dp)
-    }
-
-    private fun setColor(c: Int, notify: Boolean = true) {
-        color = c or 0xFF000000.toInt()
-        val hsl = toHsl(color)
-        if (hsl[1] > 0.02f) hue = hsl[0]
-        sat = hsl[1]; light = hsl[2]
-        Color.colorToHSV(color, hsv)
-        if (notify) onColor?.invoke(color)
-        invalidate()
-    }
-
-    /** angle 0..360 measured clockwise from the top */
-    private fun topAngle(x: Float, y: Float): Float {
-        var a = Math.toDegrees(atan2((y - cy).toDouble(), (x - cx).toDouble())).toFloat() + 90f
-        while (a < 0) a += 360f
-        while (a >= 360f) a -= 360f
-        return a
-    }
-
-    // ---- swatch rings ----
-
-    private fun chipColor(band: Int, i: Int): Int {
-        val h = i * 15f
-        return when (band) {
-            0 -> Color.HSVToColor(floatArrayOf(h, 0.32f, 1f))     // outer: light tints
-            1 -> Color.HSVToColor(floatArrayOf(h, 0.85f, 0.95f))  // middle: pure
-            else -> Color.HSVToColor(floatArrayOf(h, 0.9f, 0.55f)) // inner: deep shades
-        }
-    }
-
-    private fun grayColor(i: Int): Int {
-        val step = i % 8
-        val v = 0.96f - step * 0.11f
-        return when (i / 8) {
-            0 -> Color.HSVToColor(floatArrayOf(215f, 0.14f, v))  // cool grays
-            1 -> Color.HSVToColor(floatArrayOf(35f, 0.16f, v))   // warm grays
-            else -> Color.HSVToColor(floatArrayOf(0f, 0f, v))    // neutral grays
-        }
-    }
-
-    private fun toneColor(i: Int): Int = when (i) {
-        0 -> Color.WHITE
-        11 -> Color.BLACK
-        in 1..5 -> Color.HSVToColor(floatArrayOf(hue, 0.12f + (i - 1) * 0.19f, 1f))
-        else -> Color.HSVToColor(floatArrayOf(hue, 0.9f, 1f - (i - 5) * 0.14f))
-    }
-
-    private fun swatchAt(x: Float, y: Float): Int? {
-        val d = hypot(x - cx, y - cy)
-        val a = topAngle(x, y)
-        return when {
-            d in rChipIn..rChipOut -> {
-                val band = ((rChipOut - d) / ((rChipOut - rChipIn) / 3f)).toInt().coerceIn(0, 2)
-                chipColor(band, (a / 15f).toInt().coerceIn(0, 23))
-            }
-            d in rGrayIn..rGrayOut -> grayColor((a / 15f).toInt().coerceIn(0, 23))
-            d in rToneIn..rToneOut -> toneColor((a / 30f).toInt().coerceIn(0, 11))
-            else -> null
-        }
-    }
-
-    private fun drawRingSectors(canvas: Canvas, r0: Float, r1: Float, count: Int, colorOf: (Int) -> Int) {
-        val sweep = 360f / count
-        val outer = RectF(cx - r1, cy - r1, cx + r1, cy + r1)
-        val inner = RectF(cx - r0, cy - r0, cx + r0, cy + r0)
-        for (i in 0 until count) {
-            val start = -90f + i * sweep + 0.8f
-            val sw = sweep - 1.6f
-            path.reset()
-            path.arcTo(outer, start, sw, true)
-            path.arcTo(inner, start + sw, -sw)
-            path.close()
-            val c = colorOf(i)
-            segPaint.color = c
-            canvas.drawPath(path, segPaint)
-            if (c == color) {
-                ringPaint.color = if (Color.luminance(c) > 0.6f) Color.BLACK else Color.WHITE
-                ringPaint.strokeWidth = 2.5f.dp
-                canvas.drawPath(path, ringPaint)
-            }
-        }
-    }
-
-    private fun drawSwatches(canvas: Canvas) {
-        val band = (rChipOut - rChipIn) / 3f
-        for (b in 0 until 3) {
-            drawRingSectors(canvas, rChipOut - (b + 1) * band + 0.6f.dp, rChipOut - b * band - 0.6f.dp, 24) { chipColor(b, it) }
-        }
-        drawRingSectors(canvas, rGrayIn, rGrayOut, 24) { grayColor(it) }
-        drawRingSectors(canvas, rToneIn, rToneOut, 12) { toneColor(it) }
-        segPaint.color = color
-        canvas.drawCircle(cx, cy, rToneIn - 4f.dp, segPaint)
-        ringPaint.color = 0xEEFFFFFF.toInt(); ringPaint.strokeWidth = 2f.dp
-        canvas.drawCircle(cx, cy, rToneIn - 4f.dp, ringPaint)
-    }
-
-    // ---- HSL ----
-
-    private val satStart = 200f   // canvas degrees (0 = right, clockwise)
-    private val lightStart = 20f
-    private val arcSweep = 140f
-    private val rArc = 101f.dp
-
-    private fun drawHsl(canvas: Canvas) {
-        val rm = (rChipIn + rChipOut) / 2
-        // canvas angle θ shows hue θ + 90 (hue 0 sits at 12 o'clock)
-        val hues = IntArray(13) { Color.HSVToColor(floatArrayOf((it * 30f + 90f) % 360f, 1f, 1f)) }
-        // SweepGradient starts at 3 o'clock; our hue 0 is at 12 o'clock
-        val sg = SweepGradient(cx, cy, hues, null)
-        ringPaint.shader = sg
-        ringPaint.strokeWidth = rChipOut - rChipIn
-        canvas.drawCircle(cx, cy, rm, ringPaint)
-        ringPaint.shader = null
-        handle(canvas, hue - 90f, rm, (rChipOut - rChipIn) / 2 - 4f.dp)
-
-        // saturation (top arc) and lightness (bottom arc) as curved sliders
-        val arcRect = RectF(cx - rArc, cy - rArc, cx + rArc, cy + rArc)
-        val steps = 28
-        segPaint.style = Paint.Style.STROKE
-        segPaint.strokeWidth = 18f.dp
-        segPaint.strokeCap = Paint.Cap.BUTT
-        for (k in 0 until steps) {
-            val t = k / (steps - 1f)
-            segPaint.color = fromHsl(hue, t, light.coerceIn(0.25f, 0.75f))
-            canvas.drawArc(arcRect, satStart + t * arcSweep, arcSweep / steps + 0.6f, false, segPaint)
-            segPaint.color = fromHsl(hue, sat.coerceAtLeast(0.15f), 1f - t)
-            canvas.drawArc(arcRect, lightStart + t * arcSweep, arcSweep / steps + 0.6f, false, segPaint)
-        }
-        segPaint.style = Paint.Style.FILL
-        handle(canvas, satStart + sat * arcSweep, rArc, 10f.dp)
-        handle(canvas, lightStart + (1f - light) * arcSweep, rArc, 10f.dp)
-        textPaint.textSize = 9.5f.dp
-        textPaint.color = Ui.TEXT_DIM
-        canvas.drawText("SATURATION", cx, cy - rArc + 30f.dp, textPaint)
-        canvas.drawText("LIGHTNESS", cx, cy + rArc - 22f.dp, textPaint)
-
-        segPaint.color = color
-        canvas.drawCircle(cx, cy, 44f.dp, segPaint)
-        ringPaint.color = 0xEEFFFFFF.toInt(); ringPaint.strokeWidth = 2f.dp
-        canvas.drawCircle(cx, cy, 44f.dp, ringPaint)
-        textPaint.color = if (Color.luminance(color) > 0.5f) Color.BLACK else Color.WHITE
-        textPaint.textSize = 11f.dp
-        canvas.drawText(String.format("#%06X", color and 0xFFFFFF), cx, cy + 4f.dp, textPaint)
-        textPaint.color = Ui.TEXT
-    }
-
-    private fun handle(canvas: Canvas, canvasDeg: Float, r: Float, size: Float) {
-        val a = Math.toRadians(canvasDeg.toDouble())
-        val x = cx + (cos(a) * r).toFloat(); val y = cy + (sin(a) * r).toFloat()
-        ringPaint.color = Color.WHITE
-        ringPaint.strokeWidth = 3.5f.dp
-        canvas.drawCircle(x, y, size, ringPaint)
-        ringPaint.color = 0x66000000
-        ringPaint.strokeWidth = 1f.dp
-        canvas.drawCircle(x, y, size + 2.5f.dp, ringPaint)
-    }
-
-    private enum class Zone { NONE, HUE, SAT, LIGHT, SWATCH }
-    private var zone = Zone.NONE
-
-    private fun canvasAngle(x: Float, y: Float): Float {
-        var a = Math.toDegrees(atan2((y - cy).toDouble(), (x - cx).toDouble())).toFloat()
+        if (d < rBubbles - 22f.dp || d > rBubbles + 22f.dp) return Drag.NONE
+        var a = angleOf(x, y) // -180..180
+        if (a in -30f..30f) return Drag.OPACITY
         if (a < 0) a += 360f
-        return a
+        if (a in (sizeArc.first - 6f)..(sizeArc.second + 6f)) return Drag.SIZE
+        return Drag.NONE
     }
 
-    private fun touchHsl(x: Float, y: Float, down: Boolean) {
-        val d = hypot(x - cx, y - cy)
-        val a = canvasAngle(x, y)
-        if (down) zone = when {
-            d >= rChipIn - 6f.dp && d <= rChipOut + 16f.dp -> Zone.HUE
-            d in (rArc - 22f.dp)..(rArc + 22f.dp) && a >= satStart - 10f && a <= satStart + arcSweep + 10f -> Zone.SAT
-            d in (rArc - 22f.dp)..(rArc + 22f.dp) && a >= lightStart - 10f && a <= lightStart + arcSweep + 10f -> Zone.LIGHT
-            else -> Zone.NONE
-        }
-        when (zone) {
-            Zone.HUE -> hue = topAngle(x, y)
-            Zone.SAT -> sat = ((a - satStart) / arcSweep).coerceIn(0f, 1f)
-            Zone.LIGHT -> light = 1f - ((a - lightStart) / arcSweep).coerceIn(0f, 1f)
-            else -> return
-        }
-        color = fromHsl(hue, sat, light)
-        Color.colorToHSV(color, hsv)
-        onColor?.invoke(color)
-        invalidate()
+    private fun sliderValue(which: Drag, x: Float, y: Float): Float {
+        val a = angleOf(x, y)
+        return if (which == Drag.SIZE) {
+            val aa = if (a < 0) a + 360f else a
+            ((aa - sizeArc.first) / (sizeArc.second - sizeArc.first)).coerceIn(0f, 1f)
+        } else ((opacityArc.first - a) / (opacityArc.first - opacityArc.second)).coerceIn(0f, 1f)
     }
 
-    private fun drawPills(canvas: Canvas) {
-        val labels = listOf("Swatches", "HSL", "+ Save", "Done")
-        for (i in 0 until 4) {
-            val r = pill(i)
-            segPaint.color = when {
-                i == 0 && wheel == Wheel.SWATCHES -> Ui.PANEL_ROW_ACTIVE
-                i == 1 && wheel == Wheel.HSL -> Ui.PANEL_ROW_ACTIVE
-                i == 3 -> Ui.ACCENT
-                else -> 0xF0222227.toInt()
-            }
-            canvas.drawRoundRect(r, 15f.dp, 15f.dp, segPaint)
-            textPaint.textSize = 11.5f.dp
-            textPaint.color = Color.WHITE
-            canvas.drawText(labels[i], r.centerX(), r.centerY() + 4f.dp, textPaint)
-        }
-        textPaint.color = Ui.TEXT
-    }
-
-    private fun pillAt(x: Float, y: Float): Int = (0 until 4).firstOrNull { pill(it).contains(x, y) } ?: -1
-
-    private fun onPill(i: Int) {
-        when (i) {
-            0 -> { wheel = Wheel.SWATCHES; invalidate() }
-            1 -> { wheel = Wheel.HSL; invalidate() }
-            2 -> { onSaveColor?.invoke(color); close() }
-            3 -> close()
-        }
-    }
-
-    // ---- HSL math ----
-
-    private fun toHsl(c: Int): FloatArray {
-        val r = Color.red(c) / 255f; val g = Color.green(c) / 255f; val b = Color.blue(c) / 255f
-        val mx = maxOf(r, g, b); val mn = minOf(r, g, b)
-        val l = (mx + mn) / 2
-        if (mx == mn) return floatArrayOf(0f, 0f, l)
-        val dd = mx - mn
-        val s = if (l > 0.5f) dd / (2 - mx - mn) else dd / (mx + mn)
-        var h = when (mx) {
-            r -> (g - b) / dd + (if (g < b) 6 else 0)
-            g -> (b - r) / dd + 2
-            else -> (r - g) / dd + 4
-        } * 60f
-        if (h >= 360f) h -= 360f
-        return floatArrayOf(h, s, l)
-    }
-
-    private fun fromHsl(h: Float, s: Float, l: Float): Int {
-        val c = (1 - Math.abs(2 * l - 1)) * s
-        val hp = (h % 360f) / 60f
-        val x = c * (1 - Math.abs(hp % 2 - 1))
-        val (r1, g1, b1) = when (hp.toInt()) {
-            0 -> Triple(c, x, 0f); 1 -> Triple(x, c, 0f); 2 -> Triple(0f, c, x)
-            3 -> Triple(0f, x, c); 4 -> Triple(x, 0f, c); else -> Triple(c, 0f, x)
-        }
-        val m = l - c / 2
-        fun ch(v: Float) = ((v + m) * 255).toInt().coerceIn(0, 255)
-        return Color.rgb(ch(r1), ch(g1), ch(b1))
-    }
+    // =========================================================
+    // touch
+    // =========================================================
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!isOpen) return false
-        if (colorMode) {
-            when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downPill = pillAt(e.x, e.y)
-                    if (downPill >= 0) return true
-                    if (hypot(e.x - cx, e.y - cy) > rOuter + 24f.dp) { close(); return true }
-                    if (wheel == Wheel.HSL) touchHsl(e.x, e.y, true)
-                    else zone = Zone.SWATCH
-                }
-                MotionEvent.ACTION_MOVE -> if (wheel == Wheel.HSL && downPill < 0) touchHsl(e.x, e.y, false)
-                MotionEvent.ACTION_UP -> {
-                    if (downPill >= 0) {
-                        if (pillAt(e.x, e.y) == downPill) onPill(downPill)
-                    } else if (wheel == Wheel.SWATCHES) {
-                        swatchAt(e.x, e.y)?.let { setColor(it) }
-                    }
-                    zone = Zone.NONE
-                    downPill = -1
-                }
-            }
-            return true
-        }
+        val x = e.x; val y = e.y
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> hoverAt(e.x, e.y)
-            MotionEvent.ACTION_UP -> {
-                val h = hit(e.x, e.y)
-                when {
-                    h === center && onCenter != null -> {
-                        val x = cx; val y = cy
-                        close()
-                        onCenter?.invoke(x, y)
-                    }
-                    h === center -> {
-                        colorMode = true
-                        // keep the pills on screen
-                        cy = cy.coerceAtMost(height - rOuter - 52f.dp)
-                        invalidate()
-                    }
-                    h != null -> choose(h)
-                    else -> close()
+            MotionEvent.ACTION_DOWN -> {
+                downBubble = null; downSwatch = null
+                drag = when {
+                    disc.touch(x, y, MotionEvent.ACTION_DOWN) -> { onColor?.invoke(disc.color); Drag.DISC }
+                    bubbleAt(x, y) != null -> { downBubble = bubbleAt(x, y); hotBubble = downBubble; Drag.BUBBLE }
+                    swatchAt(x, y) != null -> { downSwatch = swatchAt(x, y); hotSwatch = downSwatch; Drag.SWATCH }
+                    sliderAt(x, y) != Drag.NONE -> sliderAt(x, y)
+                    hypot(x - cx, y - cy) > rBase -> { close(); return true }
+                    else -> Drag.NONE
                 }
+                applySlider(x, y)
+                invalidate()
             }
-            MotionEvent.ACTION_CANCEL -> close()
+            MotionEvent.ACTION_MOVE -> {
+                when (drag) {
+                    Drag.DISC -> if (disc.touch(x, y, MotionEvent.ACTION_MOVE)) onColor?.invoke(disc.color)
+                    Drag.SIZE, Drag.OPACITY -> applySlider(x, y)
+                    Drag.BUBBLE -> hotBubble = bubbleAt(x, y)
+                    Drag.SWATCH -> hotSwatch = swatchAt(x, y)
+                    Drag.NONE -> {}
+                }
+                invalidate()
+            }
+            MotionEvent.ACTION_UP -> {
+                val d = drag
+                drag = Drag.NONE
+                when (d) {
+                    Drag.DISC -> disc.touch(x, y, MotionEvent.ACTION_UP)
+                    Drag.BUBBLE -> { val b = bubbleAt(x, y); if (b != null && b === downBubble) { choose(b); return true } }
+                    Drag.SWATCH -> { val s = swatchAt(x, y); if (s != null && s === downSwatch) pickSwatch(s) }
+                    else -> {}
+                }
+                hotBubble = null; hotSwatch = null
+                invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> { drag = Drag.NONE; disc.touch(x, y, MotionEvent.ACTION_CANCEL); invalidate() }
         }
         return true
     }
 
-    // ---------------- drawing ----------------
-
-    override fun onDraw(canvas: Canvas) {
-        if (!isOpen) return
-        segPaint.shader = null
-        segPaint.color = 0x66000000
-        canvas.drawCircle(cx, cy, rOuter + 12f.dp, segPaint)
-        if (colorMode) {
-            if (wheel == Wheel.SWATCHES) drawSwatches(canvas) else drawHsl(canvas)
-            drawPills(canvas)
-            return
-        }
-
-        for (s in slots) drawSlot(canvas, s)
-        val c = center
-        if (c != null) {
-            segPaint.color = c.color ?: Ui.PANEL
-            canvas.drawCircle(cx, cy, rCenter, segPaint)
-            ringPaint.color = if (hot === c) Ui.ACCENT else 0xEEFFFFFF.toInt()
-            ringPaint.strokeWidth = 3f.dp
-            canvas.drawCircle(cx, cy, rCenter, ringPaint)
-            textPaint.textSize = 9.5f.dp
-            textPaint.color = if (Color.luminance(c.color ?: 0) > 0.5f) Color.BLACK else Color.WHITE
-            canvas.drawText("COLOR", cx, cy + 4f.dp, textPaint)
-            textPaint.color = Ui.TEXT
+    private fun applySlider(x: Float, y: Float) {
+        when (drag) {
+            Drag.SIZE -> { size = sliderValue(Drag.SIZE, x, y); onSize?.invoke(size) }
+            Drag.OPACITY -> { opacity = sliderValue(Drag.OPACITY, x, y); onOpacity?.invoke(opacity) }
+            else -> {}
         }
     }
 
-    private fun drawSlot(canvas: Canvas, s: Slot) {
-        val isHot = hot === s.item
-        val padAngle = 1.2f
-        path.reset()
-        val outer = RectF(cx - s.r1, cy - s.r1, cx + s.r1, cy + s.r1)
-        val inner = RectF(cx - s.r0, cy - s.r0, cx + s.r0, cy + s.r0)
-        path.arcTo(outer, s.start + padAngle, s.sweep - 2 * padAngle, true)
-        path.arcTo(inner, s.start + s.sweep - padAngle, -(s.sweep - 2 * padAngle))
-        path.close()
-        segPaint.color = when {
-            isHot -> Ui.ACCENT
-            s.item.active -> Ui.PANEL_ROW_ACTIVE
-            else -> 0xF0222227.toInt()
-        }
-        canvas.drawPath(path, segPaint)
+    // =========================================================
+    // drawing
+    // =========================================================
 
-        val mid = Math.toRadians((s.start + s.sweep / 2).toDouble())
-        val rm = (s.r0 + s.r1) / 2
-        val px = cx + (cos(mid) * rm).toFloat()
-        val py = cy + (sin(mid) * rm).toFloat()
-        val item = s.item
-        when {
-            item.color != null -> {
-                // swatch size fits the slot when there are many colors
-                val r = min(15f.dp, (Math.toRadians(s.sweep.toDouble()) * rm / 2.4).toFloat())
-                segPaint.color = item.color
-                canvas.drawCircle(px, py, r, segPaint)
-                ringPaint.color = 0xCCFFFFFF.toInt()
-                ringPaint.strokeWidth = 1.5f.dp
-                canvas.drawCircle(px, py, r, ringPaint)
+    override fun onDraw(canvas: Canvas) {
+        if (!isOpen && alpha == 0f) return
+        canvas.drawColor(0x26000000)
+        // base plate
+        canvas.drawCircle(cx, cy, rBase, shadow)
+        line.color = 0x1FFFFFFF; line.strokeWidth = 1f.dp
+        canvas.drawCircle(cx, cy, rBase, line)
+        // a quiet ring separating the colors from the tools
+        paint.color = 0xFF0F0F12.toInt()
+        canvas.drawCircle(cx, cy, rSwatch + swatchR + 9f.dp, paint)
+
+        disc.draw(canvas)
+        drawSwatches(canvas)
+        drawSlider(canvas, sizeArc, size, "SIZE", sizeLabel(size), drag == Drag.SIZE)
+        drawSlider(canvas, opacityArc, opacity, "OPACITY", opacityLabel(opacity), drag == Drag.OPACITY)
+        for (b in bubbles) drawBubble(canvas, b)
+        drawTooltip(canvas)
+    }
+
+    private fun drawSwatches(canvas: Canvas) {
+        val current = disc.color
+        for (s in swatches) {
+            val hot = s === hotSwatch
+            val r = if (hot) swatchR + 2.5f.dp else swatchR
+            val c = s.color
+            if (c == null) {
+                paint.color = if (hot) Ui.ACCENT else Ui.PANEL_ROW
+                canvas.drawCircle(s.x, s.y, r, paint)
+                IconPainter.draw(canvas, Icon.PLUS, s.x, s.y, r * 1.25f, Ui.TEXT)
+                continue
             }
-            item.icon != null -> {
-                IconPainter.draw(canvas, item.icon, px, py - 7f.dp, 22f.dp, Ui.TEXT)
-                textPaint.textSize = 9.5f.dp
-                canvas.drawText(item.label, px, py + 16f.dp, textPaint)
-            }
-            else -> {
-                val pv = item.preview
-                if (pv != null) {
-                    val w = min(70f.dp, (s.r1 - s.r0) * 1.4f)
-                    val h = w * pv.height / pv.width
-                    canvas.drawBitmap(pv, null, RectF(px - w / 2, py - h / 2 - 6f.dp, px + w / 2, py + h / 2 - 6f.dp), null)
-                }
-                textPaint.textSize = 10.5f.dp
-                val label = if (item.label.length > 13) item.label.take(12) + "…" else item.label
-                canvas.drawText(label, px, py + 16f.dp, textPaint)
-            }
+            paint.color = c
+            canvas.drawCircle(s.x, s.y, r, paint)
+            line.strokeWidth = if (c == current || hot) 2.5f.dp else 1f.dp
+            line.color = if (c == current || hot) Color.WHITE else 0x40FFFFFF
+            canvas.drawCircle(s.x, s.y, r + 1f.dp, line)
         }
+    }
+
+    private fun drawSlider(canvas: Canvas, arc: Pair<Float, Float>, v: Float, name: String, value: String, active: Boolean) {
+        val rect = RectF(cx - rBubbles, cy - rBubbles, cx + rBubbles, cy + rBubbles)
+        val sweep = arc.second - arc.first
+        line.strokeWidth = sliderW
+        line.color = 0x2EFFFFFF
+        canvas.drawArc(rect, arc.first, sweep, false, line)
+        line.color = if (active) Ui.ACCENT else 0xD9FFFFFF.toInt()
+        if (v > 0.001f) canvas.drawArc(rect, arc.first, sweep * v, false, line)
+        val (kx, ky) = place(arc.first + sweep * v, rBubbles)
+        paint.color = Color.WHITE
+        canvas.drawCircle(kx, ky, if (active) 11f.dp else 9f.dp, paint)
+        line.strokeWidth = 1f.dp; line.color = 0x55000000
+        canvas.drawCircle(kx, ky, if (active) 11f.dp else 9f.dp, line)
+        // caption + value, inside the arc
+        val mid = (arc.first + arc.second) / 2f
+        val (tx, ty) = place(mid, rBubbles - 34f.dp)
+        text.textSize = 8.5f.dp
+        text.color = Ui.TEXT_DIM
+        canvas.drawText(name, tx, ty - 5f.dp, text)
+        text.textSize = 12.5f.dp
+        text.color = if (active) Ui.ACCENT else Ui.TEXT
+        canvas.drawText(value, tx, ty + 10f.dp, text)
+    }
+
+    private fun drawBubble(canvas: Canvas, b: Bubble) {
+        val hot = b === hotBubble
+        val r = if (hot) bubbleR + 3f.dp else bubbleR
+        paint.color = when {
+            hot -> Ui.ACCENT
+            b.item.active -> Ui.PANEL_ROW_ACTIVE
+            else -> 0xFF2A2A31.toInt()
+        }
+        canvas.drawCircle(b.x, b.y, r, paint)
+        if (b.item.active && !hot) {
+            line.color = Ui.ACCENT; line.strokeWidth = 2f.dp
+            canvas.drawCircle(b.x, b.y, r, line)
+        }
+        val icon = b.item.icon
+        val pv = b.item.preview
+        if (icon != null) {
+            IconPainter.draw(canvas, icon, b.x, b.y, r * 1.0f, if (b.item.active && !hot) Ui.ACCENT else Ui.TEXT)
+        } else if (pv != null) {
+            canvas.save()
+            clip.reset(); clip.addCircle(b.x, b.y, r - 2f.dp, Path.Direction.CW)
+            canvas.clipPath(clip)
+            paint.color = 0xFFEDEDF0.toInt()
+            canvas.drawCircle(b.x, b.y, r, paint)
+            val w = r * 2.6f
+            val h = w * pv.height / pv.width
+            canvas.drawBitmap(pv, null, RectF(b.x - w / 2, b.y - h / 2, b.x + w / 2, b.y + h / 2), null)
+            canvas.restore()
+            if (hot) { line.color = Ui.ACCENT; line.strokeWidth = 3f.dp; canvas.drawCircle(b.x, b.y, r, line) }
+        }
+    }
+
+    private fun drawTooltip(canvas: Canvas) {
+        val label = hotBubble?.item?.label ?: when {
+            hotSwatch != null && hotSwatch?.color == null -> "Save color to palette"
+            else -> null
+        } ?: return
+        text.textSize = 13f.dp
+        text.color = Color.WHITE
+        val w = text.measureText(label) + 28f.dp
+        val y = cy - rBase - 22f.dp
+        paint.color = 0xF0101013.toInt()
+        canvas.drawRoundRect(RectF(cx - w / 2, y - 16f.dp, cx + w / 2, y + 16f.dp), 16f.dp, 16f.dp, paint)
+        canvas.drawText(label, cx, y + 4.5f.dp, text)
     }
 }

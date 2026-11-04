@@ -55,8 +55,16 @@ class MainActivity : Activity(), CanvasView.Listener {
     private val eraserBrushes = Brushes.presets.map { Brush(it) }.toMutableList()
     private val smudgeBrushes = Brushes.presets.map { Brush(it) }.toMutableList()
     private lateinit var smudgeBtn: IconView
-    private lateinit var creativeBtn: android.widget.TextView
-    private lateinit var editingBtn: android.widget.TextView
+    private lateinit var creativeBtn: View
+    private lateinit var editingBtn: View
+    private lateinit var topBar: LinearLayout
+    private lateinit var sideBar: LinearLayout
+    private lateinit var dock: ToolDockView
+    private lateinit var titleView: android.widget.TextView
+    private lateinit var focusExit: IconView
+    private var dockIds = mutableListOf<String>()
+    private var leftHanded = false
+    private var focusMode = false
     private lateinit var selectBtn: IconView
     private lateinit var transformBtn: IconView
     private lateinit var adjustBtn: IconView
@@ -151,6 +159,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onBackPressed() {
         when {
             quickMenu.isOpen -> quickMenu.close()
+            focusMode -> setFocus(false)
             colorWheel.isOpen -> colorWheel.close()
             adjustKind != null -> endAdjust(false)
             cv.transform != null -> leaveTransform(false)
@@ -290,83 +299,115 @@ class MainActivity : Activity(), CanvasView.Listener {
         hud = HudView(this)
         root.addView(hud, FrameLayout.LayoutParams(-1, -1))
 
+        dockIds = ToolCatalog.decode(prefs.getString("dock", null))
+        leftHanded = prefs.getBoolean("leftHanded", false)
+
         // ---------- top bar ----------
+        //  [Home] [Menu] | [Creative] [Editing]      artwork title      [Brush] [Smudge] [Eraser] | [Layers] (Color)
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(10.dp, 0, 10.dp, 0)
+            setPadding(8.dp, 0, 10.dp, 0)
             setBackgroundColor(Ui.BAR)
+            elevation = 6f.dp
         }
-        val galleryBtn = Ui.button(this, "‹ Home") { if (!busy()) showGallery() }.apply {
-            textSize = 14f
-            background = null
-        }
-        bar.addView(galleryBtn, LinearLayout.LayoutParams(-2, 52.dp))
-
-        creativeBtn = Ui.button(this, "✦ Creative") { if (!busy()) showToolsMenu(true) }.apply { textSize = 14f; background = null }
-        bar.addView(creativeBtn, LinearLayout.LayoutParams(-2, 52.dp))
-        editingBtn = Ui.button(this, "✎ Editing") { if (!busy()) showToolsMenu(false) }.apply { textSize = 14f; background = null }
-        bar.addView(editingBtn, LinearLayout.LayoutParams(-2, 52.dp))
-        val actionsBtn = IconView(this, Icon.ACTIONS)
+        topBar = bar
+        val homeBtn = IconView(this, Icon.HOME).apply { contentDescription = "Gallery" }
+        homeBtn.setOnClickListener { if (!busy()) showGallery() }
+        bar.addView(homeBtn, LinearLayout.LayoutParams(46.dp, 48.dp))
+        val actionsBtn = IconView(this, Icon.MENU).apply { contentDescription = "Menu" }
         actionsBtn.setOnClickListener { if (!busy()) showActions(actionsBtn) }
-        bar.addView(actionsBtn, LinearLayout.LayoutParams(50.dp, 52.dp))
+        bar.addView(actionsBtn, LinearLayout.LayoutParams(46.dp, 48.dp))
+        bar.addView(barDivider())
 
-        // state indicators (kept off the bar; the menus show them)
+        creativeBtn = barTab(Icon.SPARKLE, "Creative") { if (!busy()) showToolsMenu(true) }
+        bar.addView(creativeBtn, LinearLayout.LayoutParams(-2, 40.dp).apply { leftMargin = 4.dp })
+        editingBtn = barTab(Icon.WAND, "Editing") { if (!busy()) showToolsMenu(false) }
+        bar.addView(editingBtn, LinearLayout.LayoutParams(-2, 40.dp).apply { leftMargin = 2.dp })
+
+        // state indicators (kept off the bar; the dock and the panels show them)
         adjustBtn = IconView(this, Icon.WAND)
         selectBtn = IconView(this, Icon.SELECT)
         transformBtn = IconView(this, Icon.TRANSFORM)
         symmetryBtn = IconView(this, Icon.SYMMETRY)
         guideBtn = IconView(this, Icon.GRID)
 
-        bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        titleView = Ui.text(this, "", 13.5f, Ui.TEXT_DIM).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(12.dp, 0, 12.dp, 0)
+            setOnClickListener {
+                if (cv.isDocReady() && !busy()) renameDialog(cv.doc.title) { t ->
+                    cv.doc.title = t; cv.doc.revision++; autosave(force = true); refreshAll()
+                }
+            }
+        }
+        bar.addView(titleView, LinearLayout.LayoutParams(0, 48.dp, 1f))
 
-        brushBtn = IconView(this, Icon.BRUSH)
+        // painting tools as one group
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.rounded(0xFF1E1E23.toInt(), 14f)
+            setPadding(3.dp, 0, 3.dp, 0)
+        }
+        brushBtn = IconView(this, Icon.BRUSH).apply { contentDescription = "Brush" }
         brushBtn.setOnClickListener {
             if (busy()) return@setOnClickListener
-            if (cv.tool == Tool.BRUSH && cv.interaction == Interaction.PAINT) showBrushes(Tool.BRUSH) else selectTool(Tool.BRUSH)
+            if (cv.tool == Tool.BRUSH && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.BRUSH) else selectTool(Tool.BRUSH)
         }
-        bar.addView(brushBtn, LinearLayout.LayoutParams(50.dp, 52.dp))
+        brushBtn.setOnLongClickListener { if (!busy()) { selectTool(Tool.BRUSH); showBrushes(Tool.BRUSH) }; true }
+        tools.addView(brushBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
 
-        smudgeBtn = IconView(this, Icon.SMUDGE)
+        smudgeBtn = IconView(this, Icon.SMUDGE).apply { contentDescription = "Smudge" }
         smudgeBtn.setOnClickListener {
             if (busy()) return@setOnClickListener
-            if (cv.tool == Tool.SMUDGE && cv.interaction == Interaction.PAINT) showBrushes(Tool.SMUDGE) else selectTool(Tool.SMUDGE)
+            if (cv.tool == Tool.SMUDGE && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.SMUDGE) else selectTool(Tool.SMUDGE)
         }
-        bar.addView(smudgeBtn, LinearLayout.LayoutParams(50.dp, 52.dp))
+        smudgeBtn.setOnLongClickListener { if (!busy()) { selectTool(Tool.SMUDGE); showBrushes(Tool.SMUDGE) }; true }
+        tools.addView(smudgeBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
 
-        eraserBtn = IconView(this, Icon.ERASER)
+        eraserBtn = IconView(this, Icon.ERASER).apply { contentDescription = "Eraser" }
         eraserBtn.setOnClickListener {
             if (busy()) return@setOnClickListener
-            if (cv.tool == Tool.ERASER && cv.interaction == Interaction.PAINT) showBrushes(Tool.ERASER) else selectTool(Tool.ERASER)
+            if (cv.tool == Tool.ERASER && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.ERASER) else selectTool(Tool.ERASER)
         }
-        bar.addView(eraserBtn, LinearLayout.LayoutParams(50.dp, 52.dp))
+        eraserBtn.setOnLongClickListener { if (!busy()) { selectTool(Tool.ERASER); showBrushes(Tool.ERASER) }; true }
+        tools.addView(eraserBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
+        bar.addView(tools, LinearLayout.LayoutParams(-2, 44.dp))
 
-        layersBtn = IconView(this, Icon.LAYERS)
+        layersBtn = IconView(this, Icon.LAYERS).apply { contentDescription = "Layers" }
         layersBtn.setOnClickListener { if (!busy()) showLayers() }
-        bar.addView(layersBtn, LinearLayout.LayoutParams(50.dp, 52.dp))
+        bar.addView(layersBtn, LinearLayout.LayoutParams(48.dp, 48.dp).apply { leftMargin = 6.dp })
 
         colorBtn = ColorSwatchView(this)
         setupColorButton()
         bar.addView(colorBtn, LinearLayout.LayoutParams(52.dp, 52.dp))
 
         root.addView(bar, FrameLayout.LayoutParams(-1, 56.dp, Gravity.TOP))
+        // hairline under the bar
+        root.addView(View(this).apply { setBackgroundColor(0x14FFFFFF) }, FrameLayout.LayoutParams(-1, 1.dp, Gravity.TOP).apply { topMargin = 56.dp })
 
-        // ---------- side bar ----------
+        // ---------- side bar: size, eyedropper, opacity, undo, redo ----------
         val side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(4.dp, 10.dp, 4.dp, 10.dp)
-            background = Ui.rounded(Ui.BAR, 14f)
+            setPadding(4.dp, 10.dp, 4.dp, 8.dp)
+            background = Ui.rounded(Ui.BAR, 16f, 0x14FFFFFF, 1)
+            elevation = 8f.dp
         }
+        sideBar = side
+        side.addView(Ui.text(this, "SIZE", 8.5f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER })
         sizeSlider = VerticalSlider(this)
         sizeSlider.onChange = { v ->
             cv.currentBrush.size = Brushes.sizeFromSlider(v)
             showSizeHud(true)
         }
         sizeSlider.onDragState = { dragging -> if (dragging) showSizeHud(true) else hud.hideSoon() }
-        side.addView(sizeSlider, LinearLayout.LayoutParams(44.dp, 190.dp))
+        side.addView(sizeSlider, LinearLayout.LayoutParams(44.dp, 180.dp))
 
-        val dropper = IconView(this, Icon.EYEDROPPER)
+        val dropper = IconView(this, Icon.EYEDROPPER).apply { contentDescription = "Eyedropper" }
         dropper.setOnClickListener { cv.armEyedropper() }
         side.addView(dropper, LinearLayout.LayoutParams(44.dp, 44.dp).apply { topMargin = 4.dp; bottomMargin = 4.dp })
 
@@ -378,18 +419,35 @@ class MainActivity : Activity(), CanvasView.Listener {
         opacitySlider.onDragState = { dragging ->
             if (dragging) hud.show("Opacity ${(cv.currentBrush.opacity * 100).roundToInt()}%", sticky = true) else hud.hideSoon()
         }
-        side.addView(opacitySlider, LinearLayout.LayoutParams(44.dp, 190.dp))
+        side.addView(opacitySlider, LinearLayout.LayoutParams(44.dp, 180.dp))
+        side.addView(Ui.text(this, "OPACITY", 8.5f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER })
 
-        undoBtn = IconView(this, Icon.UNDO)
+        side.addView(Ui.divider(this), LinearLayout.LayoutParams(28.dp, 1.dp).apply { topMargin = 8.dp; bottomMargin = 4.dp })
+        undoBtn = IconView(this, Icon.UNDO).apply { contentDescription = "Undo" }
         undoBtn.setOnClickListener { cv.undo() }
-        side.addView(undoBtn, LinearLayout.LayoutParams(44.dp, 44.dp).apply { topMargin = 8.dp })
-        redoBtn = IconView(this, Icon.REDO)
+        side.addView(undoBtn, LinearLayout.LayoutParams(44.dp, 44.dp))
+        redoBtn = IconView(this, Icon.REDO).apply { contentDescription = "Redo" }
         redoBtn.setOnClickListener { cv.redo() }
         side.addView(redoBtn, LinearLayout.LayoutParams(44.dp, 44.dp))
+        root.addView(side, FrameLayout.LayoutParams(-2, -2))
 
-        root.addView(side, FrameLayout.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL).apply {
-            leftMargin = 8.dp
-        })
+        // ---------- customizable toolbar (dock) ----------
+        dock = ToolDockView(this,
+            onTool = { id, anchor -> runTool(id, anchor) },
+            isActive = { id -> isToolActive(id) },
+            onCustomize = { if (!busy()) showToolbarEditor() })
+        dock.setTools(dockIds)
+        root.addView(dock, FrameLayout.LayoutParams(-2, -2))
+        applySides()
+
+        // focus mode: a single small button brings the interface back
+        focusExit = IconView(this, Icon.FOCUS).apply {
+            background = Ui.rounded(0xCC131316.toInt(), 14f)
+            contentDescription = "Show interface"
+            visibility = View.GONE
+            setOnClickListener { setFocus(false) }
+        }
+        root.addView(focusExit, FrameLayout.LayoutParams(48.dp, 48.dp, Gravity.TOP or Gravity.END).apply { topMargin = 12.dp; rightMargin = 12.dp })
 
         // "Done" button shown while moving vanishing points
         doneBtn = Ui.button(this, "Done moving points") { finishGuideEdit() }.apply {
@@ -407,7 +465,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         dropDot.visibility = View.GONE
         root.addView(dropDot, FrameLayout.LayoutParams(44.dp, 44.dp))
 
-        // radial quick menu (S Pen button hold) — on top of everything
+        // pen quick menu (S Pen button) — on top of everything
         quickMenu = QuickMenuView(this)
         quickMenu.visibility = View.GONE
         root.addView(quickMenu, FrameLayout.LayoutParams(-1, -1))
@@ -417,6 +475,193 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.penListener = penListener
 
         setContentView(root)
+    }
+
+    private fun barDivider() = View(this).apply { setBackgroundColor(0x1FFFFFFF) }.also {
+        it.layoutParams = LinearLayout.LayoutParams(1.dp, 24.dp).apply { leftMargin = 6.dp; rightMargin = 4.dp }
+    }
+
+    /** icon + label button for the top bar */
+    private fun barTab(icon: Icon, label: String, onClick: () -> Unit): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(6.dp, 0, 12.dp, 0)
+            background = Ui.rounded(0x00000000, 12f)
+            isClickable = true
+            setOnClickListener { onClick() }
+        }
+        box.addView(IconView(this, icon).apply { isClickable = false; iconScale = 0.62f }, LinearLayout.LayoutParams(32.dp, 32.dp))
+        box.addView(Ui.text(this, label, 14f))
+        return box
+    }
+
+    private fun setTabActive(tab: View, on: Boolean) {
+        tab.background = Ui.rounded(if (on) Ui.ACCENT_SOFT else 0, 12f)
+    }
+
+    /** sliders on one side, toolbar on the other (swapped for left-handed people) */
+    private fun applySides() {
+        (sideBar.layoutParams as FrameLayout.LayoutParams).apply {
+            gravity = (if (leftHanded) Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL
+            leftMargin = 8.dp; rightMargin = 8.dp; topMargin = 56.dp
+            sideBar.layoutParams = this
+        }
+        (dock.layoutParams as FrameLayout.LayoutParams).apply {
+            gravity = (if (leftHanded) Gravity.START else Gravity.END) or Gravity.CENTER_VERTICAL
+            leftMargin = 8.dp; rightMargin = 8.dp; topMargin = 70.dp; bottomMargin = 14.dp
+            dock.layoutParams = this
+        }
+    }
+
+    // =========================================================
+    // customizable toolbar
+    // =========================================================
+
+    private fun saveDock() {
+        prefs.edit().putString("dock", ToolCatalog.encode(dockIds)).apply()
+        dock.setTools(dockIds)
+    }
+
+    private fun toggleDock(id: String) {
+        if (id in dockIds) {
+            dockIds.remove(id)
+            hud.show("Removed from your toolbar")
+        } else {
+            if (dockIds.size >= ToolCatalog.MAX) { hud.show("Your toolbar is full (${ToolCatalog.MAX} tools)"); return }
+            dockIds.add(id)
+            hud.show("Added to your toolbar")
+        }
+        saveDock()
+    }
+
+    private fun showToolbarEditor() {
+        val ed = ToolbarEditor(this, dockIds, leftHanded,
+            onChange = { list -> dockIds = list.toMutableList(); saveDock() },
+            onLeftHanded = { on ->
+                leftHanded = on
+                prefs.edit().putBoolean("leftHanded", on).apply()
+                popup?.dismiss()
+                applySides()
+                root.postDelayed({ showToolbarEditor() }, 150)
+            })
+        showBeside(dock, ed, 380, 640)
+    }
+
+    private fun setFocus(on: Boolean) {
+        focusMode = on
+        val v = if (on) View.GONE else View.VISIBLE
+        topBar.visibility = v
+        (root.getChildAt(root.indexOfChild(topBar) + 1))?.visibility = v // hairline
+        sideBar.visibility = v
+        dock.visibility = v
+        focusExit.visibility = if (on) View.VISIBLE else View.GONE
+        if (on) hud.show("Focus mode · tap the corner button to bring the tools back")
+    }
+
+    /** runs a tool from the toolbar or the Creative / Editing panel */
+    private fun runTool(id: String, anchor: View? = null) {
+        if (!cv.isDocReady()) return
+        if (id !in setOf("fit", "flip", "focus") && busy()) return
+        val isVector = cv.doc.active.vector != null
+        when {
+            id == "sel_free" || id == "sel_rect" || id == "sel_ellipse" -> {
+                val shape = when (id) { "sel_rect" -> SelectShape.RECTANGLE; "sel_ellipse" -> SelectShape.ELLIPSE; else -> SelectShape.FREEHAND }
+                if (cv.interaction == Interaction.SELECT && cv.selectShape == shape) {
+                    cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll()
+                } else enterSelect(shape)
+            }
+            id == "sel_all" -> if (isVector) cv.vectorEditor.selectAll() else { cv.selectAll(); enterSelect() }
+            id == "sel_invert" -> if (cv.selection == null) hud.show("Nothing selected yet") else cv.invertSelection()
+            id == "deselect" -> { cv.selection = null; if (isVector) cv.vectorEditor.deselect() }
+            id == "copy_paste" -> if (cv.selection == null) hud.show("Select something first") else cv.copySelectionToNewLayer()
+            id == "transform" -> if (isVector) { cv.vectorEditor.tool = VTool.SELECT; refreshAll() } else enterTransform()
+            id == "eyedropper" -> cv.armEyedropper()
+            id == "fill" -> {
+                cv.fillMode = !cv.fillMode
+                if (cv.fillMode && cv.interaction == Interaction.SELECT) { cv.interaction = Interaction.PAINT; hideBottomBar() }
+                hud.show(if (cv.fillMode) "Fill: tap an area to fill it with your color" else "Fill off")
+            }
+            id == "text" -> textDialog()
+            id == "photo" -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+            }, REQ_IMAGE)
+            id == "vector" -> if (isVector) { cv.vectorEditor.tool = VTool.PEN; refreshAll() } else addVectorLayer()
+            id == "guides" -> showGuide(anchor)
+            id == "assisted" -> {
+                val g = cv.doc.guide
+                if (g.type == GuideType.OFF) { hud.show("Choose a grid first (Grid & perspective)"); showGuide(anchor) }
+                else { g.assisted = !g.assisted; cv.doc.revision++; cv.invalidate(); hud.show(if (g.assisted) "Strokes snap to the grid" else "Free drawing") }
+            }
+            id == "quickshape" -> {
+                cv.quickShapeEnabled = !cv.quickShapeEnabled
+                hud.show(if (cv.quickShapeEnabled) "QuickShape on: hold the pen at the end of a stroke" else "QuickShape off")
+            }
+            id == "symmetry" -> showSymmetry(anchor)
+            id == "adjust" -> showToolsMenu(false, "adjust")
+            id.startsWith("adj_") -> AdjustKind.values().firstOrNull { "adj_${it.name}" == id }?.let { startAdjust(it) }
+            id == "fit" -> cv.fitToScreen()
+            id == "flip" -> cv.flipHorizontal()
+            id == "focus" -> setFocus(!focusMode)
+            id == "export" -> exportImage(jpeg = false, share = false)
+            id == "share" -> exportImage(jpeg = false, share = true)
+            id == "timelapse" -> exportTimeLapse()
+            id.startsWith("feather_") -> {
+                if (cv.selection == null) hud.show("Select something first")
+                else id.removePrefix("feather_").toFloatOrNull()?.let { cv.featherSelection(it); hud.show("Feathered") }
+            }
+        }
+        refreshAll()
+    }
+
+    private fun isToolActive(id: String): Boolean {
+        if (!cv.isDocReady()) return false
+        val sel = cv.interaction == Interaction.SELECT
+        return when (id) {
+            "sel_free" -> sel && cv.selectShape == SelectShape.FREEHAND
+            "sel_rect" -> sel && cv.selectShape == SelectShape.RECTANGLE
+            "sel_ellipse" -> sel && cv.selectShape == SelectShape.ELLIPSE
+            "transform" -> cv.interaction == Interaction.TRANSFORM
+            "fill" -> cv.fillMode
+            "guides" -> cv.doc.guide.type != GuideType.OFF
+            "assisted" -> cv.doc.guide.assisted && cv.doc.guide.type != GuideType.OFF
+            "quickshape" -> cv.quickShapeEnabled
+            "symmetry" -> cv.symmetry != Symmetry.OFF
+            "adjust" -> adjustKind != null
+            "focus" -> focusMode
+            "vector" -> cv.doc.active.vector != null
+            else -> if (id.startsWith("adj_")) adjustKind?.let { "adj_${it.name}" == id } ?: false else false
+        }
+    }
+
+    /** opens [content] next to [anchor]: to its side when the anchor sits on a screen edge, below it otherwise */
+    private fun showBeside(anchor: View?, content: View, widthDp: Int, heightDp: Int?) {
+        val a = anchor ?: creativeBtn
+        popup?.dismiss()
+        val loc = IntArray(2); a.getLocationInWindow(loc)
+        val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
+        val ax = loc[0] - rootLoc[0]; val ay = loc[1] - rootLoc[1]
+        val w = min(widthDp.dp, root.width - 24.dp)
+        val maxH = root.height - 80.dp
+        val h = if (heightDp == null) ViewGroup.LayoutParams.WRAP_CONTENT else min(heightDp.dp, maxH)
+        val sideAnchor = ay > 60.dp // not in the top bar
+        val x: Int
+        val y: Int
+        if (sideAnchor) {
+            x = if (ax > root.width / 2) ax - w - 10.dp else ax + a.width + 10.dp
+            val hh = if (h > 0) h else min(560.dp, maxH)
+            y = (ay + a.height / 2 - hh / 2).coerceIn(64.dp, (root.height - hh - 12.dp).coerceAtLeast(64.dp))
+        } else {
+            x = ax.coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
+            y = ay + a.height + 6.dp
+        }
+        val pw = PopupWindow(content, w, h, true)
+        pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        pw.isOutsideTouchable = true
+        pw.elevation = 16f.dp
+        pw.setOnDismissListener { refreshAll() }
+        popup = pw
+        pw.showAtLocation(root, Gravity.TOP or Gravity.START, x + rootLoc[0], y + rootLoc[1])
     }
 
     // =========================================================
@@ -474,11 +719,14 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun openQuickMenu(x: Float, y: Float) {
+        if (!cv.isDocReady()) return
+        val vec = cv.interaction == Interaction.VECTOR
+        val painting = cv.interaction == Interaction.PAINT && !cv.fillMode
         val tools = listOf(
-            QuickMenuView.Item("Brush", Icon.BRUSH, active = cv.tool == Tool.BRUSH) { selectTool(Tool.BRUSH) },
-            QuickMenuView.Item("Smudge", Icon.SMUDGE, active = cv.tool == Tool.SMUDGE) { selectTool(Tool.SMUDGE) },
-            QuickMenuView.Item("Eraser", Icon.ERASER, active = cv.tool == Tool.ERASER) { selectTool(Tool.ERASER) },
-            QuickMenuView.Item("Picker", Icon.EYEDROPPER) { cv.armEyedropper() },
+            QuickMenuView.Item("Brush", Icon.BRUSH, active = painting && cv.tool == Tool.BRUSH) { selectTool(Tool.BRUSH) },
+            QuickMenuView.Item("Smudge", Icon.SMUDGE, active = painting && cv.tool == Tool.SMUDGE) { selectTool(Tool.SMUDGE) },
+            QuickMenuView.Item("Eraser", Icon.ERASER, active = painting && cv.tool == Tool.ERASER) { selectTool(Tool.ERASER) },
+            QuickMenuView.Item("Eyedropper", Icon.EYEDROPPER) { cv.armEyedropper() },
             QuickMenuView.Item("Undo", Icon.UNDO) { cv.undo() },
             QuickMenuView.Item("Redo", Icon.REDO) { cv.redo() },
             QuickMenuView.Item("Layers", Icon.LAYERS) { showLayers() }
@@ -487,32 +735,38 @@ class MainActivity : Activity(), CanvasView.Listener {
         val current = cv.tool to cv.currentBrush
         val recent = recentTools.filter { !(it.first == current.first && it.second === current.second) }.take(3)
         val brushes = recent.map { (tool, b) ->
-            QuickMenuView.Item((when (tool) { Tool.ERASER -> "⌫ "; Tool.SMUDGE -> "≈ "; else -> "" }) + b.preset.name, preview = BrushPanel.preview(b)) {
-                useBrush(tool, b)
-            }
+            QuickMenuView.Item(toolPrefix(tool) + b.preset.name, preview = BrushPanel.preview(b)) { useBrush(tool, b) }
         }
-        // your saved palette (or recent colors until you save some)
-        val colorList = palette().ifEmpty { recentColors.take(6) }.ifEmpty { ColorPanel.PALETTE.take(6) }.take(11)
-        val colors = colorList.map { c ->
-            QuickMenuView.Item("", color = c) { useColor(c) }
-        } + QuickMenuView.Item("Save", Icon.PLUS) {
-            savePaletteColor(cv.color)
-        }
-        val center = QuickMenuView.Item("Color", color = cv.color) {}
+        // your saved palette, then recent colors
+        val swatches = (palette() + recentColors).distinct().ifEmpty { ColorPanel.PALETTE.take(8).toList() }
+
         val startColor = cv.color
-        quickMenu.onColor = { c -> cv.color = c; colorBtn.color = c }
-        quickMenu.onSaveColor = { c -> savePaletteColor(c) }
-        quickMenu.onCenter = { px, py -> openColorWheel(px, py) }
-        quickMenu.onClosed = {
-            if (cv.color != startColor) {
-                ColorPanel.addRecent(recentColors, cv.color)
-                if (cv.interaction == Interaction.VECTOR) cv.vectorEditor.applyColor(cv.color)
-            }
+        val recolor = vec && cv.vectorEditor.selected.isNotEmpty()
+        if (recolor) cv.vectorEditor.beginStyle()
+        quickMenu.onColor = { c ->
+            cv.color = c
+            colorBtn.color = c
+            if (recolor) cv.vectorEditor.recolorLive(c)
+            else if (!vec && cv.tool == Tool.ERASER) selectTool(Tool.BRUSH)
         }
-        quickMenu.open(x, y, center, tools, brushes, colors)
+        quickMenu.onSaveColor = { c -> savePaletteColor(c) }
+        quickMenu.sizeLabel = { v ->
+            val px = Brushes.sizeFromSlider(v)
+            if (px < 10) String.format("%.1f", px) else px.roundToInt().toString()
+        }
+        quickMenu.opacityLabel = { v -> "${(v.coerceIn(0.01f, 1f) * 100).roundToInt()}%" }
+        quickMenu.onSize = { v -> cv.currentBrush.size = Brushes.sizeFromSlider(v); sizeSlider.value = v }
+        quickMenu.onOpacity = { v -> cv.currentBrush.opacity = v.coerceIn(0.01f, 1f); opacitySlider.value = v }
+        quickMenu.onClosed = {
+            if (recolor) cv.vectorEditor.endStyle()
+            if (cv.color != startColor) ColorPanel.addRecent(recentColors, cv.color)
+            refreshAll()
+        }
+        quickMenu.open(x, y, cv.color, tools, brushes, swatches,
+            Brushes.sliderFromSize(cv.currentBrush.size), cv.currentBrush.opacity)
     }
 
-    /** The big spinning swatch wheel. */
+    /** The big spinning swatch wheel (from the color panel). */
     private fun openColorWheel(x: Float, y: Float) {
         val start = cv.color
         val recolor = cv.interaction == Interaction.VECTOR && cv.vectorEditor.selected.isNotEmpty()
@@ -524,34 +778,12 @@ class MainActivity : Activity(), CanvasView.Listener {
             else if (cv.tool == Tool.ERASER) selectTool(Tool.BRUSH)
         }
         colorWheel.onSave = { c -> savePaletteColor(c) }
-        colorWheel.onHsl = { px, py, _ -> openHsl(px, py) }
+        colorWheel.onHsl = { px, py, _ -> openQuickMenu(px, py) }
         colorWheel.onClosed = {
             if (recolor) cv.vectorEditor.endStyle()
             if (cv.color != start) ColorPanel.addRecent(recentColors, cv.color)
         }
         colorWheel.open(x, y, cv.color)
-    }
-
-    private fun openHsl(x: Float, y: Float) {
-        val start = cv.color
-        quickMenu.onCenter = null
-        quickMenu.onColor = { c -> cv.color = c; colorBtn.color = c }
-        quickMenu.onSaveColor = { c -> savePaletteColor(c) }
-        quickMenu.onClosed = {
-            if (cv.color != start) {
-                ColorPanel.addRecent(recentColors, cv.color)
-                if (cv.interaction == Interaction.VECTOR) cv.vectorEditor.applyColor(cv.color)
-            }
-        }
-        quickMenu.openColor(x, y, cv.color, hslMode = true)
-    }
-
-    private fun useColor(c: Int) {
-        cv.color = c
-        colorBtn.color = c
-        ColorPanel.addRecent(recentColors, c)
-        if (cv.interaction == Interaction.VECTOR) cv.vectorEditor.applyColor(c)
-        else if (cv.tool == Tool.ERASER) selectTool(Tool.BRUSH)
     }
 
     /** colors the user saved from the quick menu */
@@ -585,6 +817,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             hideBottomBar()
         }
         cv.tool = t
+        cv.fillMode = false
         noteRecent()
         refreshAll()
     }
@@ -612,6 +845,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         colorBtn.color = cv.color
         sizeSlider.value = Brushes.sliderFromSize(cv.currentBrush.size)
         opacitySlider.value = cv.currentBrush.opacity
+        if (cv.fillMode) { brushBtn.active = false; smudgeBtn.active = false; eraserBtn.active = false }
+        if (::dock.isInitialized) dock.refresh()
+        if (::titleView.isInitialized && cv.isDocReady()) titleView.text = cv.doc.title
         onHistoryChanged()
     }
 
@@ -748,7 +984,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             onMoved = { x, y -> prefs.edit().putInt("pin_${kind}_x", x).putInt("pin_${kind}_y", y).apply() })
         val w = 320.dp
         val h = min(560.dp, root.height - 120.dp).coerceAtLeast(300.dp)
-        val defX = if (kind == "layers") (root.width - w - 12.dp).coerceAtLeast(0) else 64.dp
+        val defX = if ((kind == "layers") != leftHanded) (root.width - w - 72.dp).coerceAtLeast(0) else 72.dp
         val lp = FrameLayout.LayoutParams(w, h).apply {
             leftMargin = prefs.getInt("pin_${kind}_x", defX).coerceIn(0, (root.width - w).coerceAtLeast(0))
             topMargin = prefs.getInt("pin_${kind}_y", 68.dp).coerceIn(56.dp, (root.height - 120.dp).coerceAtLeast(56.dp))
@@ -920,13 +1156,14 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (recolor) popup?.setOnDismissListener { cv.vectorEditor.endStyle(); refreshAll() }
     }
 
-    private fun showGuide() {
+    private fun showGuide(anchor: View? = null) {
         val g = cv.doc.guide
         val panel = GuidePanel(this, g,
             onChange = {
                 cv.doc.revision++
                 cv.invalidate()
                 guideBtn.active = g.type != GuideType.OFF
+                if (::dock.isInitialized) dock.refresh()
             },
             onEditPoints = {
                 popup?.dismiss()
@@ -934,30 +1171,42 @@ class MainActivity : Activity(), CanvasView.Listener {
                 doneBtn.visibility = View.VISIBLE
                 hud.show("Drag the numbered points")
             })
-        // the guide button sits on the left, so the panel opens to its right
-        showPanel(creativeBtn, panel, 360, 620, alignLeft = true)
+        lastGuideAnchor = anchor
+        showBeside(anchor, panel, 360, 620)
     }
+
+    private var lastGuideAnchor: View? = null
 
     private fun finishGuideEdit() {
         cv.editingGuide = false
         doneBtn.visibility = View.GONE
-        showGuide()
+        showGuide(lastGuideAnchor)
     }
 
-    private fun showSymmetry() {
-        val pm = PopupMenu(this, creativeBtn)
-        Symmetry.values().forEachIndexed { i, s ->
-            pm.menu.add(0, i, i, "Symmetry: ${s.label}").apply {
-                isCheckable = true
-                isChecked = cv.symmetry == s
+    /** symmetry modes as little pictures */
+    private fun showSymmetry(anchor: View?) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(12.dp, 12.dp, 12.dp, 12.dp)
+            background = Ui.rounded(Ui.PANEL, 18f, 0x14FFFFFF, 1)
+        }
+        box.addView(Ui.text(this, "Symmetry", 15f, bold = true).apply { setPadding(4.dp, 0, 0, 8.dp) })
+        val grid = android.widget.GridLayout(this).apply { columnCount = 3 }
+        for (sym in Symmetry.values()) {
+            val on = cv.symmetry == sym
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                background = Ui.rounded(if (on) Ui.PANEL_ROW_ACTIVE else Ui.CARD, 12f, if (on) Ui.ACCENT else 0, if (on) 1 else 0)
+                setPadding(4.dp, 4.dp, 4.dp, 6.dp)
+                setOnClickListener { cv.symmetry = sym; popup?.dismiss(); refreshAll(); hud.show("Symmetry: ${sym.label}") }
             }
+            cell.addView(SymmetryPreview(this, sym, on), LinearLayout.LayoutParams(-1, 64.dp))
+            cell.addView(Ui.text(this, sym.label, 12f, if (on) Ui.ACCENT else Ui.TEXT))
+            grid.addView(cell, android.widget.GridLayout.LayoutParams().apply { width = 96.dp; setMargins(3.dp, 3.dp, 3.dp, 3.dp) })
         }
-        pm.setOnMenuItemClickListener {
-            cv.symmetry = Symmetry.values()[it.itemId]
-            refreshAll()
-            true
-        }
-        pm.show()
+        box.addView(grid)
+        showBeside(anchor, box, 340, null)
     }
 
     private fun showActions(anchor: View) {
@@ -1183,11 +1432,14 @@ class MainActivity : Activity(), CanvasView.Listener {
                     "• Touch & hold with a finger: Eyedropper\n" +
                     "• Hold the pen still at the end of a stroke: QuickShape (keep holding and move to resize / rotate)\n" +
                     "• Drag the color circle onto the canvas: ColorDrop fill\n" +
-                    "• Tap the brush or eraser again: open the brush library\n" +
+                    "• Tap the brush or eraser again (or long-press it): open the brush library\n" +
+                    "• Your toolbar (the strip on the side): tap a tool to use it, long-press or tap the last button to customize it. " +
+                    "In Creative / Editing, tap ☆ on any card to add it to the toolbar.\n" +
                     "• Tap the active layer: layer options\n\n" +
                     "S Pen button:\n" +
                     "• Click it while hovering: switch Brush ⇄ Eraser\n" +
-                    "• Hold it: quick menu around the pen (recent brushes, tools, colors). Move over an item and release the button, or tap the item.\n" +
+                    "• Hold it (or double-click it): quick menu around the pen — color wheel in the middle, your colors under it, " +
+                    "tools on top, recent brushes below, Size on the left and Opacity on the right. Move over an item and release the button, or just tap it.\n" +
                     "• Hold it while drawing: erase\n\n" +
                     "If Samsung's Air command opens instead, turn off \"Air command\" in the tablet's S Pen settings."
             )
@@ -1409,13 +1661,6 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     // ---------- Adjustments ----------
 
-    private fun showAdjustMenu() {
-        val pm = PopupMenu(this, editingBtn)
-        AdjustKind.values().forEachIndexed { i, k -> pm.menu.add(0, i, i, k.label) }
-        pm.setOnMenuItemClickListener { startAdjust(AdjustKind.values()[it.itemId]); true }
-        pm.show()
-    }
-
     private fun startAdjust(kind: AdjustKind) {
         val src = cv.beginAdjust() ?: return
         adjustKind = kind
@@ -1510,105 +1755,58 @@ class MainActivity : Activity(), CanvasView.Listener {
         refreshAll()
     }
 
-    // ---------- Creative / Editing tool menus ----------
+    // ---------- Creative / Editing panel ----------
 
-    private fun tile(icon: Icon, label: String, active: Boolean = false, onClick: () -> Unit): View {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(4.dp, 8.dp, 4.dp, 6.dp)
-            background = Ui.rounded(if (active) Ui.PANEL_ROW_ACTIVE else Ui.PANEL_ROW, 12f, if (active) Ui.ACCENT else 0, if (active) 1 else 0)
-            setOnClickListener { popup?.dismiss(); onClick() }
+    private val toolsHost = object : ToolsPanel.Host {
+        override fun run(id: String) = runTool(id, null)
+        override fun isActive(id: String) = isToolActive(id)
+        override fun inDock(id: String) = id in dockIds
+        override fun toggleDock(id: String) = this@MainActivity.toggleDock(id)
+        override val guide: GuideSettings get() = cv.doc.guide
+        override fun guideChanged() {
+            cv.doc.revision++
+            cv.invalidate()
+            dock.refresh()
         }
-        box.addView(IconView(this, icon).apply { this.active = active; isClickable = false }, LinearLayout.LayoutParams(36.dp, 32.dp))
-        box.addView(Ui.text(this, label, 11f, if (active) Ui.ACCENT else Ui.TEXT).apply {
-            gravity = Gravity.CENTER; maxLines = 2
-        })
-        return box
+        override fun openGuideSettings() = showGuide(null)
+        override var symmetry: Symmetry
+            get() = cv.symmetry
+            set(v) { cv.symmetry = v; dock.refresh() }
+        override val quickShape get() = cv.quickShapeEnabled
+        override val hasSelection get() = cv.selection != null
+        override val isVectorLayer get() = cv.doc.active.vector != null
+        override fun thumbnail(): Bitmap? = runCatching {
+            val t = Gallery.makeThumb(cv.doc)
+            val s = 220f / maxOf(t.width, t.height)
+            val small = Bitmap.createScaledBitmap(t, (t.width * s).toInt().coerceAtLeast(1), (t.height * s).toInt().coerceAtLeast(1), true)
+            if (small !== t) t.recycle()
+            small
+        }.getOrNull()
+        override fun close() { popup?.dismiss() }
     }
 
-    private fun section(parent: LinearLayout, title: String, tiles: List<View>) {
-        parent.addView(Ui.text(this, title.uppercase(), 11f, Ui.TEXT_DIM, true).apply { setPadding(4.dp, 14.dp, 0, 6.dp) })
-        val grid = android.widget.GridLayout(this).apply { columnCount = 4 }
-        for (t in tiles) grid.addView(t, android.widget.GridLayout.LayoutParams().apply {
-            width = 86.dp
-            setMargins(3.dp, 3.dp, 3.dp, 3.dp)
-        })
-        parent.addView(grid)
-    }
-
-    /** Tools organised in two menus, like professional painting apps: Creative (make things) and Editing (change things). */
-    private fun showToolsMenu(creative: Boolean) {
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(14.dp, 12.dp, 14.dp, 16.dp)
+    /** Creative (make things) and Editing (change things), like professional painting apps. */
+    private fun showToolsMenu(creative: Boolean, category: String? = null) {
+        if (!cv.isDocReady()) return
+        category?.let { ToolsPanel.select(creative, it) }
+        val panel = ToolsPanel(this, creative, toolsHost)
+        popup?.dismiss()
+        val w = min(640.dp, root.width - 24.dp)
+        val h = min(600.dp, root.height - 84.dp)
+        val pw = PopupWindow(panel, w, h, true)
+        pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        pw.isOutsideTouchable = true
+        pw.elevation = 18f.dp
+        pw.animationStyle = android.R.style.Animation_Dialog
+        setTabActive(if (creative) creativeBtn else editingBtn, true)
+        pw.setOnDismissListener {
+            setTabActive(creativeBtn, false); setTabActive(editingBtn, false)
+            refreshAll()
         }
-        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        tabs.addView(Ui.button(this, "✦ Creative") { popup?.dismiss(); showToolsMenu(true) }.apply {
-            background = Ui.rounded(if (creative) Ui.ACCENT else Ui.PANEL_ROW, 10f)
-        }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = 6.dp })
-        tabs.addView(Ui.button(this, "✎ Editing") { popup?.dismiss(); showToolsMenu(false) }.apply {
-            background = Ui.rounded(if (!creative) Ui.ACCENT else Ui.PANEL_ROW, 10f)
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        box.addView(tabs)
-        val isVector = cv.doc.active.vector != null
-
-        if (creative) {
-            section(box, "Create", listOf(
-                tile(Icon.TEXT, "Text") { textDialog() },
-                tile(Icon.PLUS, "Photo") {
-                    startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
-                    }, REQ_IMAGE)
-                },
-                tile(Icon.VECTOR, "Vector layer") { addVectorLayer() },
-                tile(Icon.WAND, "ColorDrop") { hud.show("Drag the color circle (top right) onto an area to fill it") }
-            ))
-            val g = cv.doc.guide
-            section(box, "Guides & Shapes", listOf(
-                tile(Icon.GRID, "Grid & Perspective", g.type != GuideType.OFF) { showGuide() },
-                tile(Icon.V_LINE, if (g.assisted) "Assisted: ON" else "Assisted", g.assisted) {
-                    if (g.type == GuideType.OFF) hud.show("Choose a grid first (Grid & Perspective)")
-                    else { g.assisted = !g.assisted; cv.invalidate(); hud.show(if (g.assisted) "Strokes snap to the grid" else "Free drawing") }
-                },
-                tile(Icon.V_ELLIPSE, if (cv.quickShapeEnabled) "QuickShape: ON" else "QuickShape", cv.quickShapeEnabled) {
-                    cv.quickShapeEnabled = !cv.quickShapeEnabled
-                    hud.show(if (cv.quickShapeEnabled) "Hold the pen at the end of a stroke for a perfect shape" else "QuickShape off")
-                },
-                tile(Icon.V_PEN, "Pen & Shapes") {
-                    if (isVector) { cv.vectorEditor.tool = VTool.PEN; refreshAll() } else addVectorLayer()
-                }
-            ))
-            section(box, "Symmetry", Symmetry.values().map { sym ->
-                tile(Icon.SYMMETRY, sym.label, cv.symmetry == sym) { cv.symmetry = sym; refreshAll() }
-            })
-            section(box, "View", listOf(
-                tile(Icon.V_RECT, "Fit to screen") { cv.fitToScreen() },
-                tile(Icon.SYMMETRY, "Flip view") { cv.flipHorizontal() }
-            ))
-        } else {
-            section(box, "Selection", listOf(
-                tile(Icon.SELECT, "Freehand", cv.interaction == Interaction.SELECT && cv.selectShape == SelectShape.FREEHAND) { enterSelect(SelectShape.FREEHAND) },
-                tile(Icon.V_RECT, "Rectangle", cv.interaction == Interaction.SELECT && cv.selectShape == SelectShape.RECTANGLE) { enterSelect(SelectShape.RECTANGLE) },
-                tile(Icon.V_ELLIPSE, "Ellipse", cv.interaction == Interaction.SELECT && cv.selectShape == SelectShape.ELLIPSE) { enterSelect(SelectShape.ELLIPSE) },
-                tile(Icon.PLUS, "Select all") { if (!isVector) { cv.selectAll(); enterSelect() } else cv.vectorEditor.selectAll() },
-                tile(Icon.SELECT, "Invert") { cv.invertSelection() },
-                tile(Icon.EYE_OFF, "Deselect") { cv.selection = null; if (isVector) cv.vectorEditor.deselect() }
-            ))
-            section(box, "Transform", listOf(
-                tile(Icon.TRANSFORM, "Move / Scale / Rotate") {
-                    if (isVector) { cv.vectorEditor.tool = VTool.SELECT; refreshAll() } else enterTransform()
-                }
-            ))
-            section(box, "Adjustments & Filters", AdjustKind.values().map { k ->
-                tile(Icon.WAND, k.label.replace(" / ", "\n")) { startAdjust(k) }
-            })
-        }
-        val scroll = android.widget.ScrollView(this).apply {
-            addView(box)
-            background = Ui.rounded(Ui.PANEL, 18f)
-        }
-        showPanel(if (creative) creativeBtn else editingBtn, scroll, 392, 640, alignLeft = true)
+        popup = pw
+        val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
+        val x = if (leftHanded) root.width - w - 12.dp else 12.dp
+        pw.showAtLocation(root, Gravity.TOP or Gravity.START, x + rootLoc[0], 64.dp + rootLoc[1])
     }
 
     // ---------- Vector layers ----------
@@ -2100,7 +2298,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onPenLongPress(x: Float, y: Float) {
         if (gallery != null || quickMenu.isOpen || colorWheel.isOpen) return
         popup?.dismiss()
-        openColorWheel(x, y)
+        openQuickMenu(x, y)
     }
 
     override fun onSelectionChanged() {

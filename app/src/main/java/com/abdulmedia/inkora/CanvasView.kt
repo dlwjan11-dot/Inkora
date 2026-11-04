@@ -65,6 +65,9 @@ class CanvasView(context: Context) : View(context) {
     var fingerDrawingAuto = true
     var fillThreshold = 0.22f
     var eyedropperArmed = false
+    /** Fill tool: every tap fills the area under it (ColorDrop) */
+    var fillMode = false
+        set(v) { field = v; invalidate() }
 
     var smudgeBrush = Brush(Brushes.presets[0]).apply { size = 60f; opacity = 0.75f }
 
@@ -745,6 +748,11 @@ class CanvasView(context: Context) : View(context) {
             eyedropperArmed = false
             mode = Mode.PICK
             pickAt(e.x, e.y)
+            return
+        }
+        if (fillMode && (stylus || fingerDrawing)) {
+            mode = Mode.IGNORE
+            colorDrop(e.x, e.y, color)
             return
         }
         if (stylus || fingerDrawing) {
