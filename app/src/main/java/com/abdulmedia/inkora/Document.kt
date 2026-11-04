@@ -60,7 +60,7 @@ class Document(val width: Int, val height: Int) {
     /** id of this artwork in the gallery (also names its time-lapse) */
     var galleryId: String? = null
     var title = "Untitled Artwork"
-    /** "drawn" = started in Inkora, "imported" = came from a project file or photo */
+    /** "drawn" = started in Zerin, "imported" = came from a project file or photo */
     var origin = "drawn"
     /** Incremented on every change, used to know when autosave is needed. */
     var revision = 0

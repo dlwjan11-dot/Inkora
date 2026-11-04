@@ -14,7 +14,7 @@ import android.widget.ScrollView
 /** One tool that can live in the customizable toolbar (and in the Creative / Editing panel). */
 class ToolDef(val id: String, val label: String, val icon: Icon, val group: String, val hint: String = "")
 
-/** Every tool Inkora can put in the toolbar. MainActivity runs them by [ToolDef.id]. */
+/** Every tool Zerin can put in the toolbar. MainActivity runs them by [ToolDef.id]. */
 object ToolCatalog {
     private fun adjIcon(k: AdjustKind) = when (k) {
         AdjustKind.HSB -> Icon.HUE
@@ -58,7 +58,7 @@ object ToolCatalog {
         ToolDef("navigator", "Navigator", Icon.NAVIGATOR, "View", "Floating canvas thumbnail"),
         ToolDef("lighting", "3D Lighting orb", Icon.ORB, "View", "3D reference sphere for light and shade"),
         ToolDef("focus", "Focus mode", Icon.FOCUS, "View", "Hide the interface"),
-        ToolDef("export", "Export PNG", Icon.EXPORT, "File", "Save to Pictures/Inkora"),
+        ToolDef("export", "Export PNG", Icon.EXPORT, "File", "Save to Pictures/Zerin"),
         ToolDef("share", "Share", Icon.SHARE, "File", "Send the artwork"),
         ToolDef("timelapse", "Time-lapse video", Icon.CLOCK, "File", "Export the recording")
     )

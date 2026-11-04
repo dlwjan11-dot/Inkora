@@ -11,7 +11,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
- * Modern, professional multi-category Settings dialog for Inkora.
+ * Modern, professional multi-category Settings dialog for Zerin.
  */
 @SuppressLint("ViewConstructor")
 class SettingsDialog(
@@ -334,7 +334,7 @@ class SettingsDialog(
     private fun buildAboutSettings() {
         val box = cardBox()
         val ver = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
-        box.addView(Ui.text(context, "Inkora — version $ver", 15f, bold = true))
+        box.addView(Ui.text(context, "Zerin — version $ver", 15f, bold = true))
         box.addView(Ui.text(context, "Designed for Samsung Galaxy Tab S11 Ultra & S Pen", 12f, Ui.TEXT_DIM).apply { setPadding(0, 2.dp, 0, 10.dp) })
 
         box.addView(Ui.text(context, "S Pen shortcuts:", 13.5f, bold = true))

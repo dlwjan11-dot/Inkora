@@ -69,7 +69,7 @@ object TimeLapse {
     }
 
     /**
-     * Encodes all frames into an H.264 MP4 in Movies/Inkora. Runs on a background thread.
+     * Encodes all frames into an H.264 MP4 in Movies/Zerin. Runs on a background thread.
      * [progress] gets 0..1. Returns the video's Uri, or null.
      */
     fun export(ctx: Context, id: String, title: String, progress: (Float) -> Unit): Uri? {
@@ -82,9 +82,9 @@ object TimeLapse {
 
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, "${title.replace(Regex("[^A-Za-z0-9 _-]"), "").ifBlank { "Inkora" }}_timelapse_$stamp.mp4")
+            put(MediaStore.Video.Media.DISPLAY_NAME, "${title.replace(Regex("[^A-Za-z0-9 _-]"), "").ifBlank { "Zerin" }}_timelapse_$stamp.mp4")
             put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Inkora")
+            put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Zerin")
             put(MediaStore.Video.Media.IS_PENDING, 1)
         }
         val resolver = ctx.contentResolver

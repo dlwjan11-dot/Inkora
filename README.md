@@ -1,9 +1,13 @@
 <p align="center">
-  <img src="art/banner.png" alt="Inkora — a whole painting studio, in your pen" width="100%">
+  <img src="art/zerin-logo.png" alt="Zerin" width="320">
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.9.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.9.0"></a>
+  <img src="art/banner.png" alt="Zerin — a whole painting studio, in your pen" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk"><img src="https://img.shields.io/badge/Download_APK-0.9.1-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.9.1"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
@@ -24,13 +28,13 @@
 
 <a id="english"></a>
 
-## Inkora
+## Zerin
 
-**Inkora is a free drawing and painting app for Android tablets.** Nothing like Procreate existed on Android, so this is an attempt at one: pressure-sensitive brushes, layers, perspective grids, vector shapes for logos and comics, and a color wheel that opens right under your pen.
+**Zerin is a free drawing and painting app for Android tablets.** Nothing like Procreate existed on Android, so this is an attempt at one: pressure-sensitive brushes, layers, perspective grids, vector shapes for logos and comics, and a color wheel that opens right under your pen.
 
 ### New in 0.8: a pro layout
 
-<p align="center"><img src="art/interface.png" alt="The Inkora interface" width="88%"></p>
+<p align="center"><img src="art/interface.png" alt="The Zerin interface" width="88%"></p>
 
 | | |
 |---|---|
@@ -76,13 +80,13 @@ Move over an item and release the button, or just tap it. Holding the pen tip st
 
 ### Install
 
-1. Download **[Inkora-0.9.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk)** on your Android device.
+1. Download **[Zerin-0.9.1.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk)** on your Android device.
 2. Open it. If Android asks, allow installs from this source.
-3. If Play Protect warns you, tap **Install anyway** — Inkora isn't on Google Play yet.
-4. Open Inkora and draw.
+3. If Play Protect warns you, tap **Install anyway** — Zerin isn't on Google Play yet.
+4. Open Zerin and draw.
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too, with your finger.
-SHA-256: `7480bd8a1838a162b06831f1d60c9951e97c95b0b68ac9f66447608feecb1f27`
+SHA-256: `f7cd5fef76b06c8886455173e47513745565c184aa47ba907c2dc85f85aee254`
 
 ### Build it yourself
 
@@ -105,11 +109,11 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 
 <div dir="rtl">
 
-## Inkora بالعربية
+## Zerin بالعربية
 
-<p align="center"><img src="art/site-ar.png" alt="موقع Inkora بالعربية" width="100%"></p>
+<p align="center"><img src="art/site-ar.png" alt="موقع Zerin بالعربية" width="100%"></p>
 
-**Inkora تطبيق رسم وتلوين مجاني لأجهزة أندرويد اللوحية.** لم يكن على أندرويد تطبيق مثل Procreate، فهذه محاولة لصنعه: فُرَش تستجيب لضغط القلم، وطبقات، وشبكات منظور، وأشكال فيكتور للشعارات والقصص المصوّرة، ودولاب ألوان يفتح تحت قلمك مباشرة.
+**Zerin تطبيق رسم وتلوين مجاني لأجهزة أندرويد اللوحية.** لم يكن على أندرويد تطبيق مثل Procreate، فهذه محاولة لصنعه: فُرَش تستجيب لضغط القلم، وطبقات، وشبكات منظور، وأشكال فيكتور للشعارات والقصص المصوّرة، ودولاب ألوان يفتح تحت قلمك مباشرة.
 
 ### الجديد في 0.8: واجهة احترافية
 - **الشريط العلوي:** المعرض والقائمة وCreative وEditing في جهة، والفرشاة والتمويه والممحاة والطبقات واللون في الجهة الأخرى.
@@ -125,10 +129,10 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Inkora-0.9.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk)** على جهازك.
+1. حمّل **[Zerin-0.9.1.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
-4. افتح Inkora وابدأ الرسم.
+4. افتح Zerin وابدأ الرسم.
 
 </div>
 
@@ -138,11 +142,11 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 
 <div dir="rtl">
 
-## Inkora بە کوردی
+## Zerin بە کوردی
 
-<p align="center"><img src="art/site-ckb.png" alt="ماڵپەڕی Inkora بە کوردی" width="100%"></p>
+<p align="center"><img src="art/site-ckb.png" alt="ماڵپەڕی Zerin بە کوردی" width="100%"></p>
 
-**Inkora ئەپێکی بێبەرامبەری وێنەکێشان و ڕەنگکردنە بۆ تابلێتەکانی ئەندرۆید.** فڵچەی هەستیار بە پەستانی قەڵەم، چینەکان، تۆڕی پێرسپێکتیڤ، شێوەی ڤێکتەر بۆ لۆگۆ و چیرۆکی وێنەدار، و چەرخێکی ڕەنگ کە ڕاستەوخۆ لە ژێر قەڵەمەکەتدا دەکرێتەوە.
+**Zerin ئەپێکی بێبەرامبەری وێنەکێشان و ڕەنگکردنە بۆ تابلێتەکانی ئەندرۆید.** فڵچەی هەستیار بە پەستانی قەڵەم، چینەکان، تۆڕی پێرسپێکتیڤ، شێوەی ڤێکتەر بۆ لۆگۆ و چیرۆکی وێنەدار، و چەرخێکی ڕەنگ کە ڕاستەوخۆ لە ژێر قەڵەمەکەتدا دەکرێتەوە.
 
 ### نوێ لە 0.8
 - **شریتی سەرەوە:** گەلەری، مێنیو، Creative و Editing لە لایەک؛ فڵچە، سڕەرەوە، چینەکان و ڕەنگ لە لایەکەی تر.
@@ -151,10 +155,10 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Inkora-0.9.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Zerin-0.9.1.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
-4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.
+4. Zerin بکەرەوە و دەست بە وێنەکێشان بکە.
 
 </div>
 

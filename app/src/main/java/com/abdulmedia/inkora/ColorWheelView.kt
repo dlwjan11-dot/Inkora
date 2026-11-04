@@ -19,7 +19,7 @@ import kotlin.math.min
 import kotlin.math.sin
 
 /**
- * Big spinning swatch wheel (original Inkora palette):
+ * Big spinning swatch wheel (original Zerin palette):
  *  hub = current color + Save / HSL / Done,
  *  two rings of grays (neutral, cool + warm),
  *  24 color families as fans of chips: dark inside → light outside, vivid + soft columns.
