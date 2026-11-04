@@ -38,9 +38,52 @@ class AddLayerCmd(private val layer: Layer, private val index: Int, private val 
         doc.clampActive()
     }
     override fun redo(doc: Document) {
-        doc.layers.add(index.coerceIn(0, doc.layers.size), layer)
+        val at = index.coerceIn(0, doc.layers.size)
+        // a new layer added above a layer of a group joins that group
+        if (firstAdd) {
+            if (layer.groupId == null && at > 0) layer.groupId = doc.layers[at - 1].groupId
+            firstAdd = false
+        }
+        doc.layers.add(at, layer)
+        doc.normalizeGroups()
         doc.activeIndex = doc.layers.indexOf(layer)
     }
+    private var firstAdd = true
+}
+
+/** Everything about the layer stack except pixels: order, groups and the active layer. */
+class LayerState(doc: Document) {
+    val layers: List<Layer> = ArrayList(doc.layers)
+    val groupIds: List<Int?> = doc.layers.map { it.groupId }
+    val groups: List<LayerGroup> = doc.groups.values.map { it.copy() }
+    val active = doc.activeIndex
+
+    fun restore(doc: Document) {
+        doc.layers.clear()
+        doc.layers.addAll(layers)
+        layers.forEachIndexed { i, l -> l.groupId = groupIds[i] }
+        doc.groups.clear()
+        for (g in groups) doc.groups[g.id] = g.copy()
+        doc.activeIndex = active
+        doc.clampActive()
+    }
+}
+
+/** A change of the layer stack (grouping, several layers deleted or merged at once). */
+class LayerStructureCmd(private val before: LayerState, private val after: LayerState, val label: String) : Command {
+    override val bytes: Long = run {
+        val a = before.layers.toHashSet(); val b = after.layers.toHashSet()
+        (before.layers.filter { it !in b } + after.layers.filter { it !in a }).sumOf { it.bitmap.byteCount.toLong() } + 256
+    }
+    override fun undo(doc: Document) = before.restore(doc)
+    override fun redo(doc: Document) = after.restore(doc)
+}
+
+/** Several commands as one step (a transform of several layers). */
+class MultiCmd(private val cmds: List<Command>, val label: String) : Command {
+    override val bytes: Long = cmds.sumOf { it.bytes }
+    override fun undo(doc: Document) { for (c in cmds.asReversed()) c.undo(doc) }
+    override fun redo(doc: Document) { for (c in cmds) c.redo(doc) }
 }
 
 class DeleteLayerCmd(private val layer: Layer, private val index: Int) : Command {
@@ -105,6 +148,8 @@ class History {
         is MergeDownCmd -> "merge"
         is VectorEdit -> "shape edit"
         is RasterizeCmd -> "rasterize"
+        is LayerStructureCmd -> c.label
+        is MultiCmd -> c.label
         else -> "drawing"
     }
 

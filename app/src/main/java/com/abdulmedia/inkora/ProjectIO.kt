@@ -33,8 +33,25 @@ object ProjectIO {
         val backgroundVisible: Boolean,
         val active: Int,
         val layers: List<LayerSnap>,
-        val guide: JSONObject
-    )
+        val guide: JSONObject,
+        val groups: List<LayerGroup> = emptyList()
+    ) {
+        /** a document with these layers and groups (the snapshot's bitmaps are used as they are) */
+        fun toDocument(): Document {
+            val d = Document(width, height)
+            d.backgroundColor = background
+            d.backgroundVisible = backgroundVisible
+            for (g in groups) d.groups[g.id] = g.copy()
+            for (l in layers) d.layers.add(Layer(l.bitmap, l.name).apply {
+                visible = l.visible; opacity = l.opacity; alphaLock = l.alphaLock; isClippingMask = l.clipping
+                blend = runCatching { LayerBlend.valueOf(l.blend) }.getOrDefault(LayerBlend.NORMAL)
+                groupId = l.group
+            })
+            d.activeIndex = active
+            d.clampActive()
+            return d
+        }
+    }
 
     fun guideToJson(g: GuideSettings) = JSONObject().apply {
         put("type", g.type.name)
@@ -65,17 +82,23 @@ object ProjectIO {
         val name: String, val visible: Boolean, val opacity: Float,
         val blend: String, val alphaLock: Boolean, val bitmap: Bitmap,
         val vector: String? = null,
-        val clipping: Boolean = false
+        val clipping: Boolean = false,
+        val group: Int? = null
     )
 
-    fun snapshot(doc: Document) = Snapshot(
-        doc.width, doc.height, doc.backgroundColor, doc.backgroundVisible, doc.activeIndex,
-        doc.layers.map {
-            LayerSnap(it.name, it.visible, it.opacity, it.blend.name, it.alphaLock, it.bitmap.copy(Bitmap.Config.ARGB_8888, false),
-                it.vector?.let { v -> VGeom.toJson(v).toString() }, it.isClippingMask)
-        },
-        guideToJson(doc.guide)
-    )
+    fun snapshot(doc: Document): Snapshot {
+        doc.normalizeGroups()
+        val used = doc.layers.mapNotNull { it.groupId }.toSet()
+        return Snapshot(
+            doc.width, doc.height, doc.backgroundColor, doc.backgroundVisible, doc.activeIndex,
+            doc.layers.map {
+                LayerSnap(it.name, it.visible, it.opacity, it.blend.name, it.alphaLock, it.bitmap.copy(Bitmap.Config.ARGB_8888, false),
+                    it.vector?.let { v -> VGeom.toJson(v).toString() }, it.isClippingMask, it.groupId)
+            },
+            guideToJson(doc.guide),
+            doc.groups.values.filter { it.id in used }.map { it.copy() }
+        )
+    }
 
     fun write(s: Snapshot, out: OutputStream) {
         ZipOutputStream(out.buffered()).use { zip ->
@@ -98,6 +121,7 @@ object ProjectIO {
                     put("blend", l.blend)
                     put("alphaLock", l.alphaLock)
                     put("clipping", l.clipping)
+                    l.group?.let { put("group", it) }
                     put("file", file)
                     if (l.vector != null) put("vector", JSONArray(l.vector))
                 })
@@ -106,6 +130,12 @@ object ProjectIO {
                 zip.closeEntry()
             }
             json.put("layers", arr)
+            if (s.groups.isNotEmpty()) json.put("groups", JSONArray().apply {
+                for (g in s.groups) put(JSONObject().apply {
+                    put("id", g.id); put("name", g.name); put("visible", g.visible)
+                    put("opacity", g.opacity.toDouble()); put("blend", g.blend.name); put("collapsed", g.collapsed)
+                })
+            })
             zip.putNextEntry(ZipEntry("document.json"))
             zip.write(json.toString(2).toByteArray())
             zip.closeEntry()
@@ -131,6 +161,21 @@ object ProjectIO {
         doc.backgroundColor = json.optInt("background", 0xFFFFFFFF.toInt())
         doc.backgroundVisible = json.optBoolean("backgroundVisible", true)
         guideFromJson(json.optJSONObject("guide"), doc.guide)
+        // groups get new ids here, so they never clash with groups of other open artworks
+        val groupIds = HashMap<Int, Int>()
+        json.optJSONArray("groups")?.let { ga ->
+            for (k in 0 until ga.length()) {
+                val o = ga.optJSONObject(k) ?: continue
+                val g = LayerGroup(o.optString("name", "Group"))
+                g.visible = o.optBoolean("visible", true)
+                g.opacity = o.optDouble("opacity", 1.0).toFloat().coerceIn(0f, 1f)
+                g.blend = runCatching { LayerBlend.valueOf(o.optString("blend", "NORMAL")) }.getOrDefault(LayerBlend.NORMAL)
+                g.collapsed = o.optBoolean("collapsed", false)
+                groupIds[o.optInt("id")] = g.id
+                doc.groups[g.id] = g
+            }
+        }
+        doc.groupNameCounter = doc.groups.size + 1
         val arr = json.getJSONArray("layers")
         val opts = BitmapFactory.Options().apply {
             inMutable = true
@@ -148,6 +193,7 @@ object ProjectIO {
             layer.blend = runCatching { LayerBlend.valueOf(o.optString("blend", "NORMAL")) }.getOrDefault(LayerBlend.NORMAL)
             layer.alphaLock = o.optBoolean("alphaLock", false)
             layer.isClippingMask = o.optBoolean("clipping", false)
+            if (o.has("group")) layer.groupId = groupIds[o.optInt("group")]
             o.optJSONArray("vector")?.let { va ->
                 val data = VGeom.fromJson(va)
                 layer.vector = data
@@ -157,6 +203,7 @@ object ProjectIO {
         }
         if (doc.layers.isEmpty()) doc.layers.add(doc.createLayer())
         doc.layerNameCounter = doc.layers.size + 1
+        doc.normalizeGroups()
         doc.activeIndex = json.optInt("active", 0)
         doc.clampActive()
         return doc

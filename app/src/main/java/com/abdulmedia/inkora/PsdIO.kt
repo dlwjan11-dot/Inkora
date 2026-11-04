@@ -96,15 +96,26 @@ object PsdIO {
         val w = doc.width
         val h = doc.height
         // the layers, bottom first; a visible background becomes a layer of its own
-        class L(val bmp: Bitmap, val name: String, val opacity: Float, val blend: LayerBlend, val visible: Boolean,
-                val clip: Boolean, val lock: Boolean, val owned: Boolean)
+        // section: 0 = a layer, 1 = an open group, 2 = a closed group, 3 = the end of a group
+        class L(val bmp: Bitmap?, val name: String, val opacity: Float, val blend: LayerBlend, val visible: Boolean,
+                val clip: Boolean, val lock: Boolean, val owned: Boolean, val section: Int = 0, val pass: Boolean = false)
         val layers = ArrayList<L>()
         if (doc.backgroundVisible) {
             val bg = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             bg.eraseColor(doc.backgroundColor or 0xFF000000.toInt())
             layers.add(L(bg, "Background", 1f, LayerBlend.NORMAL, true, false, false, true))
         }
-        for (l in doc.layers) layers.add(L(l.bitmap, l.name, l.opacity, l.blend, l.visible, l.isClippingMask, l.alphaLock, false))
+        // groups as Photoshop keeps them, bottom first: the end marker, the layers, then the group itself
+        doc.normalizeGroups()
+        doc.layers.forEachIndexed { i, l ->
+            val g = doc.groupOf(l)
+            if (g != null && (i == 0 || doc.layers[i - 1].groupId != g.id))
+                layers.add(L(null, "</Layer group>", 1f, LayerBlend.NORMAL, true, false, false, false, 3))
+            layers.add(L(l.bitmap, l.name, l.opacity, l.blend, l.visible, l.isClippingMask, l.alphaLock, false))
+            if (g != null && (i == doc.layers.size - 1 || doc.layers[i + 1].groupId != g.id))
+                layers.add(L(null, g.name, g.opacity, g.blend, g.visible, false, false, false,
+                    if (g.collapsed) 2 else 1, pass = !g.isolated))
+        }
 
         val tmp = File.createTempFile("psd", ".bin", tmpDir)
         try {
@@ -113,7 +124,7 @@ object PsdIO {
             val recs = ArrayList<Rec>()
             DataOutputStream(BufferedOutputStream(tmp.outputStream(), 1 shl 16)).use { d ->
                 for (l in layers) {
-                    val r = Selections.contentBounds(l.bmp)?.takeIf { !it.isEmpty && it.intersect(0, 0, w, h) }
+                    val r = l.bmp?.let { Selections.contentBounds(it) }?.takeIf { !it.isEmpty && it.intersect(0, 0, w, h) }
                     if (r == null) {
                         // an empty layer: no pixels, four empty channels
                         for (c in 0 until 4) d.writeShort(0)
@@ -121,7 +132,7 @@ object PsdIO {
                         continue
                     }
                     val cw = r.width(); val ch = r.height()
-                    val ps = planes(l.bmp, r.left, r.top, cw, ch)
+                    val ps = planes(l.bmp!!, r.left, r.top, cw, ch)
                     val lens = IntArray(4)
                     for (c in 0 until 4) {
                         val (counts, data) = rleChannel(ps[c], cw, ch)
@@ -144,7 +155,8 @@ object PsdIO {
                     val ids = intArrayOf(-1, 0, 1, 2)
                     for (c in 0 until 4) { d.writeShort(ids[c]); d.writeInt(rc.lens[c]) }
                     d.writeBytes("8BIM")
-                    d.writeBytes(BLEND_KEYS[l.blend] ?: "norm")
+                    val key = if (l.pass) "pass" else BLEND_KEYS[l.blend] ?: "norm"
+                    d.writeBytes(key)
                     d.writeByte((l.opacity * 255).toInt().coerceIn(0, 255))
                     d.writeByte(if (l.clip) 1 else 0)
                     var flags = 0
@@ -157,13 +169,17 @@ object PsdIO {
                     val uni = l.name.toByteArray(Charsets.UTF_16BE)
                     val luniLen = 4 + uni.size + (if ((4 + uni.size) % 2 == 1) 1 else 0)
                     val luniPadded = ((luniLen + 3) / 4) * 4
-                    d.writeInt(4 + 4 + name.size + 12 + luniPadded)
+                    d.writeInt(4 + 4 + name.size + 12 + luniPadded + (if (l.section != 0) 24 else 0))
                     d.writeInt(0)
                     d.writeInt(0)
                     d.write(name)
                     d.writeBytes("8BIM"); d.writeBytes("luni"); d.writeInt(luniPadded)
                     d.writeInt(l.name.length); d.write(uni)
                     repeat(luniPadded - 4 - uni.size) { d.writeByte(0) }
+                    if (l.section != 0) {
+                        d.writeBytes("8BIM"); d.writeBytes("lsct"); d.writeInt(12)
+                        d.writeInt(l.section); d.writeBytes("8BIM"); d.writeBytes(key)
+                    }
                 }
             }
             val dataLen = tmp.length()
@@ -198,7 +214,7 @@ object PsdIO {
             d.flush()
         } finally {
             tmp.delete()
-            layers.filter { it.owned }.forEach { it.bmp.recycle() }
+            layers.filter { it.owned }.forEach { it.bmp?.recycle() }
         }
     }
 
@@ -321,13 +337,31 @@ object PsdIO {
                     recs.add(Rec(t, l, b, r, chans, blend, opacity, clip, flags, name, divider))
                 }
                 val limit = maxLayers(w, h)
-                var skippedGroups = false
+                var nested = false
                 var tooMany = false
+                // open groups, outermost first; Inkora keeps one level, so inner groups join the outer one
+                val open = ArrayList<LayerGroup>()
                 for (rec in recs) {
                     val lw = rec.r - rec.l; val lh = rec.b - rec.t
                     val planes = HashMap<Int, ByteArray?>()
                     for ((id, len) in rec.chans) planes[id] = if (lw > 0 && lh > 0) readChannel(inp, lw, lh, len) else { inp.skip(len); null }
-                    if (rec.divider != 0) { skippedGroups = true; continue }
+                    if (rec.divider == 3) {
+                        open.add(LayerGroup(""))
+                        if (open.size > 1) nested = true
+                        continue
+                    }
+                    if (rec.divider == 1 || rec.divider == 2) {
+                        val g = open.removeLastOrNull() ?: continue
+                        if (open.isEmpty()) {
+                            g.name = rec.name.ifBlank { "Group ${doc.groups.size + 1}" }
+                            g.visible = rec.flags and 2 == 0
+                            g.opacity = rec.opacity / 255f
+                            g.blend = BLEND_KEYS.entries.firstOrNull { it.value == rec.blend }?.key ?: LayerBlend.NORMAL
+                            g.collapsed = rec.divider == 2
+                            if (doc.layers.any { it.groupId == g.id }) doc.groups[g.id] = g
+                        }
+                        continue
+                    }
                     if (doc.layers.size >= limit) { tooMany = true; continue }
                     val layer = Layer(doc.newLayerBitmap(), rec.name.ifBlank { "Layer ${doc.layers.size + 1}" })
                     val r = planes[0]; val g = planes[1]; val b = planes[2]; val a = planes[-1]
@@ -350,9 +384,12 @@ object PsdIO {
                     layer.visible = rec.flags and 2 == 0
                     layer.alphaLock = rec.flags and 1 != 0
                     layer.isClippingMask = rec.clip == 1
+                    layer.groupId = open.firstOrNull()?.id
                     doc.layers.add(layer)
                 }
-                if (skippedGroups) note = "Groups were opened as plain layers"
+                doc.normalizeGroups()
+                doc.groupNameCounter = doc.groups.size + 1
+                if (nested) note = "Groups inside groups were opened as one group"
                 if (tooMany) note = "Not every layer fit in memory: the top ones were left out"
             }
             inp.skip(liLen - (inp.pos - liStart))

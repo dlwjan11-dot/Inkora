@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.11.1.apk"><img src="https://img.shields.io/badge/Download_APK-0.11.1-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.11.1"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.12.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.12.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.12.0"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
@@ -31,6 +31,12 @@
 ### Made by an artist, for artists
 
 I'm a designer and artist. I looked for a long time for a drawing app on Android that feels like Procreate, and never found a good one, so I made Inkora. Before placing a single button I went through the art apps out there and took the best of each one. Everything in Inkora is where it is for a reason: the pen menu opens under your pen, the sliders sit by your other hand, and everything else stays out of the way of your drawing.
+
+### New in 0.12: layer groups and picking several layers
+
+- **Pick several layers**: swipe a layer to the right in the Layers panel. Then group, merge or delete them together, or use Transform to move, scale and rotate them all at once.
+- **Layer groups**: a group has its own visibility, opacity and blend mode (Normal is "Pass Through"). Tap the arrow to fold it; tap the group to select all of it, tap again for its options: rename, duplicate, merge, ungroup, move, delete. Moving a layer past the edge of a group takes it out; moving it next to a group puts it in.
+- Groups are kept in `.inkora` projects and in Photoshop files, both ways.
 
 ### New in 0.11: Brush Studio, Photoshop files, stacks
 
@@ -101,7 +107,7 @@ Change any of them in **Actions › Prefs › Gesture controls**.
 
 ### Install
 
-1. Download **[Inkora-0.11.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.11.1.apk)** on your Android device.
+1. Download **[Inkora-0.12.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.12.0.apk)** on your Android device.
 2. Open it. If Android asks, allow installs from this source.
 3. If Play Protect warns you, tap **Install anyway** — Inkora isn't on Google Play yet.
 4. Open Inkora and draw.
@@ -141,6 +147,10 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 ### من فنان، للفنانين
 أنا مصمم وفنان. بحثت طويلاً عن تطبيق رسم على أندرويد يشبه Procreate ولم أجد واحداً جيداً، فصنعت Inkora. جرّبت تطبيقات الرسم الموجودة وأخذت أفضل ما في كل واحد منها، وكل شيء في Inkora في مكانه لسبب.
 
+### الجديد في 0.12
+- **اختيار عدة طبقات**: اسحب الطبقة لليمين في لوحة الطبقات، ثم اجمعها أو ادمجها أو احذفها معًا، أو حرّكها وكبّرها ودوّرها كلها معًا بأداة التحويل.
+- **مجموعات الطبقات**: لكل مجموعة إظهار وشفافية ونمط دمج، وتُطوى بلمسة. وتُحفظ في ملفات ‎.inkora وملفات فوتوشوب.
+
 ### الجديد في 0.11
 - **Brush Studio كامل**: خلط مبلول، فرشاة مزدوجة، ديناميكية اللون، تثبيت، تدبيب، ملمس، ونمط دمج، مع لوحة تجربة.
 - **صنع الفُرَش ومشاركتها**: كرّر أي فرشاة وغيّر شكلها وملمسها واسمها، وصدّرها ‎.brush أو ‎.brushset.
@@ -167,7 +177,7 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Inkora-0.11.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.11.1.apk)** على جهازك.
+1. حمّل **[Inkora-0.12.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.12.0.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
 4. افتح Inkora وابدأ الرسم.
@@ -189,6 +199,10 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 ### لە هونەرمەندێکەوە، بۆ هونەرمەندان
 من دیزاینەر و هونەرمەندم. ماوەیەکی زۆر بەدوای ئەپێکی وێنەکێشاندا گەڕام لەسەر ئەندرۆید کە وەک Procreate بێت و هیچ یەکێکی باشم نەدۆزییەوە، بۆیە Inkoraم دروست کرد. ئەپەکانی وێنەکێشانم تاقی کردەوە و باشترینی هەر یەکێکیانم وەرگرت، و هەموو شتێک لە Inkora بە هۆیەکەوە لە شوێنی خۆیدایە.
 
+### نوێ لە 0.12
+- **هەڵبژاردنی چەند چینێک**: چینێک بەرەو ڕاست ڕابکێشە لە پانێڵی چینەکان، پاشان پێکەوە گرووپیان بکە، یەکیان بخە یان بیانسڕەوە، یان بە ئامرازی گۆڕین هەموویان پێکەوە بجووڵێنە.
+- **گرووپی چین**: هەر گرووپێک دەرکەوتن، ڕوونی و شێوازی تێکەڵکردنی خۆی هەیە و دادەخرێت. لە فایلی ‎.inkora و فۆتۆشۆپدا پاشەکەوت دەکرێن.
+
 ### نوێ لە 0.11
 - **Brush Studio ی تەواو**: تێکەڵکردنی تەڕ، فڵچەی دووانە، گۆڕانی ڕەنگ، جێگیرکردن، باریککردنەوە، ڕووکار و شێوازی تێکەڵکردن، لەگەڵ تەختەی تاقیکردنەوە.
 - **دروستکردن و هاوبەشکردنی فڵچە**: هەر فڵچەیەک دووبارە بکەرەوە، شێوە و ڕووکار و ناوی بگۆڕە، و بە ‎.brush یان ‎.brushset هەناردەی بکە.
@@ -207,7 +221,7 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Inkora-0.11.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.11.1.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Inkora-0.12.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.12.0.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
 4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.

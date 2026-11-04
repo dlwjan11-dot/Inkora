@@ -117,6 +117,17 @@ class CanvasView(context: Context) : View(context) {
     var transform: TransformSession? = null
         private set
 
+    /** layers picked in the Layers panel (swipe right), besides the active one */
+    val pickedLayers = LinkedHashSet<Layer>()
+
+    /** the active layer plus the picked ones still in the document, bottom first */
+    fun targetLayers(): List<Layer> {
+        pickedLayers.retainAll(doc.layers.toSet())
+        if (pickedLayers.isEmpty()) return listOf(doc.active)
+        val set = pickedLayers + doc.active
+        return doc.layers.filter { it in set }
+    }
+
     // ---- view transform: document -> screen ----
     val viewMatrix = Matrix()
     private val inverse = Matrix()
@@ -348,6 +359,7 @@ class CanvasView(context: Context) : View(context) {
 
     fun setDocument(d: Document) {
         doc = d
+        pickedLayers.clear()
         history = History()
         strokeBitmap?.recycle()
         strokeBitmap = Bitmap.createBitmap(d.width, d.height, Bitmap.Config.ARGB_8888)
@@ -481,8 +493,11 @@ class CanvasView(context: Context) : View(context) {
                     c.restoreToCount(s)
                 }
             })
-        } else if (t != null && t.layer === doc.active) {
-            doc.draw(canvas, filter, { c -> c.drawBitmap(t.floating, t.matrix, transformPaint) })
+        } else if (t != null) {
+            val ov = HashMap<Layer, ActiveOverlay>()
+            ov[t.layer] = ActiveOverlay { c -> c.drawBitmap(t.floating, t.matrix, transformPaint) }
+            for (p in t.extras) ov[p.layer] = ActiveOverlay { c -> c.drawBitmap(p.floating, t.matrix, transformPaint) }
+            doc.draw(canvas, filter, null, extra = ov)
         } else {
             doc.draw(canvas, filter)
         }
@@ -1802,6 +1817,8 @@ class CanvasView(context: Context) : View(context) {
     fun beginTransform(): Boolean {
         if (transform != null) return true
         if (strokeActive) cancelStroke()
+        val targets = targetLayers()
+        if (targets.size > 1) return beginMultiTransform(targets)
         val layer = doc.active
         if (!layer.visible) { listener?.onMessage("This layer is hidden"); return false }
         if (layer.vector != null) { listener?.onMessage("On a vector layer use the vector Select tool"); return false }
@@ -1811,7 +1828,16 @@ class CanvasView(context: Context) : View(context) {
             listener?.onMessage("This layer is empty")
             return false
         }
-        val before = layer.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val (floating, before) = lift(layer, region, sel) ?: return false
+        transform = TransformSession(layer, floating, region, before, sel)
+        interaction = Interaction.TRANSFORM
+        return true
+    }
+
+    /** cuts [region] (or the selection inside it) out of [layer]: the piece and a copy of the layer before */
+    private fun lift(layer: Layer, region: Rect, sel: Selection?): Pair<Bitmap, Bitmap>? {
+        val before = try { layer.bitmap.copy(Bitmap.Config.ARGB_8888, false) } catch (e: OutOfMemoryError) { null }
+            ?: run { listener?.onMessage("Not enough memory for this right now"); return null }
         val floating = Bitmap.createBitmap(layer.bitmap, region.left, region.top, region.width(), region.height())
             .copy(Bitmap.Config.ARGB_8888, true)
         val c = Canvas(layer.bitmap)
@@ -1821,7 +1847,39 @@ class CanvasView(context: Context) : View(context) {
         } else {
             c.drawRect(RectF(region), Paint().apply { blendMode = BlendMode.CLEAR })
         }
-        transform = TransformSession(layer, floating, region, before, sel)
+        return floating to before
+    }
+
+    /** moves several layers (picked ones, or a group) together */
+    private fun beginMultiTransform(targets: List<Layer>): Boolean {
+        val usable = targets.filter { it.visible && it.vector == null }
+        if (usable.isEmpty()) { listener?.onMessage("These layers are hidden or vector layers"); return false }
+        if (usable.size < targets.size) listener?.onMessage("Hidden and vector layers stay where they are")
+        val sel = selection
+        val region = if (sel != null) Rect(sel.bounds) else {
+            var u: Rect? = null
+            for (l in usable) Selections.contentBounds(l.bitmap)?.let { r -> if (u == null) u = Rect(r) else u!!.union(r) }
+            u
+        }
+        if (region == null || !region.intersect(0, 0, doc.width, doc.height) || region.isEmpty) {
+            listener?.onMessage("These layers are empty")
+            return false
+        }
+        val primary = if (doc.active in usable) doc.active else usable.last()
+        val pieces = ArrayList<TransformSession.Piece>()
+        var main: Pair<Bitmap, Bitmap>? = null
+        for (l in usable) {
+            val p = lift(l, region, sel)
+            if (p == null) {
+                // not enough memory: put back what was lifted
+                for (pc in pieces) { Canvas(pc.layer.bitmap).drawBitmap(pc.before, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC }); pc.floating.recycle(); pc.before.recycle() }
+                main?.let { (f, b) -> Canvas(primary.bitmap).drawBitmap(b, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC }); f.recycle(); b.recycle() }
+                return false
+            }
+            if (l === primary) main = p else pieces.add(TransformSession.Piece(l, p.first, p.second))
+        }
+        val (floating, before) = main!!
+        transform = TransformSession(primary, floating, region, before, sel, pieces)
         interaction = Interaction.TRANSFORM
         return true
     }
@@ -1840,22 +1898,26 @@ class CanvasView(context: Context) : View(context) {
 
     fun finishTransform(apply: Boolean) {
         val t = transform ?: return
-        val c = Canvas(t.layer.bitmap)
+        val all = listOf(TransformSession.Piece(t.layer, t.floating, t.before)) + t.extras
         if (apply) {
-            c.drawBitmap(t.floating, t.matrix, transformPaint)
             val r = t.resultBounds(doc.width, doc.height)
-            if (!r.isEmpty) {
-                val beforeRegion = Bitmap.createBitmap(t.before, r.left, r.top, r.width(), r.height())
-                transform = null
-                pushPixelEdit(t.layer, r, beforeRegion)
+            val edits = ArrayList<Command>()
+            for (p in all) {
+                Canvas(p.layer.bitmap).drawBitmap(p.floating, t.matrix, transformPaint)
+                if (!r.isEmpty) {
+                    val beforeRegion = Bitmap.createBitmap(p.before, r.left, r.top, r.width(), r.height())
+                    val after = Bitmap.createBitmap(p.layer.bitmap, r.left, r.top, r.width(), r.height())
+                    edits.add(PixelEdit(p.layer, Rect(r), beforeRegion, after))
+                }
             }
+            transform = null
+            if (edits.size == 1) pushCommand(edits[0]) else if (edits.isNotEmpty()) pushCommand(MultiCmd(edits, "move"))
             selection = t.selection?.let { Selections.transformed(it, t.movement(), doc.width, doc.height) }
         } else {
-            c.drawBitmap(t.before, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC })
+            for (p in all) Canvas(p.layer.bitmap).drawBitmap(p.before, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC })
         }
         transform = null
-        t.floating.recycle()
-        t.before.recycle()
+        for (p in all) { p.floating.recycle(); p.before.recycle() }
         interaction = Interaction.PAINT
         invalidate()
     }

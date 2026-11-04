@@ -143,8 +143,12 @@ class TransformSession(
     /** full copy of the layer before lifting, for cancel + undo */
     val before: Bitmap,
     /** selection that was lifted, so it can follow the pixels */
-    val selection: Selection?
+    val selection: Selection?,
+    /** the other layers moving with it (several layers or a group), lifted from the same rectangle */
+    val extras: List<Piece> = emptyList()
 ) {
+    class Piece(val layer: Layer, val floating: Bitmap, val before: Bitmap)
+
     val matrix = Matrix().apply { setTranslate(source.left.toFloat(), source.top.toFloat()) }
     private val start = Matrix(matrix)
 

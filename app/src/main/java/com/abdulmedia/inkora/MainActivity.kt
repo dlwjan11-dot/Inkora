@@ -1931,15 +1931,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 contentResolver.openOutputStream(uri, "wt")?.use { out ->
                     when (kind) {
                         "psd" -> {
-                            val s = snap!!
-                            val d = Document(s.width, s.height)
-                            d.backgroundColor = s.background
-                            d.backgroundVisible = s.backgroundVisible
-                            for (l in s.layers) d.layers.add(Layer(l.bitmap, l.name).apply {
-                                visible = l.visible; opacity = l.opacity; alphaLock = l.alphaLock; isClippingMask = l.clipping
-                                blend = runCatching { LayerBlend.valueOf(l.blend) }.getOrDefault(LayerBlend.NORMAL)
-                            })
-                            PsdIO.write(d, out, cacheDir)
+                            PsdIO.write(snap!!.toDocument(), out, cacheDir)
                         }
                         "pdf" -> {
                             val b = flat!!

@@ -37,6 +37,29 @@ class Layer(var bitmap: Bitmap, var name: String) {
     var isClippingMask = false
     /** non-null = this is a vector layer; [bitmap] is then a rendered copy of the shapes */
     var vector: VectorData? = null
+    /** the group this layer belongs to ([Document.groups]), or null. A group's layers sit together. */
+    var groupId: Int? = null
+
+    companion object {
+        private var nextId = 1
+    }
+}
+
+/**
+ * A layer group. Its layers keep their own opacity and blend modes; the group can hide them all,
+ * fade them together and blend them as one picture. A Normal group at 100% passes its layers'
+ * blend modes through to what is below (like Photoshop's "Pass Through").
+ */
+class LayerGroup(var name: String, val id: Int = nextId++) {
+    var visible = true
+    var opacity = 1f
+    var blend = LayerBlend.NORMAL
+    var collapsed = false
+
+    /** blended as one picture (instead of passing through) */
+    val isolated get() = blend != LayerBlend.NORMAL || opacity < 0.999f
+
+    fun copy() = LayerGroup(name, id).also { it.visible = visible; it.opacity = opacity; it.blend = blend; it.collapsed = collapsed }
 
     companion object {
         private var nextId = 1
@@ -65,13 +88,45 @@ class Document(val width: Int, val height: Int) {
     /** Incremented on every change, used to know when autosave is needed. */
     var revision = 0
 
+    /** layer groups by id; a layer's [Layer.groupId] points here */
+    val groups = LinkedHashMap<Int, LayerGroup>()
+    var groupNameCounter = 1
+
     val active: Layer get() = layers[activeIndex.coerceIn(0, layers.size - 1)]
+
+    /** the group of [layer], if it has a live one */
+    fun groupOf(layer: Layer): LayerGroup? = layer.groupId?.let { groups[it] }
+
+    fun newGroup(): LayerGroup = LayerGroup("Group ${groupNameCounter++}").also { groups[it.id] = it }
+
+    /** the layers of group [id], bottom first */
+    fun members(id: Int): List<Layer> = layers.filter { it.groupId == id }
+
+    /** index range (bottom..top) of group [id], or null */
+    fun rangeOf(id: Int): IntRange? {
+        val a = layers.indexOfFirst { it.groupId == id }
+        if (a < 0) return null
+        return a..layers.indexOfLast { it.groupId == id }
+    }
+
+    /**
+     * Keeps every group's layers together: a layer that ends up between two layers of one group
+     * joins it, and a layer whose group no longer exists leaves it.
+     */
+    fun normalizeGroups() {
+        for (l in layers) if (l.groupId != null && groups[l.groupId!!] == null) l.groupId = null
+        for (id in groups.keys.toList()) {
+            val r = rangeOf(id) ?: continue
+            for (i in r) layers[i].groupId = id
+        }
+    }
     val bounds = RectF(0f, 0f, width.toFloat(), height.toFloat())
 
     private val layerPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val plainPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val dstInPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_IN }
     private val bgPaint = Paint()
+    private val groupPaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     fun newLayerBitmap(): Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
 
@@ -91,7 +146,11 @@ class Document(val width: Int, val height: Int) {
      * Composites every visible layer (with opacity + blend mode) onto [canvas],
      * in document coordinates.
      */
-    fun draw(canvas: Canvas, filter: Boolean, overlay: ActiveOverlay? = null, withBackground: Boolean = true) {
+    fun draw(
+        canvas: Canvas, filter: Boolean, overlay: ActiveOverlay? = null, withBackground: Boolean = true,
+        /** more overlays for other layers (a transform of several layers at once) */
+        extra: Map<Layer, ActiveOverlay>? = null
+    ) {
         val outer = canvas.saveLayer(bounds, null)
         if (withBackground && backgroundVisible) {
             bgPaint.color = backgroundColor
@@ -100,52 +159,93 @@ class Document(val width: Int, val height: Int) {
         layerPaint.isFilterBitmap = filter
         plainPaint.isFilterBitmap = filter
         dstInPaint.isFilterBitmap = filter
-        for (i in layers.indices) {
-            val layer = layers[i]
-            if (!layer.visible) continue
-            layerPaint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
-            layerPaint.blendMode = layer.blend.mode
-            if (layer.isClippingMask) {
-                var baseIndex = i - 1
-                while (baseIndex >= 0 && layers[baseIndex].isClippingMask) baseIndex--
-                val baseLayer = if (baseIndex >= 0) layers[baseIndex] else null
-                if (baseLayer != null && baseLayer.visible) {
-                    val s = canvas.saveLayer(bounds, layerPaint)
-                    if (overlay != null && i == activeIndex) {
-                        val sInner = canvas.saveLayer(bounds, plainPaint)
-                        canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
-                        overlay.draw(canvas)
-                        canvas.restoreToCount(sInner)
-                    } else {
-                        canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
-                    }
-                    canvas.drawBitmap(baseLayer.bitmap, 0f, 0f, dstInPaint)
-                    canvas.restoreToCount(s)
-                } else if (baseLayer != null) {
-                    // base layer hidden: whatever is clipped to it is hidden too
-                    continue
-                } else {
-                    if (overlay != null && i == activeIndex) {
-                        val s = canvas.saveLayer(bounds, layerPaint)
-                        canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
-                        overlay.draw(canvas)
+        drawLayers(canvas, 0, layers.size - 1, { i -> if (overlay != null && i == activeIndex) overlay else extra?.get(layers[i]) }, true)
+        canvas.restoreToCount(outer)
+    }
+
+    /**
+     * Draws layers [from]..[to] (with their groups when [withGroups]). Only layers [include]
+     * accepts are drawn.
+     */
+    private fun drawLayers(
+        canvas: Canvas, from: Int, to: Int, overlayAt: (Int) -> ActiveOverlay?, withGroups: Boolean,
+        include: (Int) -> Boolean = { true }
+    ) {
+        var i = from
+        while (i <= to) {
+            val g = if (withGroups) groupOf(layers[i]) else null
+            if (g != null) {
+                var end = i
+                while (end + 1 <= to && layers[end + 1].groupId == g.id) end++
+                if (g.visible) {
+                    if (g.isolated) {
+                        groupPaint.alpha = (g.opacity * 255).roundToInt().coerceIn(0, 255)
+                        groupPaint.blendMode = g.blend.mode
+                        val s = canvas.saveLayer(bounds, groupPaint)
+                        drawLayers(canvas, i, end, overlayAt, false, include)
                         canvas.restoreToCount(s)
-                    } else {
-                        canvas.drawBitmap(layer.bitmap, 0f, 0f, layerPaint)
-                    }
+                    } else drawLayers(canvas, i, end, overlayAt, false, include)
                 }
-            } else {
-                if (overlay != null && i == activeIndex) {
-                    val s = canvas.saveLayer(bounds, layerPaint)
+                i = end + 1
+                continue
+            }
+            if (include(i)) drawLayer(canvas, i, overlayAt(i))
+            i++
+        }
+    }
+
+    private fun drawLayer(canvas: Canvas, i: Int, ov: ActiveOverlay?) {
+        val layer = layers[i]
+        if (!layer.visible) return
+        layerPaint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
+        layerPaint.blendMode = layer.blend.mode
+        if (layer.isClippingMask) {
+            // clipped to the first non-clipping layer below it, inside the same group
+            var baseIndex = i - 1
+            while (baseIndex >= 0 && layers[baseIndex].isClippingMask && layers[baseIndex].groupId == layer.groupId) baseIndex--
+            val baseLayer = if (baseIndex >= 0 && layers[baseIndex].groupId == layer.groupId) layers[baseIndex] else null
+            if (baseLayer != null) {
+                // base layer hidden: whatever is clipped to it is hidden too
+                if (!baseLayer.visible) return
+                val s = canvas.saveLayer(bounds, layerPaint)
+                if (ov != null) {
+                    val sInner = canvas.saveLayer(bounds, plainPaint)
                     canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
-                    overlay.draw(canvas)
-                    canvas.restoreToCount(s)
+                    ov.draw(canvas)
+                    canvas.restoreToCount(sInner)
                 } else {
-                    canvas.drawBitmap(layer.bitmap, 0f, 0f, layerPaint)
+                    canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
                 }
+                canvas.drawBitmap(baseLayer.bitmap, 0f, 0f, dstInPaint)
+                canvas.restoreToCount(s)
+                return
             }
         }
-        canvas.restoreToCount(outer)
+        if (ov != null) {
+            val s = canvas.saveLayer(bounds, layerPaint)
+            canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
+            ov.draw(canvas)
+            canvas.restoreToCount(s)
+        } else {
+            canvas.drawBitmap(layer.bitmap, 0f, 0f, layerPaint)
+        }
+    }
+
+    /**
+     * The layers [subset] composited on their own (no background, no group effects), for merging
+     * them into one layer.
+     */
+    fun compose(subset: Collection<Layer>): Bitmap {
+        val out = newLayerBitmap()
+        val c = Canvas(out)
+        layerPaint.isFilterBitmap = false
+        plainPaint.isFilterBitmap = false
+        dstInPaint.isFilterBitmap = false
+        val set = subset.toHashSet()
+        val s = c.saveLayer(bounds, null)
+        drawLayers(c, 0, layers.size - 1, { null }, false) { layers[it] in set }
+        c.restoreToCount(s)
+        return out
     }
 
     /** Flattened copy of the artwork. */
