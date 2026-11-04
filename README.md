@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk"><img src="https://img.shields.io/badge/Download_APK-0.9.1-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.9.1"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/Zerin-0.10.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.10.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.10.0"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
@@ -31,6 +31,15 @@
 ## Zerin
 
 **Zerin is a free drawing and painting app for Android tablets.** Nothing like Procreate existed on Android, so this is an attempt at one: pressure-sensitive brushes, layers, perspective grids, vector shapes for logos and comics, and a color wheel that opens right under your pen.
+
+### New in 0.10: gestures, shortcuts and Procreate brush sets
+
+- **Gesture controls**, like Procreate: choose what a touch, touch-and-hold, a three-finger swipe, a four-finger tap, a three-finger scrub, the S Pen button (click, double-click, hold), the pen held still, and the **□ modify button** do: eyedropper, smudge, erase, QuickShape, quick menu, full screen, clear layer, copy & paste, layer select. Plus rapid undo (hold two fingers), a quick pinch in to fit the canvas, one-finger panning and hover + finger for size and opacity.
+- **Keyboard shortcuts** for a keyboard cover: Ctrl+Z / Ctrl+Shift+Z, Ctrl+C / X / V, B / N / E / M / S / V / F / T / U, `[` `]` for brush size, Ctrl+G grey view, R to turn the canvas, and more. Hold Ctrl to see them all.
+- **A new Brush Library**: sets down the side with icons, big stroke previews, tap the brush in hand again for the Brush Studio. Imported Procreate sets keep their own name.
+- **Actions panel** (the wrench): Add, Canvas, Share, Video, Prefs and Help in one place, with grey view, cut / copy / paste and a fixed toolbar-side setting.
+
+<p align="center"><img src="art/creative-panel.png" alt="The Creative panel" width="60%"></p>
 
 ### New in 0.8: a pro layout
 
@@ -64,6 +73,11 @@ Move over an item and release the button, or just tap it. Holding the pen tip st
 | Click | brush ⇄ eraser |
 | Hold / double-click | quick menu |
 | Draw, then pause | QuickShape: clean line, circle, box |
+| Two / three-finger tap | undo / redo (hold to keep going) |
+| Three-finger swipe down | cut, copy & paste |
+| Four-finger tap | full screen |
+
+Change any of them in **Actions › Prefs › Gesture controls**.
 
 </td>
 </tr>
@@ -73,20 +87,20 @@ Move over an item and release the button, or just tap it. Holding the pen tip st
 
 <p align="center"><img src="art/numbers.png" alt="67 brushes, 17 blend modes, 10 guides, 30 toolbar tools" width="80%"></p>
 
-- **Paint:** 67 brushes in 9 sets (inking, calligraphy with a Qalam nib for Arabic, sketching, painting, watercolor, airbrush, textures, effects, pixel art). Pressure and tilt, streamline, paper grain, and a Brush Studio to make your own. Import Procreate `.brush` / `.brushset`, zip files, or brushes from a link.
+- **Paint:** 120 brushes in 9 sets (inking, calligraphy with a Qalam nib for Arabic, sketching, painting, watercolor, airbrush, textures, effects, pixel art). Pressure and tilt, streamline, paper grain, and a Brush Studio to make your own. Import Procreate `.brush` / `.brushset` (or just open one with Zerin from your Files app: the set keeps its name, shape, grain, size and pressure), zip files, or brushes from a link.
 - **Organize:** layers with 17 blend modes, alpha lock, merge, and panels you can pin over the canvas. Freehand, rectangle and ellipse selection with feathering. Transform, flip and rotate.
 - **Guide:** square, dot, isometric, triangle, hexagon and polar grids, rule of thirds, and 1, 2 and 3-point perspective. Assisted drawing snaps strokes to the guide. Vertical, horizontal, quadrant and radial symmetry.
 - **Make:** vector layers with a Bézier pen, shapes, gradients, boolean operations and SVG export. Text in any language (Arabic and Kurdish included). Adjustments and filters with live preview. Fill tool. Automatic time-lapse video. PNG, JPEG and `.inkora` project files.
 
 ### Install
 
-1. Download **[Zerin-0.9.1.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk)** on your Android device.
+1. Download **[Zerin-0.10.0.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.10.0.apk)** on your Android device.
 2. Open it. If Android asks, allow installs from this source.
 3. If Play Protect warns you, tap **Install anyway** — Zerin isn't on Google Play yet.
 4. Open Zerin and draw.
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too, with your finger.
-SHA-256: `f7cd5fef76b06c8886455173e47513745565c184aa47ba907c2dc85f85aee254`
+SHA-256: `00daaca7efb2e9d793699cb8cc40068dee56c8f674621269c9fc90ce283119bc`
 
 ### Build it yourself
 
@@ -95,11 +109,13 @@ Open the folder in **Android Studio**, let Gradle sync, then press **Run ▶** w
 ```
 app/src/main/java/com/abdulmedia/inkora/
   MainActivity.kt   layout, menus, dialogs        CanvasView.kt   drawing, gestures, S Pen
-  StrokeEngine.kt   brush dabs, pressure, tilt    Brushes.kt      the 67 brush presets
+  StrokeEngine.kt   brush dabs, pressure, tilt    Brushes.kt      the 120 brush presets
   QuickMenuView.kt  pen menu                      ColorDisc.kt    standard color wheel
   ToolDock.kt       customizable toolbar          ToolsPanel.kt   Creative / Editing panel
   Vector*.kt        vector layers                 Guide*.kt       grids and perspective
 ```
+
+Credits: the gesture-controls pages and the keyboard-shortcut list follow [ProCraft](https://github.com/artcraft-android/procraft) by artcraft-android (MIT OR Apache-2.0), rewritten for Zerin's own engine.
 
 What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify, layer masks, PSD, animation).
 
@@ -115,6 +131,12 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 
 **Zerin تطبيق رسم وتلوين مجاني لأجهزة أندرويد اللوحية.** لم يكن على أندرويد تطبيق مثل Procreate، فهذه محاولة لصنعه: فُرَش تستجيب لضغط القلم، وطبقات، وشبكات منظور، وأشكال فيكتور للشعارات والقصص المصوّرة، ودولاب ألوان يفتح تحت قلمك مباشرة.
 
+### الجديد في 0.10
+- **التحكم بالإيماءات** مثل Procreate: اختر ماذا يفعل اللمس والضغط المطوّل وسحب ثلاث أصابع ونقرة أربع أصابع وزر S Pen وزر □.
+- **اختصارات لوحة المفاتيح**: اضغط Ctrl مطوّلاً لترى القائمة كلها.
+- **مكتبة فُرَش جديدة**، وفُرَش Procreate تُفتح مباشرة من تطبيق الملفات وتحتفظ باسم مجموعتها.
+- **لوحة الإجراءات** (المفتاح): إضافة، الرسمة، مشاركة، فيديو، التفضيلات، والمساعدة.
+
 ### الجديد في 0.8: واجهة احترافية
 - **الشريط العلوي:** المعرض والقائمة وCreative وEditing في جهة، والفرشاة والتمويه والممحاة والطبقات واللون في الجهة الأخرى.
 - **شريط أدواتك الخاص:** اختر حتى 14 أداة من 30، وأضفها واحذفها وغيّر ترتيبها. ووضع لليد اليسرى.
@@ -123,13 +145,13 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - **أداة تعبئة** و**وضع التركيز** الذي يخفي الواجهة.
 
 ### المزايا
-- 67 فرشاة في 9 مجموعات، منها قلم قصب للخط العربي. استيراد فُرَش Procreate.
+- 120 فرشاة في 9 مجموعات، منها قلم قصب للخط العربي. استيراد فُرَش Procreate.
 - طبقات مع 17 نمط دمج، وتحديد، وتحويل.
 - 10 أنواع شبكات ومنظور، ورسم مساعد، وQuickShape، وتناظر.
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Zerin-0.9.1.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk)** على جهازك.
+1. حمّل **[Zerin-0.10.0.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.10.0.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
 4. افتح Zerin وابدأ الرسم.
@@ -148,6 +170,11 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 
 **Zerin ئەپێکی بێبەرامبەری وێنەکێشان و ڕەنگکردنە بۆ تابلێتەکانی ئەندرۆید.** فڵچەی هەستیار بە پەستانی قەڵەم، چینەکان، تۆڕی پێرسپێکتیڤ، شێوەی ڤێکتەر بۆ لۆگۆ و چیرۆکی وێنەدار، و چەرخێکی ڕەنگ کە ڕاستەوخۆ لە ژێر قەڵەمەکەتدا دەکرێتەوە.
 
+### نوێ لە 0.10
+- **کۆنترۆڵی جووڵەکان** وەک Procreate: هەڵبژێرە دەستلێدان، ڕاگرتن، ڕاکێشانی سێ پەنجە، کرتەی چوار پەنجە، دوگمەی S Pen و دوگمەی □ چی بکەن.
+- **کورتبڕەکانی تەختەکلیل**: Ctrl ڕابگرە بۆ بینینی هەموویان.
+- **کتێبخانەی نوێی فڵچەکان**، و فڵچەکانی Procreate ڕاستەوخۆ لە ئەپی فایلەکانەوە دەکرێنەوە.
+
 ### نوێ لە 0.8
 - **شریتی سەرەوە:** گەلەری، مێنیو، Creative و Editing لە لایەک؛ فڵچە، سڕەرەوە، چینەکان و ڕەنگ لە لایەکەی تر.
 - **شریتی ئامرازی خۆت:** تا ١٤ ئامراز لە ٣٠ هەڵبژێرە، زیادیان بکە، لایان ببە و ڕیزبەندییان بگۆڕە. دۆخی دەستەچەپیشی هەیە.
@@ -155,7 +182,7 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Zerin-0.9.1.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.9.1.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Zerin-0.10.0.apk](https://dlwjan11-dot.github.io/Inkora/Zerin-0.10.0.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
 4. Zerin بکەرەوە و دەست بە وێنەکێشان بکە.

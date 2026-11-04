@@ -16,6 +16,7 @@ import android.os.Handler
 import android.os.Looper
 import android.text.InputType
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -88,6 +89,9 @@ class MainActivity : Activity(), CanvasView.Listener {
     private lateinit var quickMenu: QuickMenuView
     private lateinit var colorWheel: ColorWheelView
     private val prefs by lazy { getSharedPreferences("inkora", MODE_PRIVATE) }
+    private val gestures by lazy { GestureSettings(prefs) }
+    private lateinit var modifyBtn: IconView
+    private lateinit var actionsBtn: View
     private var popup: PopupWindow? = null
     private var savedRevision = -1
     private val main = Handler(Looper.getMainLooper())
@@ -149,6 +153,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         restorePins()
         // the app always starts on the home screen
         showGallery(fromCanvas = false)
+        // a brush file, project or image opened with Zerin from another app
+        handleIncoming(intent)
     }
 
     private fun newDocument(w: Int, h: Int) = Document.blank(w, h).apply {
@@ -174,7 +180,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         when {
             quickMenu.isOpen -> quickMenu.close()
             root.findViewWithTag<View>("tips") != null -> root.findViewWithTag<View>("tips")?.let { root.removeView(it); prefs.edit().putBoolean("tips_done", true).apply() }
-            root.findViewWithTag<View>("settings_dialog") != null -> closeSettings()
+            root.findViewWithTag<View>("overlay") != null -> closeSettings()
             focusMode -> setFocus(false)
             colorWheel.isOpen -> colorWheel.close()
             adjustKind != null -> endAdjust(false)
@@ -331,9 +337,10 @@ class MainActivity : Activity(), CanvasView.Listener {
         val homeBtn = IconView(this, Icon.HOME).apply { contentDescription = "Gallery" }
         homeBtn.setOnClickListener { if (!busy()) showGallery() }
         bar.addView(homeBtn, LinearLayout.LayoutParams(46.dp, 48.dp))
-        val actionsBtn = IconView(this, Icon.MENU).apply { contentDescription = "Menu" }
+        val actionsBtn = IconView(this, Icon.WRENCH).apply { contentDescription = "Actions" }
         actionsBtn.setOnClickListener { if (!busy()) showActions(actionsBtn) }
         bar.addView(actionsBtn, LinearLayout.LayoutParams(46.dp, 48.dp))
+        this.actionsBtn = actionsBtn
         bar.addView(barDivider())
 
         creativeBtn = barTab(Icon.SPARKLE, "Creative") { if (!busy()) showToolsMenu(true) }
@@ -437,9 +444,35 @@ class MainActivity : Activity(), CanvasView.Listener {
         sizeSlider.onDragState = { dragging -> if (dragging) showSizeHud(true) else hud.hideSoon() }
         side.addView(sizeSlider, LinearLayout.LayoutParams(44.dp, 180.dp))
 
-        val dropper = IconView(this, Icon.EYEDROPPER).apply { contentDescription = "Eyedropper" }
-        dropper.setOnClickListener { cv.armEyedropper() }
-        side.addView(dropper, LinearLayout.LayoutParams(44.dp, 44.dp).apply { topMargin = 4.dp; bottomMargin = 4.dp })
+        // the □ modify button: tapped, it does what "Tap □" is set to (the eyedropper at first);
+        // held down, touches on the canvas do what "□ + Touch" and "□ + Pen" are set to
+        modifyBtn = IconView(this, Icon.EYEDROPPER).apply { contentDescription = "Modify" }
+        var modifyDownAt = 0L
+        modifyBtn.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    modifyDownAt = e.eventTime
+                    cv.modifyHeld = true
+                    cv.modifyUsed = false
+                    v.isPressed = true
+                    (v as IconView).active = true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    cv.modifyHeld = false
+                    v.isPressed = false
+                    (v as IconView).active = false
+                    if (e.actionMasked == MotionEvent.ACTION_UP && !cv.modifyUsed && e.eventTime - modifyDownAt < 700) {
+                        v.performClick()
+                        gestures.purposeOf(GestureTrigger.TAP_MODIFY)?.let { p ->
+                            val loc = IntArray(2); v.getLocationInWindow(loc)
+                            runGesture(p, loc[0] + v.width / 2f, loc[1] + v.height / 2f)
+                        }
+                    }
+                }
+            }
+            true
+        }
+        side.addView(modifyBtn, LinearLayout.LayoutParams(44.dp, 44.dp).apply { topMargin = 4.dp; bottomMargin = 4.dp })
 
         opacitySlider = VerticalSlider(this)
         opacitySlider.onChange = { v ->
@@ -506,6 +539,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         colorWheel.visibility = View.GONE
         root.addView(colorWheel, FrameLayout.LayoutParams(-1, -1))
         cv.penListener = penListener
+        cv.gestures = gestures
+        gestures.fingerPaintNow = { cv.fingerDrawing }
+        syncModifyIcon()
 
         setContentView(root)
     }
@@ -536,12 +572,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     /** sliders on one side, toolbar on the other (swapped for left-handed people or customized placement) */
     private fun applySides() {
         // sliders live on the left or right; the toolbar goes anywhere else
-        val slidersEdge = when (prefs.getString("sliders_edge", null)) {
-            "Left" -> "Left"; "Right" -> "Right"
-            else -> if (leftHanded) "Right" else "Left"
-        }
-        var dockEdge = prefs.getString("dock_edge", null) ?: (if (slidersEdge == "Left") "Right" else "Left")
-        if (dockEdge == slidersEdge) dockEdge = if (slidersEdge == "Left") "Right" else "Left"
+        val slidersEdge = slidersEdge()
+        val dockEdge = dockEdge()
 
         // Sliders sidebar
         (sideBar.layoutParams as FrameLayout.LayoutParams).apply {
@@ -565,46 +597,51 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
     }
 
+    /** closes a full-screen overlay (gesture controls, keyboard shortcuts) */
     private fun closeSettings(): Boolean {
-        val v = root.findViewWithTag<View>("settings_dialog") ?: return false
+        val v = root.findViewWithTag<View>("overlay") ?: return false
         root.removeView(v)
-        timeLapseOn = prefs.getBoolean("timelapse", true)
         return true
     }
 
-    private fun showSettingsDialog() {
-        (root.findViewWithTag<View>("settings_dialog"))?.let { root.removeView(it) }
-        val dlg = SettingsDialog(this, prefs, cv,
-            onLeftHanded = { on ->
-                leftHanded = on
-                prefs.edit().remove("dock_edge").remove("sliders_edge").apply()
-                applySides()
+    private fun showOverlay(v: View) {
+        closeSettings()
+        v.tag = "overlay"
+        v.alpha = 0f
+        root.addView(v, FrameLayout.LayoutParams(-1, -1))
+        v.animate().alpha(1f).setDuration(160).start()
+    }
+
+    private fun showGestureControls() {
+        popup?.dismiss()
+        showOverlay(GestureControlsView(this, gestures,
+            onChanged = {
+                cv.fingerDrawing = gestures.isOn(GesturePurpose.GENERAL, "FINGER_PAINT")
+                cv.fingerDrawingAuto = false
+                cv.quickShapeEnabled = gestures.isOn(GesturePurpose.QUICKSHAPE, "DRAW_HOLD")
+                syncModifyIcon()
             },
-            onToolbarPlacement = { edge ->
-                prefs.edit().putString("dock_edge", edge).apply()
-                applySides()
-            },
-            onSlidersPlacement = { edge ->
-                prefs.edit().putString("sliders_edge", edge).apply()
-                applySides()
-            },
-            onLanguage = { code ->
-                // save the artwork, then start again in the new language
-                autosave(force = true)
-                L10n.save(this, code)
-                afterSaves { recreate() }
-            },
-            onShowTips = {
-                closeSettings()
-                showTips()
-            },
-            onClose = { closeSettings() }
-        )
-        dlg.tag = "settings_dialog"
-        val lp = FrameLayout.LayoutParams(min(680.dp, root.width - 24.dp), min(480.dp, root.height - 80.dp), Gravity.CENTER)
-        dlg.alpha = 0f; dlg.scaleX = .96f; dlg.scaleY = .96f
-        root.addView(dlg, lp)
-        dlg.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).start()
+            onDone = { closeSettings() }))
+    }
+
+    private var shortcutsHeld = false
+
+    private fun showShortcuts(closable: Boolean = true) {
+        popup?.dismiss()
+        showOverlay(ShortcutsView(this, closable) { closeSettings() })
+    }
+
+    /** the effective sides (the toolbar never shares one with the sliders) */
+    private fun slidersEdge() = when (prefs.getString("sliders_edge", null)) {
+        "Left" -> "Left"; "Right" -> "Right"
+        else -> if (leftHanded) "Right" else "Left"
+    }
+
+    private fun dockEdge(): String {
+        val sl = slidersEdge()
+        var d = prefs.getString("dock_edge", null) ?: (if (sl == "Left") "Right" else "Left")
+        if (d == sl) d = if (sl == "Left") "Right" else "Left"
+        return d
     }
 
     // =========================================================
@@ -769,30 +806,106 @@ class MainActivity : Activity(), CanvasView.Listener {
     // S Pen button
     // =========================================================
 
+    private var penX = 0f
+    private var penY = 0f
+
     private val penListener = object : CanvasView.PenListener {
         override fun onPenClick() {
             if (quickMenu.isOpen) { quickMenu.close(); return }
-            if (cv.interaction != Interaction.PAINT || gallery != null) return
-            selectTool(if (cv.tool == Tool.ERASER) Tool.BRUSH else Tool.ERASER)
-            hud.show(if (cv.tool == Tool.ERASER) "Eraser · ${cv.eraserBrush.preset.name}" else "Brush · ${cv.paintBrush.preset.name}")
+            if (gallery != null) return
+            gestures.purposeOf(GestureTrigger.PEN_CLICK)?.let { runGesture(it, penX, penY, fromPenButton = true) }
         }
 
         override fun onPenDoubleClick(x: Float, y: Float) {
             if (gallery != null || cv.interaction == Interaction.LOCKED || cv.interaction == Interaction.TRANSFORM) return
             if (quickMenu.isOpen) { quickMenu.close(); return }
             popup?.dismiss()
-            openQuickMenu(x, y)
+            gestures.purposeOf(GestureTrigger.PEN_DOUBLE)?.let { runGesture(it, x, y, fromPenButton = true) }
         }
 
         override fun onPenHold(x: Float, y: Float) {
             if (gallery != null || cv.interaction == Interaction.LOCKED || cv.interaction == Interaction.TRANSFORM) return
             popup?.dismiss()
-            openQuickMenu(x, y)
+            gestures.purposeOf(GestureTrigger.PEN_HOLD)?.let { runGesture(it, x, y, fromPenButton = true) }
         }
 
-        override fun onPenHover(x: Float, y: Float) = quickMenu.hoverAt(x, y)
+        override fun onPenHover(x: Float, y: Float) {
+            penX = x; penY = y
+            quickMenu.hoverAt(x, y)
+        }
 
         override fun onPenRelease(x: Float, y: Float) = quickMenu.releaseAt(x, y)
+    }
+
+    /** Does what a gesture (or the S Pen button, or □) is set to do. */
+    private fun runGesture(p: GesturePurpose, x: Float, y: Float, fromPenButton: Boolean = false) {
+        if (!cv.isDocReady() || gallery != null) return
+        when (p) {
+            GesturePurpose.QUICKMENU -> {
+                if (quickMenu.isOpen) { quickMenu.close(); return }
+                popup?.dismiss()
+                openQuickMenu(x, y)
+            }
+            GesturePurpose.ERASE -> {
+                if (cv.interaction != Interaction.PAINT) return
+                selectTool(if (cv.tool == Tool.ERASER) Tool.BRUSH else Tool.ERASER)
+                hud.show(if (cv.tool == Tool.ERASER) "Eraser · ${cv.eraserBrush.preset.name}" else "Brush · ${cv.paintBrush.preset.name}")
+            }
+            GesturePurpose.SMUDGE -> {
+                if (cv.interaction != Interaction.PAINT) return
+                selectTool(if (cv.tool == Tool.SMUDGE) Tool.BRUSH else Tool.SMUDGE)
+            }
+            GesturePurpose.FULL_SCREEN -> setFocus(!focusMode)
+            GesturePurpose.CLEAR_LAYER -> { if (!busy()) cv.clearActiveLayer() }
+            GesturePurpose.COPY_PASTE -> showCopyPasteMenu(x, y)
+            GesturePurpose.ASSISTED -> runTool("assisted")
+            GesturePurpose.EYEDROPPER -> cv.armEyedropper()
+            GesturePurpose.LAYER_SELECT -> cv.selectLayerAt(x, y)
+            GesturePurpose.QUICKSHAPE -> cv.snapLastStroke()
+            GesturePurpose.HOVER, GesturePurpose.GENERAL -> {}
+        }
+        refreshAll()
+    }
+
+    /** The modify button shows the eyedropper while that is what tapping it does. */
+    private fun syncModifyIcon() {
+        if (!::modifyBtn.isInitialized) return
+        val tap = gestures.purposeOf(GestureTrigger.TAP_MODIFY)
+        modifyBtn.icon = if (tap == GesturePurpose.EYEDROPPER) Icon.EYEDROPPER else Icon.MODIFY
+        modifyBtn.invalidate()
+    }
+
+    /** Cut, copy, paste and duplicate, as a small menu where the gesture happened. */
+    private fun showCopyPasteMenu(x: Float, y: Float) {
+        if (busy()) return
+        popup?.dismiss()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = Ui.rounded(0xF2202026.toInt(), 22f, 0x22FFFFFF, 1)
+            setPadding(6.dp, 6.dp, 6.dp, 6.dp)
+            elevation = 12f.dp
+        }
+        val pw = PopupWindow(box, -2, -2, true)
+        fun item(label: String, enabled: Boolean = true, run: () -> Unit) {
+            box.addView(Ui.button(this, label) { pw.dismiss(); run(); refreshAll() }.apply {
+                background = null
+                textSize = 14.5f
+                setPadding(16.dp, 10.dp, 16.dp, 10.dp)
+                alpha = if (enabled) 1f else 0.4f
+                isEnabled = enabled
+            })
+        }
+        item("Cut") { cv.copyToClipboard(cut = true) }
+        item("Copy") { cv.copyToClipboard(cut = false) }
+        item("Copy All") { val s = cv.selection; cv.selection = null; cv.copyToClipboard(cut = false); cv.selection = s }
+        item("Duplicate") { cv.duplicateActiveLayer() }
+        item("Paste", cv.hasClipboard) { cv.pasteClipboard() }
+        pw.isOutsideTouchable = true
+        box.measure(0, 0)
+        val px = (x - box.measuredWidth / 2f).toInt().coerceIn(8.dp, (root.width - box.measuredWidth - 8.dp).coerceAtLeast(8.dp))
+        val py = (y - box.measuredHeight - 24.dp).toInt().coerceAtLeast(64.dp)
+        pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, px, py)
+        popup = pw
     }
 
     /** remembers the tool + brush in use, for "last 3 used" in the quick menu */
@@ -1038,7 +1151,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             Tool.SMUDGE -> smudgeBtn
             Tool.BRUSH -> brushBtn
         }
-        showPanel(anchor, brushPanelFor(tool, pinned = false), 400, 680)
+        showPanel(anchor, brushPanelFor(tool, pinned = false), 540, 700)
     }
 
     private fun brushPanelFor(tool: Tool, pinned: Boolean): BrushPanel {
@@ -1065,18 +1178,15 @@ class MainActivity : Activity(), CanvasView.Listener {
             },
             onImportFile = {
                 popup?.dismiss()
-                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE)
-                    type = "*/*"
-                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
-                }, REQ_BRUSH)
+                pickBrushFiles()
             },
             onImportLink = {
                 popup?.dismiss()
                 importLinkDialog()
             },
             onDelete = { b -> confirmDeleteBrush(b, tool) },
-            onPin = if (pinned) null else ({ popup?.dismiss(); pinPanel("brushes") }))
+            onPin = if (pinned) null else ({ popup?.dismiss(); pinPanel("brushes") }),
+            onDeleteSet = { set, list -> confirmDeleteSet(set, list) })
     }
 
     // ---------- pinned panels ----------
@@ -1125,7 +1235,11 @@ class MainActivity : Activity(), CanvasView.Listener {
         val fp = FloatingPanel(this, title, content,
             onClose = { unpin(kind) },
             onMoved = { x, y -> prefs.edit().putInt("pin_${kind}_x", x).putInt("pin_${kind}_y", y).apply() })
-        val w = if (kind == "reference" || kind == "navigator" || kind == "lighting") 240.dp else 320.dp
+        val w = when (kind) {
+            "reference", "navigator", "lighting" -> 240.dp
+            "brushes" -> min(470.dp, root.width - 16.dp)
+            else -> 320.dp
+        }
         val h = if (kind == "reference" || kind == "navigator" || kind == "lighting") FrameLayout.LayoutParams.WRAP_CONTENT else min(560.dp, root.height - 120.dp).coerceAtLeast(300.dp)
         val defX = if ((kind == "layers") != leftHanded) (root.width - w - 72.dp).coerceAtLeast(0) else 72.dp
         val lp = FrameLayout.LayoutParams(w, h, Gravity.TOP or Gravity.LEFT).apply {
@@ -1249,11 +1363,34 @@ class MainActivity : Activity(), CanvasView.Listener {
             selectTool(Tool.BRUSH)
             AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(r.message)
-                .setMessage(L10n.tr("You'll find them under \"Imported\" at the bottom of the Brush Library."))
+                .setMessage(L10n.tr("You'll find them in the Brush Library, after Zerin's own sets."))
                 .setPositiveButton(L10n.tr("Open library")) { _, _ -> showBrushes(Tool.BRUSH) }
                 .setNegativeButton(L10n.tr("Draw"), null)
                 .show()
         } else toast(r.message)
+    }
+
+    private fun confirmDeleteSet(set: String, list: List<Brush>) {
+        val presets = list.map { it.preset }.filter { it.imported }.toSet()
+        if (presets.isEmpty()) return
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Delete this set?") + "  \u2068$set\u2069")
+            .setMessage(L10n.tr("This removes all of its brushes from Zerin.") + " (${presets.size})")
+            .setPositiveButton(L10n.tr("Delete")) { _, _ ->
+                for (p in presets) { BrushImport.delete(this, p); BrushPanel.forget(p.id) }
+                paintBrushes.removeAll { it.preset in presets }
+                eraserBrushes.removeAll { it.preset in presets }
+                smudgeBrushes.removeAll { it.preset in presets }
+                recentTools.removeAll { it.second.preset in presets }
+                if (cv.paintBrush.preset in presets) cv.paintBrush = paintBrushes.first()
+                if (cv.eraserBrush.preset in presets) cv.eraserBrush = eraserBrushes.first()
+                if (cv.smudgeBrush.preset in presets) cv.smudgeBrush = smudgeBrushes.first()
+                popup?.dismiss()
+                refreshAll()
+                hud.show("Set deleted")
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null)
+            .show()
     }
 
     private fun confirmDeleteBrush(b: Brush, tool: Tool) {
@@ -1354,73 +1491,93 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun showActions(anchor: View) {
-        val pm = PopupMenu(this, anchor)
-        val m = pm.menu
-        val file = m.addSubMenu(0, 100, 1, "File")
-        file.add(0, 1, 1, "New canvas…")
-        file.add(0, 23, 2, "Rename artwork…")
-        file.add(0, 2, 3, "Open project (.zerin)…")
-        file.add(0, 3, 4, "Save project (.zerin)…")
-        file.add(0, 4, 5, "Insert photo as layer…")
-        file.add(0, 20, 6, "Add text…")
-        val export = m.addSubMenu(0, 101, 2, "Export & Share")
-        export.add(0, 5, 1, "PNG to Gallery")
-        export.add(0, 6, 2, "JPEG to Gallery")
-        export.add(0, 24, 3, "SVG (vector)…")
-        export.add(0, 7, 4, "Share PNG…")
-        val tl = m.addSubMenu(0, 102, 3, "Time-lapse")
-        tl.add(0, 21, 1, "Export video…")
-        tl.add(0, 22, 2, "Recording").apply { isCheckable = true; isChecked = timeLapseOn }
-        val brushes = m.addSubMenu(0, 103, 4, "Brushes")
-        brushes.add(0, 14, 1, "Import brushes…")
-        brushes.add(0, 25, 2, "Pin brush library")
-        brushes.add(0, 26, 3, "Pin layers")
-        m.add(0, 104, 5, "Settings & Preferences…")
-        m.add(0, 8, 6, "Fit canvas to screen")
-        m.add(0, 9, 7, "Flip canvas horizontally")
-        m.add(0, 13, 8, "Help & gestures")
-        pm.setOnMenuItemClickListener { item ->
-            // sub-menu headers just open their sub-menu
-            if (item.hasSubMenu()) return@setOnMenuItemClickListener false
-            when (item.itemId) {
-                1 -> newCanvasDialog()
-                2 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
-                }, REQ_OPEN)
-                3 -> startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
-                    putExtra(Intent.EXTRA_TITLE, "Artwork.zerin")
-                }, REQ_SAVE)
-                4 -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
-                }, REQ_IMAGE)
-                5 -> exportImage(jpeg = false, share = false)
-                6 -> exportImage(jpeg = true, share = false)
-                7 -> exportImage(jpeg = false, share = true)
-                8 -> cv.fitToScreen()
-                9 -> cv.flipHorizontal()
-                13 -> helpDialog()
-                14 -> showBrushes(Tool.BRUSH)
-                104 -> showSettingsDialog()
-                20 -> textDialog()
-                24 -> exportSvg()
-                25 -> pinPanel("brushes")
-                26 -> pinPanel("layers")
-                21 -> exportTimeLapse()
-                22 -> {
-                    timeLapseOn = !timeLapseOn
-                    prefs.edit().putBoolean("timelapse", timeLapseOn).apply()
-                    toast(if (timeLapseOn) "Time-lapse recording ON" else "Time-lapse recording OFF")
-                }
-                23 -> renameDialog(cv.doc.title) { t ->
-                    cv.doc.title = t
-                    cv.doc.revision++
-                    autosave(force = true)
-                }
+        if (!cv.isDocReady()) return
+        val panel = ActionsPanel(this, actionsHost)
+        showPanel(anchor, panel, 420, 660, alignLeft = true)
+    }
+
+    private val actionsHost = object : ActionsHost {
+        override val canvas get() = cv
+        override val prefs get() = this@MainActivity.prefs
+        override var timeLapseOn: Boolean
+            get() = this@MainActivity.timeLapseOn
+            set(v) { this@MainActivity.timeLapseOn = v }
+
+        override fun close() { popup?.dismiss() }
+        override fun insertPhoto() = startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+        }, REQ_IMAGE)
+        override fun openProjectFile() = startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+        }, REQ_OPEN)
+        override fun addText() = textDialog()
+        override fun importBrushes() = pickBrushFiles()
+        override fun importBrushesFromLink() = importLinkDialog()
+        override fun copyPaste(action: String) {
+            if (busy()) return
+            when (action) {
+                "cut" -> cv.copyToClipboard(cut = true)
+                "copy" -> cv.copyToClipboard(cut = false)
+                "paste" -> cv.pasteClipboard()
+                "duplicate" -> cv.duplicateActiveLayer()
             }
-            true
+            refreshAll()
         }
-        L10n.menu(pm.menu); pm.show()
+        override fun newCanvas() = newCanvasDialog()
+        override fun renameArtwork() = renameDialog(cv.doc.title) { t ->
+            cv.doc.title = t
+            cv.doc.revision++
+            autosave(force = true)
+            refreshAll()
+        }
+        override fun editGuide() = showGuide(creativeBtn)
+        override fun showSymmetry() = showSymmetry(creativeBtn)
+        override fun toggleWindow(id: String) = runTool(id)
+        override fun isWindowOpen(id: String) = pinned.containsKey(id)
+        override fun flipCanvas() = cv.flipHorizontal()
+        override fun fitCanvas() = cv.fitToScreen()
+        override fun export(kind: String) {
+            when (kind) {
+                "share" -> exportImage(jpeg = false, share = true)
+                "png" -> exportImage(jpeg = false, share = false)
+                "jpeg" -> exportImage(jpeg = true, share = false)
+                "svg" -> exportSvg()
+                "project" -> saveProjectAs()
+            }
+        }
+        override fun exportTimeLapse() = this@MainActivity.exportTimeLapse()
+        override fun dockEdge() = this@MainActivity.dockEdge()
+        override fun slidersEdge() = this@MainActivity.slidersEdge()
+        override fun setEdges(dock: String, sliders: String) {
+            prefs.edit().putString("dock_edge", dock).putString("sliders_edge", sliders).apply()
+            leftHanded = sliders == "Right"
+            prefs.edit().putBoolean("leftHanded", leftHanded).apply()
+            applySides()
+        }
+        override fun setLanguage(code: String) {
+            // save the artwork, then start again in the new language
+            autosave(force = true)
+            L10n.save(this@MainActivity, code)
+            afterSaves { recreate() }
+        }
+        override fun openGestureControls() { popup?.dismiss(); showGestureControls() }
+        override fun openShortcuts() { popup?.dismiss(); showShortcuts() }
+        override fun showTips() { popup?.dismiss(); this@MainActivity.showTips() }
+    }
+
+    private fun pickBrushFiles() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }, REQ_BRUSH)
+    }
+
+    private fun saveProjectAs() {
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
+            putExtra(Intent.EXTRA_TITLE, (cv.doc.title.ifBlank { "Artwork" }) + ".zerin")
+        }, REQ_SAVE)
     }
 
     // =========================================================
@@ -1498,32 +1655,6 @@ class MainActivity : Activity(), CanvasView.Listener {
                 } else toast("Saved to Pictures/Zerin")
             }
         }
-    }
-
-    private fun helpDialog() {
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(L10n.tr("Gestures"))
-            .setMessage(
-                "• Draw with the S Pen (pressure + tilt)\n" +
-                    "• Pinch with two fingers: zoom / rotate / move\n" +
-                    "• Two-finger tap: Undo\n" +
-                    "• Three-finger tap: Redo\n" +
-                    "• Touch & hold with a finger: Eyedropper\n" +
-                    "• Hold the pen still at the end of a stroke: QuickShape (keep holding and move to resize / rotate)\n" +
-                    "• Drag the color circle onto the canvas: ColorDrop fill\n" +
-                    "• Tap the brush or eraser again (or long-press it): open the brush library\n" +
-                    "• Your toolbar (the strip on the side): tap a tool to use it, long-press or tap the last button to customize it. " +
-                    "In Creative / Editing, tap ☆ on any card to add it to the toolbar.\n" +
-                    "• Tap the active layer: layer options\n\n" +
-                    "S Pen button:\n" +
-                    "• Click it while hovering: switch Brush ⇄ Eraser\n" +
-                    "• Hold it (or double-click it): quick menu around the pen — color wheel in the middle, your colors under it, " +
-                    "tools on top, recent brushes below, Size on the left and Opacity on the right. Move over an item and release the button, or just tap it.\n" +
-                    "• Hold it while drawing: erase\n\n" +
-                    "If Samsung's Air command opens instead, turn off \"Air command\" in the tablet's S Pen settings."
-            )
-            .setPositiveButton(L10n.tr("OK"), null)
-            .show()
     }
 
     @Deprecated("Deprecated in Java")
@@ -1875,7 +2006,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         category?.let { ToolsPanel.select(creative, it) }
         val panel = ToolsPanel(this, creative, toolsHost)
         popup?.dismiss()
-        val w = min(640.dp, root.width - 24.dp)
+        val w = min(640.dp, root.width - sideBar.width - 40.dp)
         val h = min(600.dp, root.height - 84.dp)
         val pw = PopupWindow(panel, w, h, true)
         pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
@@ -1889,8 +2020,12 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         popup = pw
         val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
-        // opens under the Creative / Editing tabs (they sit on the right in Arabic and Kurdish)
-        val x = if (leftHanded != L10n.isRtl) root.width - w - 12.dp else 12.dp
+        // opens under the Creative / Editing tabs (they sit on the right in Arabic and Kurdish),
+        // beside the sliders rather than over them
+        val onRight = leftHanded != L10n.isRtl
+        val sl = slidersEdge()
+        val gap = if ((sl == "Left" && !onRight) || (sl == "Right" && onRight)) sideBar.width + 16.dp else 12.dp
+        val x = (if (onRight) root.width - w - gap else gap).coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
         pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x + rootLoc[0], 64.dp + rootLoc[1])
     }
 
@@ -2405,10 +2540,190 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
     }
 
+    // =========================================================
+    // keyboard shortcuts (a keyboard cover or a Bluetooth keyboard)
+    // =========================================================
+
+    private val ctrlHold = Runnable {
+        if (root.findViewWithTag<View>("overlay") == null && gallery == null) {
+            showShortcuts(closable = false)
+            shortcutsHeld = true
+        }
+    }
+
+    override fun dispatchKeyEvent(e: KeyEvent): Boolean {
+        if (handleKey(e)) return true
+        return super.dispatchKeyEvent(e)
+    }
+
+    private fun handleKey(e: KeyEvent): Boolean {
+        val code = e.keyCode
+        // holding Ctrl by itself for a second shows the list of shortcuts until it is let go
+        if (code == KeyEvent.KEYCODE_CTRL_LEFT || code == KeyEvent.KEYCODE_CTRL_RIGHT ||
+            code == KeyEvent.KEYCODE_META_LEFT || code == KeyEvent.KEYCODE_META_RIGHT) {
+            if (e.action == KeyEvent.ACTION_DOWN && e.repeatCount == 0) main.postDelayed(ctrlHold, 1000)
+            if (e.action == KeyEvent.ACTION_UP) {
+                main.removeCallbacks(ctrlHold)
+                if (shortcutsHeld) { shortcutsHeld = false; closeSettings() }
+            }
+            return false
+        }
+        if (e.action != KeyEvent.ACTION_DOWN) return false
+        main.removeCallbacks(ctrlHold)
+        if (currentFocus is EditText) return false
+        if (!cv.isDocReady()) return false
+        val ctrl = e.isCtrlPressed || e.isMetaPressed
+        val shift = e.isShiftPressed
+        val alt = e.isAltPressed
+        if (code == KeyEvent.KEYCODE_ESCAPE) {
+            when {
+                quickMenu.isOpen -> quickMenu.close()
+                colorWheel.isOpen -> colorWheel.close()
+                popup?.isShowing == true -> popup?.dismiss()
+                closeSettings() -> {}
+                adjustKind != null -> endAdjust(false)
+                cv.transform != null -> leaveTransform(false)
+                else -> cv.fitToScreen() // upright and centered
+            }
+            return true
+        }
+        if (gallery != null || root.findViewWithTag<View>("overlay") != null) return false
+        // only the first press acts, except keys that make sense held down
+        val repeats = code == KeyEvent.KEYCODE_LEFT_BRACKET || code == KeyEvent.KEYCODE_RIGHT_BRACKET ||
+            code == KeyEvent.KEYCODE_DPAD_LEFT || code == KeyEvent.KEYCODE_DPAD_RIGHT ||
+            code == KeyEvent.KEYCODE_DPAD_UP || code == KeyEvent.KEYCODE_DPAD_DOWN ||
+            (ctrl && (code == KeyEvent.KEYCODE_Z || code == KeyEvent.KEYCODE_Y))
+        if (e.repeatCount > 0 && !repeats) return true
+        val step = if (shift) 10f else 1f
+        when (code) {
+            KeyEvent.KEYCODE_Z -> if (ctrl) { if (shift) cv.redo() else cv.undo() } else return false
+            KeyEvent.KEYCODE_Y -> if (ctrl) cv.redo() else return false
+            KeyEvent.KEYCODE_C -> if (ctrl) cv.copyToClipboard(cut = false) else showColors()
+            KeyEvent.KEYCODE_X -> if (ctrl) cv.copyToClipboard(cut = true) else swapColor()
+            KeyEvent.KEYCODE_V -> if (ctrl) cv.pasteClipboard() else runTool("transform")
+            KeyEvent.KEYCODE_A -> if (ctrl) runTool("sel_all") else return false
+            KeyEvent.KEYCODE_D -> runTool("deselect")
+            KeyEvent.KEYCODE_J -> cv.duplicateActiveLayer()
+            KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL -> if (!busy()) cv.clearActiveLayer()
+            KeyEvent.KEYCODE_B -> selectTool(Tool.BRUSH)
+            KeyEvent.KEYCODE_N -> if (ctrl) newCanvasDialog() else selectTool(Tool.SMUDGE)
+            KeyEvent.KEYCODE_E -> if (ctrl) exportImage(jpeg = false, share = false) else selectTool(Tool.ERASER)
+            KeyEvent.KEYCODE_M -> cv.armEyedropper()
+            KeyEvent.KEYCODE_S -> when {
+                ctrl && shift -> saveProjectAs()
+                ctrl -> { autosave(force = true); hud.show("Saved") }
+                else -> runTool("sel_free")
+            }
+            KeyEvent.KEYCODE_F -> runTool("fill")
+            KeyEvent.KEYCODE_T -> runTool("text")
+            KeyEvent.KEYCODE_U -> runTool("adj_HSB")
+            KeyEvent.KEYCODE_K -> showActions(actionsBtn)
+            KeyEvent.KEYCODE_L -> showLayers()
+            KeyEvent.KEYCODE_O -> if (ctrl) actionsHost.openProjectFile() else return false
+            KeyEvent.KEYCODE_G -> if (ctrl) { cv.greyView = !cv.greyView; hud.show(if (cv.greyView) "Grey view on" else "Grey view off") } else return false
+            KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> if (ctrl) cv.fitToScreen() else setFocus(!focusMode)
+            KeyEvent.KEYCODE_EQUALS, KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_NUMPAD_ADD -> if (ctrl) cv.zoomViewBy(1.25f) else return false
+            KeyEvent.KEYCODE_MINUS, KeyEvent.KEYCODE_NUMPAD_SUBTRACT -> if (ctrl) cv.zoomViewBy(0.8f) else return false
+            KeyEvent.KEYCODE_R -> cv.rotateViewBy(if (shift) -15f else 15f)
+            KeyEvent.KEYCODE_SLASH -> if (ctrl) showShortcuts() else return false
+            KeyEvent.KEYCODE_LEFT_BRACKET, KeyEvent.KEYCODE_RIGHT_BRACKET -> {
+                val by = (if (alt) 0.10f else if (shift) 0.05f else 0.01f) * (if (code == KeyEvent.KEYCODE_LEFT_BRACKET) -1 else 1)
+                val v = (Brushes.sliderFromSize(cv.currentBrush.size) + by).coerceIn(0f, 1f)
+                cv.currentBrush.size = Brushes.sizeFromSlider(v)
+                sizeSlider.value = v
+                brushDot.sizePx = cv.currentBrush.size
+                showSizeHud(false)
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> if (!cv.nudgeTransform(-step, 0f)) return false
+            KeyEvent.KEYCODE_DPAD_RIGHT -> if (!cv.nudgeTransform(step, 0f)) return false
+            KeyEvent.KEYCODE_DPAD_UP -> if (!cv.nudgeTransform(0f, -step)) return false
+            KeyEvent.KEYCODE_DPAD_DOWN -> if (!cv.nudgeTransform(0f, step)) return false
+            else -> return false
+        }
+        refreshAll()
+        return true
+    }
+
+    /** X: the color before this one comes back (and this one goes into the recent list) */
+    private fun swapColor() {
+        val prev = recentColors.firstOrNull { it != cv.color } ?: return
+        ColorPanel.addRecent(recentColors, cv.color)
+        cv.color = prev
+        colorBtn.color = prev
+        if (cv.tool == Tool.ERASER) selectTool(Tool.BRUSH)
+    }
+
+    // =========================================================
+    // files opened with Zerin (Procreate brushes, .zerin projects, images)
+    // =========================================================
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIncoming(intent)
+    }
+
+    private fun handleIncoming(intent: Intent?) {
+        intent ?: return
+        val uris = ArrayList<Uri>()
+        when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data?.let { uris.add(it) }
+            Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                (intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM))?.let { uris.add(it) }
+            }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                @Suppress("DEPRECATION")
+                intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM)?.let { uris.addAll(it) }
+            }
+            else -> return
+        }
+        // handled once, even if the activity is created again (e.g. a language change)
+        intent.action = null
+        if (uris.isEmpty()) return
+        main.post {
+            if (gallery != null) closeGallery()
+            val first = uris[0]
+            val name = displayName(first)?.lowercase() ?: ""
+            val type = contentResolver.getType(first) ?: ""
+            when {
+                name.endsWith(".zerin") || name.endsWith(".inkora") -> openProject(first)
+                type.startsWith("image/") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") ->
+                    AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                        .setTitle(L10n.tr("What should Zerin do with this image?"))
+                        .setItems(arrayOf(L10n.tr("Insert it as a layer"), L10n.tr("Make it a brush"))) { _, which ->
+                            if (which == 0) insertImage(first) else importBrushFiles(uris)
+                        }
+                        .setNegativeButton(L10n.tr("Cancel"), null)
+                        .show()
+                else -> importBrushFiles(uris)
+            }
+        }
+    }
+
     override fun onPenLongPress(x: Float, y: Float) {
         if (gallery != null || quickMenu.isOpen || colorWheel.isOpen) return
         popup?.dismiss()
         openQuickMenu(x, y)
+    }
+
+    override fun onGesture(purpose: GesturePurpose, x: Float, y: Float) {
+        if (quickMenu.isOpen || colorWheel.isOpen) return
+        runGesture(purpose, x, y)
+    }
+
+    override fun onBrushAdjusted() {
+        val b = cv.currentBrush
+        sizeSlider.value = Brushes.sliderFromSize(b.size)
+        opacitySlider.value = b.opacity
+        brushDot.sizePx = b.size
+        brushDot.opacity = b.opacity
+        opacityLabel.text = "${(b.opacity * 100).roundToInt()}%"
+        hud.show("Size ${b.size.roundToInt()} px · Opacity ${(b.opacity * 100).roundToInt()}%", sticky = false)
+    }
+
+    override fun onLayerPicked() {
+        refreshAll()
+        onHistoryChanged()
     }
 
     override fun onSelectionChanged() {

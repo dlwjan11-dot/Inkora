@@ -243,7 +243,7 @@ class ToolsPanel(
         }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { leftMargin = 6.dp; topMargin = 6.dp })
         box.addView(top, LayoutParams(-1, artHeight.dp))
         box.addView(Ui.text(context, title, 13f, if (active) Ui.ACCENT else Ui.TEXT, true).apply {
-            maxLines = 1; setPadding(4.dp, 7.dp, 4.dp, 0)
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(4.dp, 7.dp, 4.dp, 0)
         })
         if (sub.isNotEmpty()) box.addView(Ui.text(context, sub, 11f, Ui.TEXT_DIM).apply { maxLines = 2; setPadding(4.dp, 1.dp, 4.dp, 0) })
         return box

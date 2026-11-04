@@ -61,7 +61,7 @@ object BrushImport {
             isZip(bytes) && depth < 3 -> importZip(ctx, bytes, fileName, out, depth)
             isImage(bytes) -> {
                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return
-                out.add(save(ctx, baseName(fileName) ?: "Stamp", tipFromImage(bmp), null, emptyMap(), stamp = true))
+                out.add(save(ctx, baseName(fileName) ?: "Stamp", "Imported", tipFromImage(bmp), null, GrainType.NONE, emptyMap(), stamp = true))
                 bmp.recycle()
             }
         }
@@ -73,7 +73,7 @@ object BrushImport {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
             var e = zip.nextEntry
             while (e != null) {
-                val name = e.name
+                val name = e.name.replace('\\', '/')
                 if (!e.isDirectory && !name.startsWith("__MACOSX") && !name.substringAfterLast('/').startsWith("._")) {
                     val bos = ByteArrayOutputStream()
                     zip.copyTo(bos)
@@ -84,24 +84,58 @@ object BrushImport {
                 e = zip.nextEntry
             }
         }
-        val byLower = entries.keys.associateBy { it.lowercase() }
+        val byLower = HashMap<String, String>()
+        for (k in entries.keys) byLower[k.lowercase()] = k
+        fun get(path: String): ByteArray? = byLower[path.lowercase()]?.let { entries[it] }
 
-        // 1) Procreate brushes: one folder per brush with Shape.png
-        val shapes = entries.keys.filter { it.lowercase().endsWith("shape.png") }
-        val single = shapes.size == 1
-        for (shapeName in shapes) {
-            val prefix = shapeName.substring(0, shapeName.length - "shape.png".length)
-            val grainBytes = byLower[(prefix + "grain.png").lowercase()]?.let { entries[it] }
-            val archive = byLower[(prefix + "brush.archive").lowercase()]?.let { entries[it] }
-            val meta = archive?.let { runCatching { BPlist.keyedRootFields(it) }.getOrNull() } ?: emptyMap()
-            val shapeBmp = entries[shapeName]?.let { BitmapFactory.decodeByteArray(it, 0, it.size) } ?: continue
-            val grainBmp = grainBytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
-            val name = (meta["name"] as? String)?.takeIf { it.isNotBlank() }
-                ?: (if (single) baseName(fileName) else null)
-                ?: "Imported ${out.size + 1}"
-            out.add(save(ctx, name, tipFromImage(shapeBmp), grainBmp?.let { grainFromImage(it) }, meta, stamp = false))
-            shapeBmp.recycle()
-            grainBmp?.recycle()
+        // a brush set names itself and lists its brushes' folders in order
+        val setPlist = entries.keys.firstOrNull { it.substringAfterLast('/').equals("brushset.plist", true) }
+        val (setName, setOrder) = setPlist?.let { readSetList(entries[it]!!) } ?: (null to emptyList())
+        val setRoot = setPlist?.substringBeforeLast('/', "")?.let { if (it.isEmpty()) "" else "$it/" } ?: ""
+        val category = setName?.takeIf { it.isNotBlank() && it != "Imported" }
+            ?: if (setPlist != null) baseName(fileName) ?: "Imported" else "Imported"
+
+        // 1) Procreate brushes: one folder per brush, each with a Brush.archive
+        //    (a dual brush keeps its second brush in "Sub01/": that is part of it, not a brush of its own)
+        val archives = entries.keys.filter { it.substringAfterLast('/').equals("brush.archive", true) }
+            .map { it.substring(0, it.length - "brush.archive".length) }
+            .filter { !it.endsWith("Sub01/", ignoreCase = true) }
+        val folders = if (setOrder.isEmpty()) archives else {
+            val ordered = setOrder.map { setRoot + it.trimEnd('/') + "/" }.filter { f -> archives.any { it.equals(f, true) } }
+                .map { f -> archives.first { it.equals(f, true) } }
+            ordered + archives.filter { it !in ordered }
+        }
+        val single = folders.size == 1
+        for (prefix in folders) {
+            runCatching {
+                val meta = get(prefix + "Brush.archive")?.let { runCatching { BPlist.keyedRootFields(it) }.getOrNull() } ?: emptyMap()
+                val name = (meta["name"] as? String)?.takeIf { it.isNotBlank() }
+                    ?: (if (single) baseName(fileName) else null)
+                    ?: "Imported ${out.size + 1}"
+                fun flag(k: String) = meta[k] == true || (meta[k] as? Number)?.toInt() == 1
+                val shapeInverted = flag("shapeInverted")
+                val grainInverted = flag("textureInverted")
+                // the shape: its own image (by the name its path gives, or Shape.png), else a stock one
+                val shapePath = (meta["bundledShapePath"] as? String)?.takeIf { it != "\$null" }
+                val shapeBytes = shapePath?.let { get(prefix + it) ?: get(prefix + it.substringAfterLast('/')) } ?: get(prefix + "Shape.png")
+                val tip: Bitmap = if (shapeBytes != null) {
+                    val bmp = BitmapFactory.decodeByteArray(shapeBytes, 0, shapeBytes.size) ?: return@runCatching
+                    tipFromProcreate(bmp, shapeInverted).also { bmp.recycle() }
+                } else stockTip(shapePath ?: "", shapeInverted)
+                // the grain: its own image, else a stock one we have something like
+                val grainPath = (meta["bundledGrainPath"] as? String)?.takeIf { it != "\$null" }
+                val grainBytes = grainPath?.let { get(prefix + it) ?: get(prefix + it.substringAfterLast('/')) } ?: get(prefix + "Grain.png")
+                var grainType = GrainType.NONE
+                val grain: Bitmap? = if (grainBytes != null) {
+                    BitmapFactory.decodeByteArray(grainBytes, 0, grainBytes.size)?.let { g ->
+                        grainFromImage(g, grainInverted).also { g.recycle() }
+                    }
+                } else {
+                    grainType = stockGrain(grainPath ?: "")
+                    null
+                }
+                out.add(save(ctx, name, category, tip, grain, grainType, meta, stamp = false))
+            }
         }
 
         // 2) nested brush files (e.g. a .zip full of .brushset files)
@@ -113,16 +147,33 @@ object BrushImport {
         }
 
         // 3) nothing Procreate-like: every image is a stamp
-        if (shapes.isEmpty()) {
+        if (folders.isEmpty()) {
+            val stampSet = baseName(fileName) ?: "Imported"
             for ((name, data) in entries) {
                 val l = name.lowercase()
                 if (!(l.endsWith(".png") || l.endsWith(".jpg") || l.endsWith(".jpeg") || l.endsWith(".webp"))) continue
-                if (l.endsWith("grain.png") || l.contains("thumbnail")) continue
+                if (l.endsWith("grain.png") || l.contains("thumbnail") || l.contains("quicklook")) continue
                 val bmp = BitmapFactory.decodeByteArray(data, 0, data.size) ?: continue
-                out.add(save(ctx, baseName(name) ?: "Stamp", tipFromImage(bmp), null, emptyMap(), stamp = true))
+                out.add(save(ctx, baseName(name) ?: "Stamp", stampSet, tipFromImage(bmp), null, GrainType.NONE, emptyMap(), stamp = true))
                 bmp.recycle()
             }
         }
+    }
+
+    /** The set's name and its brushes' folders, from brushset.plist (XML or binary). */
+    private fun readSetList(bytes: ByteArray): Pair<String?, List<String>> {
+        if (bytes.size > 8 && String(bytes, 0, 6, Charsets.US_ASCII) == "bplist") {
+            val root = runCatching { BPlist.parse(bytes).root as? Map<*, *> }.getOrNull() ?: return null to emptyList()
+            val name = root["name"] as? String
+            val list = (root["brushes"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+            return name to list
+        }
+        val text = String(bytes, Charsets.UTF_8)
+        fun unescape(v: String) = v.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
+        val name = Regex("<key>name</key>\\s*<string>([^<]*)</string>").find(text)?.groupValues?.get(1)?.let(::unescape)
+        val arr = Regex("<key>brushes</key>\\s*<array>(.*?)</array>", RegexOption.DOT_MATCHES_ALL).find(text)?.groupValues?.get(1) ?: ""
+        val list = Regex("<string>([^<]*)</string>").findAll(arr).map { unescape(it.groupValues[1]) }.toList()
+        return name to list
     }
 
     private fun baseName(path: String?): String? {
@@ -176,8 +227,62 @@ object BrushImport {
         return Brushes.alphaBitmap(a, w, h)
     }
 
+    /**
+     * A Procreate shape: white paints, black doesn't (the other way round when [inverted]).
+     * An image with real transparency uses that instead.
+     */
+    fun tipFromProcreate(src: Bitmap, inverted: Boolean): Bitmap {
+        val bmp = scaled(src.copy(Bitmap.Config.ARGB_8888, false), 256)
+        val w = bmp.width
+        val h = bmp.height
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, 0, 0, w, h)
+        val translucent = px.count { (it ushr 24) < 250 } > px.size / 50
+        val a = ByteArray(w * h) { i ->
+            val v = if (translucent) (px[i] ushr 24) / 255f
+                else luminance(px[i]).let { if (inverted) 1f - it else it }
+            (v * 255).roundToInt().coerceIn(0, 255).toByte()
+        }
+        return Brushes.alphaBitmap(a, w, h)
+    }
+
+    /** Procreate's own shapes aren't in the file: the nearest of ours. */
+    private fun stockTip(path: String, inverted: Boolean): Bitmap {
+        val n = path.lowercase()
+        fun has(vararg w: String) = w.any { n.contains(it) }
+        if (has("blank")) {
+            // the stamp's whole square (nothing, inverted: then a round tip is the useful reading)
+            if (!inverted) {
+                val a = ByteArray(64 * 64) { 0xFF.toByte() }
+                return Brushes.alphaBitmap(a, 64, 64)
+            }
+        }
+        val shape = when {
+            has("square") -> TipShape.SQUARE
+            has("spray", "spatter", "splat", "dots", "speckle") -> TipShape.SPRAY
+            has("pencil", "graphite") -> TipShape.PENCIL
+            has("charcoal", "chalk", "pastel") -> TipShape.CHARCOAL
+            has("bristle", "hair", "fan") -> TipShape.BRISTLE
+            has("flat") -> TipShape.FLAT
+            has("ultra-soft", "ultrasoft", "soft", "air", "blur", "glow") -> TipShape.SOFT
+            else -> TipShape.HARD
+        }
+        return Brushes.tip(shape)
+    }
+
+    /** Procreate's own grains aren't in the file either: the nearest of ours, or none. */
+    private fun stockGrain(path: String): GrainType {
+        val n = path.lowercase()
+        if (n.isBlank() || n.contains("blank")) return GrainType.NONE
+        return when {
+            listOf("canvas", "linen", "fabric", "weave", "denim", "twill").any { n.contains(it) } -> GrainType.CANVAS
+            listOf("rough", "grit", "noise", "sand", "concrete", "rust", "dirt", "grunge").any { n.contains(it) } -> GrainType.ROUGH
+            else -> GrainType.PAPER
+        }
+    }
+
     /** Grain: white = paint shows, black = paper shows. */
-    fun grainFromImage(src: Bitmap): Bitmap {
+    fun grainFromImage(src: Bitmap, inverted: Boolean = false): Bitmap {
         val bmp = scaled(src.copy(Bitmap.Config.ARGB_8888, false), 512)
         val w = bmp.width
         val h = bmp.height
@@ -185,7 +290,8 @@ object BrushImport {
         bmp.getPixels(px, 0, w, 0, 0, w, h)
         val a = ByteArray(w * h) { i ->
             val alpha = (px[i] ushr 24) / 255f
-            (luminance(px[i]) * alpha * 255).roundToInt().coerceIn(0, 255).toByte()
+            val v = luminance(px[i]) * alpha
+            ((if (inverted) 1f - v else v) * 255).roundToInt().coerceIn(0, 255).toByte()
         }
         return Brushes.alphaBitmap(a, w, h)
     }
@@ -194,20 +300,59 @@ object BrushImport {
     // storage
     // =========================================================
 
-    private fun num(meta: Map<String, Any?>, key: String): Float? = (meta[key] as? Number)?.toFloat()
+    private fun num(meta: Map<String, Any?>, key: String): Float? =
+        (meta[key] as? Number)?.toFloat()?.takeIf { it.isFinite() }
 
-    private fun save(ctx: Context, name: String, tip: Bitmap, grain: Bitmap?, meta: Map<String, Any?>, stamp: Boolean): BrushPreset {
+    /**
+     * Keeps a brush: its shape and grain as images, and what we can carry over of its settings
+     * (Procreate keeps most of them as 0..1 amounts) in brush.json.
+     */
+    private fun save(ctx: Context, name: String, category: String, tip: Bitmap, grain: Bitmap?, grainType: GrainType,
+                     meta: Map<String, Any?>, stamp: Boolean): BrushPreset {
         val id = UUID.randomUUID().toString()
         val dir = File(root(ctx), id).apply { mkdirs() }
-        // Procreate keeps spacing/jitter as 0..1 fractions
-        val spacing = num(meta, "plotSpacing")?.takeIf { it > 0f && it <= 2f }?.coerceAtLeast(0.02f)
+        val spacing = num(meta, "plotSpacing")?.takeIf { it > 0f && it <= 4f }?.coerceIn(0.02f, 2f)
             ?: if (stamp) 0.25f else 0.08f
-        val scatter = num(meta, "plotJitter")?.takeIf { it in 0f..3f } ?: 0f
+        val scatter = num(meta, "plotJitter")?.takeIf { it in 0f..3f }?.coerceAtMost(1.5f) ?: 0f
+        // sizes: the file's most size is in units of 262 canvas pixels; start halfway up its slider
+        val maxPx = num(meta, "maxSize")?.let { it * 262f }?.takeIf { it > 0f }
+        val sliderPos = num(meta, "paintSize")?.coerceIn(0f, 1f) ?: 0.5f
+        val size = maxPx?.let { (it * (0.15f + 0.85f * sliderPos * sliderPos)).coerceIn(2f, 400f) }
+            ?: if (stamp) 80f else 40f
+        val pressureSize = num(meta, "dynamicsPressureSize")?.coerceIn(0f, 1f)
+        val pressureOpacity = num(meta, "dynamicsPressureOpacity")?.coerceIn(0f, 1f)
+        val streamline = num(meta, "plotSmoothing")?.coerceIn(0f, 1f) ?: 0.25f
+        val opacity = num(meta, "paintOpacity")?.coerceIn(0.05f, 1f) ?: 1f
+        val flow = num(meta, "dynamicsGlazedFlow")?.coerceIn(0.05f, 1f) ?: 1f
+        val randomRot = meta["shapeRandomise"] == true || (meta["shapeRandomise"] as? Number)?.toInt() == 1
+        val rot = num(meta, "shapeRotation") ?: 0f
+        val angle = Math.toDegrees((num(meta, "shapeAngle") ?: 0f).toDouble()).toFloat()
+        val rotation = when {
+            randomRot -> RotationMode.RANDOM
+            kotlin.math.abs(rot) >= 0.5f -> RotationMode.FOLLOW
+            kotlin.math.abs(angle) > 0.5f -> RotationMode.FIXED
+            else -> RotationMode.NONE
+        }
+        val taper = listOfNotNull(num(meta, "pencilTaperStartLength"), num(meta, "pencilTaperEndLength"),
+            num(meta, "taperStartLength"), num(meta, "taperEndLength")).maxOrNull()?.coerceIn(0f, 1f) ?: 0f
+        val grainScale = num(meta, "textureScale")?.let { kotlin.math.sqrt((it / 16f).coerceAtLeast(0f)) }
         val json = JSONObject().apply {
             put("name", name)
+            put("category", category)
             put("spacing", spacing.toDouble())
             put("scatter", scatter.toDouble())
             put("stamp", stamp)
+            put("size", size.toDouble())
+            pressureSize?.let { put("pressureSize", it.toDouble()) }
+            pressureOpacity?.let { put("pressureOpacity", it.toDouble()) }
+            put("streamline", streamline.toDouble())
+            put("opacity", opacity.toDouble())
+            put("flow", flow.toDouble())
+            put("rotation", rotation.name)
+            put("angle", angle.toDouble())
+            put("taper", (taper * 8f).toDouble())
+            if (grainType != GrainType.NONE) put("grainType", grainType.name)
+            grainScale?.let { put("grainScale", (0.3f + it * 3f).toDouble()) }
         }
         File(dir, "brush.json").writeText(json.toString(2))
         writeAlpha(tip, File(dir, "shape.png"))
@@ -232,18 +377,25 @@ object BrushImport {
 
     private fun makePreset(id: String, json: JSONObject, tip: Bitmap, grain: Bitmap?): BrushPreset {
         val stamp = json.optBoolean("stamp", false)
+        fun f(key: String, def: Float) = json.optDouble(key, def.toDouble()).toFloat().takeIf { it.isFinite() } ?: def
+        val stockGrain = runCatching { GrainType.valueOf(json.optString("grainType", "NONE")) }.getOrDefault(GrainType.NONE)
         return BrushPreset(
             name = json.optString("name", "Imported"),
-            category = "Imported",
+            category = json.optString("category", "Imported").ifBlank { "Imported" },
             tip = TipShape.CUSTOM,
-            spacing = json.optDouble("spacing", 0.1).toFloat(),
-            minSize = if (stamp) 0.8f else 0.4f,
-            minFlow = if (stamp) 0.8f else 0.3f,
-            flow = 1f,
-            streamline = 0.25f,
-            defaultSize = if (stamp) 80f else 40f,
-            scatter = json.optDouble("scatter", 0.0).toFloat(),
-            grain = if (grain != null) GrainType.CUSTOM else GrainType.NONE,
+            spacing = f("spacing", 0.1f),
+            minSize = 1f - f("pressureSize", if (stamp) 0.2f else 0.6f),
+            minFlow = 1f - f("pressureOpacity", if (stamp) 0.2f else 0.7f),
+            flow = f("flow", 1f),
+            streamline = f("streamline", 0.25f),
+            defaultSize = f("size", if (stamp) 80f else 40f),
+            defaultOpacity = f("opacity", 1f),
+            scatter = f("scatter", 0f),
+            rotation = runCatching { RotationMode.valueOf(json.optString("rotation", "NONE")) }.getOrDefault(RotationMode.NONE),
+            angle = f("angle", 0f),
+            taper = f("taper", 0f),
+            grain = if (grain != null) GrainType.CUSTOM else stockGrain,
+            grainScale = f("grainScale", 1f),
             id = "user:$id",
             customTip = tip,
             customGrain = grain

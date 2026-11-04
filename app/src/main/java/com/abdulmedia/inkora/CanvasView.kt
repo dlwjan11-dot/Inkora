@@ -42,6 +42,12 @@ class CanvasView(context: Context) : View(context) {
         fun onDrawingChanged(drawing: Boolean) {}
         /** pen pressed and held still on the canvas */
         fun onPenLongPress(x: Float, y: Float) {}
+        /** a gesture asked for something the screen around the canvas does (quick menu, full screen…) */
+        fun onGesture(purpose: GesturePurpose, x: Float, y: Float) {}
+        /** the brush's size or opacity changed from the canvas (hover + finger) */
+        fun onBrushAdjusted() {}
+        /** a different layer became the active one */
+        fun onLayerPicked() {}
     }
 
     var listener: Listener? = null
@@ -72,6 +78,21 @@ class CanvasView(context: Context) : View(context) {
         set(v) { field = v; invalidate() }
 
     var smudgeBrush = Brush(Brushes.presets[0]).apply { size = 60f; opacity = 0.75f }
+
+    /** gesture controls (set by MainActivity) */
+    var gestures: GestureSettings? = null
+    /** the sidebar's □ modify button is held down */
+    var modifyHeld = false
+    /** a canvas touch happened while □ was held, so letting go of □ is not a tap */
+    var modifyUsed = false
+    /** grey view: the artwork shown in greys, to check values */
+    var greyView = false
+        set(v) { field = v; invalidate() }
+    private val greyPaint = Paint().apply {
+        colorFilter = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(0f) })
+    }
+    /** what the current stroke was told to do by a gesture (erase, smudge, follow the guide) */
+    private var strokeOverride: GesturePurpose? = null
 
     val currentBrush get() = when (tool) {
         Tool.ERASER -> eraserBrush
@@ -123,7 +144,7 @@ class CanvasView(context: Context) : View(context) {
     private val loupePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // ---- input state ----
-    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG }
+    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ }
 
     // ---- vector layers ----
     val vectorEditor: VectorEditor by lazy {
@@ -215,9 +236,36 @@ class CanvasView(context: Context) : View(context) {
     private var pressY = 0f
     private var pressMoved = false
     private val longPressRunnable = Runnable {
-        if (strokeActive && !pressMoved && drawIsStylus && shape == null) {
-            cancelStroke() // removes the dot that was drawn on touch-down
-            listener?.onPenLongPress(pressX, pressY)
+        if (strokeActive && !pressMoved && shape == null) {
+            val purpose = purposeOf(if (drawIsStylus) GestureTrigger.PEN_STILL else GestureTrigger.HOLD)
+            if (purpose != null) {
+                cancelStroke() // removes the dot that was drawn on touch-down
+                when (purpose) {
+                    GesturePurpose.QUICKMENU -> if (drawIsStylus) listener?.onPenLongPress(pressX, pressY)
+                        else listener?.onGesture(purpose, pressX, pressY)
+                    GesturePurpose.EYEDROPPER -> { mode = Mode.PICK; pickAt(pressX, pressY) }
+                    else -> { runPurpose(purpose, pressX, pressY); if (mode != Mode.PICK) mode = Mode.IGNORE }
+                }
+            }
+        }
+    }
+
+    private fun purposeOf(t: GestureTrigger): GesturePurpose? = gestures?.purposeOf(t)
+
+    /** what a pen stroke is set to do instead of the tool, if anything (erase, smudge, follow the guide) */
+    private fun penOverride(): GesturePurpose? =
+        purposeOf(if (modifyHeld) GestureTrigger.MODIFY_PEN else GestureTrigger.PEN)
+            ?.takeIf { it == GesturePurpose.SMUDGE || it == GesturePurpose.ERASE || it == GesturePurpose.ASSISTED }
+    private fun gOn(p: GesturePurpose, key: String, default: Boolean) = gestures?.isOn(p, key) ?: default
+    private fun delayMs(p: GesturePurpose?, fallback: Long) = if (p == null) fallback else gestures?.delayMs(p) ?: fallback
+
+    /** does what a gesture asks: on the canvas when it can, else the screen around it */
+    fun runPurpose(p: GesturePurpose, sx: Float, sy: Float) {
+        when (p) {
+            GesturePurpose.EYEDROPPER -> armEyedropper()
+            GesturePurpose.LAYER_SELECT -> selectLayerAt(sx, sy)
+            GesturePurpose.QUICKSHAPE -> snapLastStroke()
+            else -> listener?.onGesture(p, sx, sy)
         }
     }
 
@@ -233,6 +281,32 @@ class CanvasView(context: Context) : View(context) {
     private var gMoved = 0f
     private val gDown = HashMap<Int, PointF>()
     private val tapStartMatrix = Matrix()
+    private var gLastScale = 1f
+    private var gPointers = 0
+    /** a three-finger swipe or scrub, or rapid undo, already did something in this gesture */
+    private var gFired = false
+    private var scrubDir = 0
+    private var scrubTurns = 0
+    private var scrubRefX = 0f
+    private var lastHoverAt = 0L
+    // one finger moving the canvas
+    private var panX = 0f
+    private var panY = 0f
+    // hover + finger: opacity and size
+    private var hoverStartX = 0f
+    private var hoverStartY = 0f
+    private var hoverStartOpacity = 1f
+    private var hoverStartSize = 10f
+    private var hoverStartDist = 0f
+    private val rapidRunnable = object : Runnable {
+        override fun run() {
+            if (mode != Mode.GESTURE || gMoved > 24f * density) return
+            val n = gPointers
+            if (n == 2) undo() else if (n == 3) redo() else return
+            gFired = true
+            postDelayed(this, 120)
+        }
+    }
 
     // eyedropper
     private var pickX = 0f
@@ -240,8 +314,11 @@ class CanvasView(context: Context) : View(context) {
     private var pickColor = 0
     private val fingerHoldRunnable = Runnable {
         if (mode == Mode.FINGER_WAIT) {
-            mode = Mode.PICK
-            pickAt(pickX, pickY)
+            when (val p = purposeOf(GestureTrigger.HOLD)) {
+                null -> {}
+                GesturePurpose.EYEDROPPER -> { mode = Mode.PICK; pickAt(pickX, pickY) }
+                else -> { mode = Mode.IGNORE; runPurpose(p, pickX, pickY) }
+            }
         }
     }
 
@@ -253,6 +330,12 @@ class CanvasView(context: Context) : View(context) {
     private var hoverOrientation = 0f
 
     private val tmpPts = FloatArray(2)
+
+    companion object {
+        /** Zerin's own clipboard: shared by every artwork while the app runs */
+        private var clipboard: Bitmap? = null
+        private var clipboardAt = android.graphics.Point(0, 0)
+    }
 
     // =========================================================
     // document
@@ -373,6 +456,7 @@ class CanvasView(context: Context) : View(context) {
         val filter = z < 2f
         val sb = strokeBitmap
         val t = transform
+        val greySave = if (greyView) canvas.saveLayer(doc.bounds, greyPaint) else -1
         if (strokeActive && !smudging && sb != null) {
             overlayPaint.alpha = (engine.brush.opacity * 255).toInt().coerceIn(0, 255)
             overlayPaint.blendMode = strokeBlend()
@@ -395,6 +479,7 @@ class CanvasView(context: Context) : View(context) {
         } else {
             doc.draw(canvas, filter)
         }
+        if (greySave >= 0) canvas.restoreToCount(greySave)
 
         drawGuide(canvas, z)
         if (symmetry != Symmetry.OFF) drawSymmetryGuides(canvas, z)
@@ -630,6 +715,7 @@ class CanvasView(context: Context) : View(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
                 hovering = true
+                lastHoverAt = android.os.SystemClock.uptimeMillis()
                 hoverX = e.x
                 hoverY = e.y
                 hoverTilt = e.getAxisValue(MotionEvent.AXIS_TILT)
@@ -729,6 +815,7 @@ class CanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_CANCEL -> {
                 if (strokeActive) cancelStroke()
                 removeCallbacks(fingerHoldRunnable)
+                removeCallbacks(rapidRunnable)
                 mode = Mode.NONE
                 invalidate()
             }
@@ -737,8 +824,11 @@ class CanvasView(context: Context) : View(context) {
     }
 
     private fun onFirstDown(e: MotionEvent) {
+        val penWasHovering = hovering && android.os.SystemClock.uptimeMillis() - lastHoverAt < 400
         hovering = false
         downTime = e.eventTime
+        strokeOverride = null
+        gFired = false
         if (editingGuide) {
             dragVp = hitVp(e.x, e.y)
             mode = if (dragVp >= 0) Mode.VP_DRAG else Mode.IGNORE
@@ -780,19 +870,48 @@ class CanvasView(context: Context) : View(context) {
             pickAt(e.x, e.y)
             return
         }
+        // the pen hovering and a finger comes down: the finger sets opacity, two fingers the size
+        if (!stylus && penWasHovering && gOn(GesturePurpose.HOVER, "HOVER_TOUCH", false)) {
+            mode = Mode.HOVER_ADJ
+            hoverStartX = e.x; hoverStartY = e.y
+            hoverStartOpacity = currentBrush.opacity
+            hoverStartSize = currentBrush.size
+            hoverStartDist = 0f
+            return
+        }
+        // what this way of touching is set to do (gesture controls)
+        val trigger = when {
+            modifyHeld -> if (stylus) GestureTrigger.MODIFY_PEN else GestureTrigger.MODIFY_TOUCH
+            stylus -> GestureTrigger.PEN
+            else -> GestureTrigger.TOUCH
+        }
+        if (modifyHeld) modifyUsed = true
+        when (val purpose = purposeOf(trigger)) {
+            null -> {}
+            GesturePurpose.EYEDROPPER -> { mode = Mode.PICK; pickAt(e.x, e.y); return }
+            GesturePurpose.SMUDGE, GesturePurpose.ERASE, GesturePurpose.ASSISTED -> {
+                strokeOverride = purpose
+                startStroke(e, 0, stylus)
+                return
+            }
+            else -> { mode = Mode.IGNORE; runPurpose(purpose, e.x, e.y); return }
+        }
         if (fillMode && (stylus || fingerDrawing)) {
             mode = Mode.IGNORE
             colorDrop(e.x, e.y, color)
             return
         }
-        if (stylus || fingerDrawing) {
+        val onePan = !stylus && gOn(GesturePurpose.GENERAL, "ONE_FINGER_PAN", false)
+        if (stylus || (fingerDrawing && !onePan)) {
             startStroke(e, 0, stylus)
         } else {
             mode = Mode.FINGER_WAIT
             pickX = e.x; pickY = e.y
+            panX = e.x; panY = e.y
             gDown.clear()
             gDown[e.getPointerId(0)] = PointF(e.x, e.y)
-            postDelayed(fingerHoldRunnable, 450)
+            val hold = purposeOf(GestureTrigger.HOLD)
+            if (hold != null) postDelayed(fingerHoldRunnable, delayMs(hold, 450))
         }
     }
 
@@ -810,11 +929,14 @@ class CanvasView(context: Context) : View(context) {
             Mode.FINGER_WAIT, Mode.NONE, Mode.IGNORE -> {
                 removeCallbacks(fingerHoldRunnable)
                 if (newIsStylus) {
+                    strokeOverride = penOverride()
                     startStroke(e, idx, true)
                 } else startGesture(e, -1)
             }
             Mode.GESTURE -> {
                 if (newIsStylus) {
+                    removeCallbacks(rapidRunnable)
+                    strokeOverride = penOverride()
                     startStroke(e, idx, true)
                 } else startGesture(e, -1, keepTapInfo = true)
             }
@@ -832,6 +954,11 @@ class CanvasView(context: Context) : View(context) {
                     startGesture(e, -1)
                 }
             }
+            Mode.HOVER_ADJ -> if (e.pointerCount >= 2) {
+                hoverStartDist = max(1f, hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0)))
+                hoverStartSize = currentBrush.size
+            }
+            Mode.PAN -> startGesture(e, -1)
             Mode.PICK, Mode.VP_DRAG, Mode.TRANSFORM_PINCH -> {}
         }
     }
@@ -859,7 +986,7 @@ class CanvasView(context: Context) : View(context) {
                     // the S Pen is very precise: small hand tremor while holding still must not reset the timer
                     holdAnchorX = ex; holdAnchorY = ey
                     removeCallbacks(holdRunnable)
-                    if (quickShapeEnabled && !smudging) postDelayed(holdRunnable, 500)
+                    if (quickShapeEnabled && !smudging) postDelayed(holdRunnable, delayMs(GesturePurpose.QUICKSHAPE, 500))
                 }
                 invalidate()
             }
@@ -867,8 +994,25 @@ class CanvasView(context: Context) : View(context) {
             Mode.FINGER_WAIT -> {
                 if (hypot(e.x - pickX, e.y - pickY) > 10f * density) {
                     removeCallbacks(fingerHoldRunnable)
-                    mode = Mode.IGNORE
+                    mode = if (gOn(GesturePurpose.GENERAL, "ONE_FINGER_PAN", false)) Mode.PAN else Mode.IGNORE
+                    panX = e.x; panY = e.y
                 }
+            }
+            Mode.PAN -> {
+                viewMatrix.postTranslate(e.x - panX, e.y - panY)
+                panX = e.x; panY = e.y
+                invalidate()
+            }
+            Mode.HOVER_ADJ -> {
+                val b = currentBrush
+                if (e.pointerCount >= 2 && hoverStartDist > 0f) {
+                    val d = max(1f, hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0)))
+                    b.size = (hoverStartSize * d / hoverStartDist).coerceIn(Brushes.MIN_SIZE, Brushes.MAX_SIZE)
+                } else if (e.pointerCount == 1) {
+                    b.opacity = (hoverStartOpacity - (e.y - hoverStartY) / (260f * density)).coerceIn(0.01f, 1f)
+                }
+                listener?.onBrushAdjusted()
+                invalidate()
             }
             Mode.PICK -> pickAt(e.x, e.y)
             Mode.VP_DRAG -> {
@@ -907,10 +1051,18 @@ class CanvasView(context: Context) : View(context) {
             Mode.DRAW -> finishStroke()
             Mode.GESTURE -> {
                 trackMove(e)
+                removeCallbacks(rapidRunnable)
                 val quick = e.eventTime - gStartTime < 320 && gMoved < 24f * density
-                if (quick && gMaxPointers >= 2) {
+                val noUndo = gOn(GesturePurpose.GENERAL, "NO_UNDO", false)
+                if (quick && !gFired && gMaxPointers >= 2) {
                     viewMatrix.set(tapStartMatrix) // a tap must not nudge the canvas
-                    if (gMaxPointers == 2) undo() else redo()
+                    when (gMaxPointers) {
+                        2 -> if (!noUndo) undo()
+                        3 -> if (!noUndo) redo()
+                        4 -> purposeOf(GestureTrigger.FOUR_TAP)?.let { runPurpose(it, e.x, e.y) }
+                    }
+                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 400 && gLastScale < 0.75f) {
+                    fitToScreen() // a quick pinch in fits the canvas
                 }
             }
             Mode.PICK -> {
@@ -950,11 +1102,13 @@ class CanvasView(context: Context) : View(context) {
             return
         }
         val sb = strokeBitmap ?: return
-        strokeErasing = tool == Tool.ERASER ||
+        val ov = strokeOverride
+        strokeErasing = (tool == Tool.ERASER && ov != GesturePurpose.SMUDGE) ||
+            ov == GesturePurpose.ERASE ||
             e.getToolType(idx) == MotionEvent.TOOL_TYPE_ERASER ||
             (stylus && isPenButton(e.buttonState))
         sb.eraseColor(0)
-        smudging = !strokeErasing && tool == Tool.SMUDGE
+        smudging = !strokeErasing && (tool == Tool.SMUDGE || ov == GesturePurpose.SMUDGE)
         engine.brush = when {
             strokeErasing -> eraserBrush
             smudging -> smudgeBrush
@@ -983,7 +1137,7 @@ class CanvasView(context: Context) : View(context) {
         holdAnchorX = e.getX(idx); holdAnchorY = e.getY(idx)
         removeCallbacks(holdRunnable)
         constraint = null
-        if (assistedActive()) {
+        if (assistedActive() || (ov == GesturePurpose.ASSISTED && doc.guide.type != GuideType.OFF)) {
             // wait until the pen moves a little, then lock to the closest guide direction
             snapPending = true
             pendingPts.clear()
@@ -993,11 +1147,12 @@ class CanvasView(context: Context) : View(context) {
             engine.begin(sb, ip, smooth = true, seed = shapeSeed)
         }
         // QuickShape works with or without the grid's Assisted Drawing
-        if (quickShapeEnabled && !smudging) postDelayed(holdRunnable, 500)
+        if (quickShapeEnabled && !smudging) postDelayed(holdRunnable, delayMs(GesturePurpose.QUICKSHAPE, 500))
         pressX = e.getX(idx); pressY = e.getY(idx)
         pressMoved = false
         removeCallbacks(longPressRunnable)
-        if (stylus) postDelayed(longPressRunnable, 420)
+        val still = purposeOf(if (stylus) GestureTrigger.PEN_STILL else GestureTrigger.HOLD)
+        if (still != null) postDelayed(longPressRunnable, delayMs(still, 420))
         invalidate()
     }
 
@@ -1107,9 +1262,47 @@ class CanvasView(context: Context) : View(context) {
             lc.restoreToCount(s)
         }
         val after = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
-        history.push(PixelEdit(layer, Rect(r), before, after), doc)
+        val cmd = PixelEdit(layer, Rect(r), before, after)
+        history.push(cmd, doc)
         sb.eraseColor(0)
+        lastStroke = if (shape == null && strokePoints.size >= 4)
+            LastStroke(cmd, layer, ArrayList(strokePoints), engine.brush, engine.color, strokeErasing, strokeGrain, shapeSeed) else null
         listener?.onHistoryChanged()
+    }
+
+    private class LastStroke(val cmd: Command, val layer: Layer, val points: List<InputPoint>, val brush: Brush, val color: Int,
+                             val erasing: Boolean, val grain: Paint?, val seed: Int)
+    private var lastStroke: LastStroke? = null
+
+    /** QuickShape after the fact: the last stroke redrawn as the line, circle or box it looks like. */
+    fun snapLastStroke() {
+        val ls = lastStroke
+        if (ls == null || history.top() !== ls.cmd || strokeActive || ls.layer !== doc.active) {
+            listener?.onMessage("Draw a stroke first, then turn it into a shape")
+            return
+        }
+        val detected = QuickShape.detect(ls.points)
+        if (detected == null) {
+            listener?.onMessage("No shape recognised — try again a bit more carefully")
+            return
+        }
+        val sb = strokeBitmap ?: return
+        history.undo(doc)
+        sb.eraseColor(0)
+        engine.brush = ls.brush
+        engine.color = ls.color
+        engine.dabHandler = null
+        engine.symmetry = symmetry
+        val wasErasing = strokeErasing
+        strokeErasing = ls.erasing
+        strokeGrain = ls.grain
+        val pressure = ls.points.map { it.pressure }.average().toFloat().coerceIn(0.2f, 1f)
+        engine.renderPoints(sb, QuickShape.toPoints(detected), pressure, ls.seed)
+        commitStroke()
+        strokeErasing = wasErasing
+        lastStroke = null
+        listener?.onMessage(detected.label)
+        invalidate()
     }
 
     private fun currentBrushFor(erasing: Boolean) = if (erasing) eraserBrush else paintBrush
@@ -1193,6 +1386,14 @@ class CanvasView(context: Context) : View(context) {
         mode = Mode.GESTURE
         gestureStart.set(viewMatrix)
         gRotating = false
+        gLastScale = 1f
+        gPointers = pts.size
+        if (!keepTapInfo) { scrubDir = 0; scrubTurns = 0; scrubRefX = 0f }
+        removeCallbacks(rapidRunnable)
+        if (!gFired && (pts.size == 2 || pts.size == 3) && gMoved < 24f * density &&
+            gOn(GesturePurpose.GENERAL, "RAPID_UNDO", true) && !gOn(GesturePurpose.GENERAL, "NO_UNDO", false)) {
+            postDelayed(rapidRunnable, delayMs(GesturePurpose.GENERAL, 650))
+        }
         if (pts.size >= 2) {
             gStartMidX = (pts[0].x + pts[1].x) / 2
             gStartMidY = (pts[0].y + pts[1].y) / 2
@@ -1213,6 +1414,47 @@ class CanvasView(context: Context) : View(context) {
 
     private fun updateGesture(e: MotionEvent) {
         trackMove(e)
+        if (gMoved > 24f * density) removeCallbacks(rapidRunnable)
+        if (gFired) return
+        if (e.pointerCount == 3 && gMaxPointers == 3) {
+            var dx = 0f; var dy = 0f; var n = 0
+            var mx = 0f
+            for (i in 0 until 3) {
+                val d = gDown[e.getPointerId(i)] ?: continue
+                dx += e.getX(i) - d.x; dy += e.getY(i) - d.y; mx += e.getX(i); n++
+            }
+            if (n == 3) {
+                dx /= 3; dy /= 3; mx /= 3
+                // swiped down, mostly straight
+                if (dy > 70f * density && abs(dx) < dy * 0.6f) {
+                    purposeOf(GestureTrigger.THREE_SWIPE)?.let { p ->
+                        gFired = true
+                        viewMatrix.set(tapStartMatrix)
+                        runPurpose(p, mx, e.getY(0))
+                        invalidate()
+                        return
+                    }
+                }
+                // scrubbed: back and forth sideways
+                if (scrubRefX == 0f) scrubRefX = mx
+                val step = 24f * density
+                val dir = if (mx > scrubRefX + step) 1 else if (mx < scrubRefX - step) -1 else 0
+                if (dir != 0) {
+                    if (scrubDir != 0 && dir != scrubDir) scrubTurns++
+                    scrubDir = dir
+                    scrubRefX = mx
+                    if (scrubTurns >= 3) {
+                        purposeOf(GestureTrigger.SCRUB)?.let { p ->
+                            gFired = true
+                            viewMatrix.set(tapStartMatrix)
+                            runPurpose(p, mx, e.getY(0))
+                            invalidate()
+                            return
+                        }
+                    }
+                }
+            }
+        }
         if (e.pointerCount < 2) return // one finger left: wait
         val x0 = e.getX(0); val y0 = e.getY(0)
         val x1 = e.getX(1); val y1 = e.getY(1)
@@ -1228,7 +1470,8 @@ class CanvasView(context: Context) : View(context) {
         while (rot > 180f) rot -= 360f
         while (rot < -180f) rot += 360f
         if (!gRotating && abs(rot) > 9f) gRotating = true
-        if (!gRotating) rot = 0f
+        if (!gRotating || !gOn(GesturePurpose.GENERAL, "ROTATE", true)) rot = 0f
+        gLastScale = sc
 
         // clamp total zoom between 3% and 6400%
         viewMatrix.set(gestureStart)
@@ -1355,6 +1598,133 @@ class CanvasView(context: Context) : View(context) {
         argb.recycle()
         selection = Selection(mask, s.outline, r)
         listener?.onMessage("Feathered ${radius.toInt()} px")
+    }
+
+    // =========================================================
+    // layer actions used by gestures and keyboard shortcuts
+    // =========================================================
+
+    /** The top visible layer with paint under screen point (sx, sy) becomes the active one. */
+    fun selectLayerAt(sx: Float, sy: Float) {
+        val p = toDoc(sx, sy)
+        val x = p.x.toInt(); val y = p.y.toInt()
+        if (x !in 0 until doc.width || y !in 0 until doc.height) return
+        for (i in doc.layers.indices.reversed()) {
+            val l = doc.layers[i]
+            if (!l.visible) continue
+            if ((l.bitmap.getPixel(x, y) ushr 24) > 12) {
+                if (doc.activeIndex != i) {
+                    doc.activeIndex = i
+                    vectorEditor.reset()
+                    listener?.onLayerPicked()
+                }
+                listener?.onMessage(l.name)
+                return
+            }
+        }
+        listener?.onMessage("No paint here")
+    }
+
+    fun clearActiveLayer() {
+        if (busy()) return
+        val layer = doc.active
+        layer.vector?.let { v ->
+            val before = v.copyShapes()
+            v.shapes.clear()
+            v.render(layer.bitmap)
+            vectorEditor.reset()
+            pushCommand(VectorEdit(layer, before, emptyList()))
+            listener?.onMessage("Layer cleared")
+            return
+        }
+        if (selection != null) { clearSelection(); listener?.onMessage("Selection cleared"); return }
+        val r = Rect(0, 0, doc.width, doc.height)
+        val before = layer.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        layer.bitmap.eraseColor(0)
+        pushPixelEdit(layer, r, before)
+        listener?.onMessage("Layer cleared")
+    }
+
+    fun duplicateActiveLayer() {
+        if (busy()) return
+        if (doc.layers.size >= doc.maxLayers()) { listener?.onMessage("Layer limit reached"); return }
+        val src = doc.active
+        val index = doc.activeIndex
+        val l = Layer(src.bitmap.copy(Bitmap.Config.ARGB_8888, true), src.name + " copy")
+        l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock
+        l.isClippingMask = src.isClippingMask; l.visible = src.visible
+        l.vector = src.vector?.copy()
+        val cmd = AddLayerCmd(l, index + 1, index)
+        cmd.redo(doc)
+        pushCommand(cmd)
+        listener?.onLayerPicked()
+        listener?.onMessage("Layer duplicated")
+    }
+
+    /** Copies the selection (or the whole layer) to Zerin's clipboard; [cut] also removes it. */
+    fun copyToClipboard(cut: Boolean) {
+        if (busy()) return
+        val layer = doc.active
+        if (layer.vector != null) { listener?.onMessage("On a vector layer use the vector tools"); return }
+        val sel = selection
+        val bmp = layer.bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        if (sel != null) Canvas(bmp).drawBitmap(sel.mask, 0f, 0f, Selections.dstIn)
+        val bounds = Selections.contentBounds(bmp)
+        if (bounds == null || bounds.isEmpty) { bmp.recycle(); listener?.onMessage("Nothing to copy here"); return }
+        clipboard?.recycle()
+        clipboard = Bitmap.createBitmap(bmp, bounds.left, bounds.top, bounds.width(), bounds.height())
+        clipboardAt = android.graphics.Point(bounds.left, bounds.top)
+        bmp.recycle()
+        if (cut) {
+            if (sel != null) clearSelection()
+            else {
+                val r = Rect(0, 0, doc.width, doc.height)
+                val before = layer.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                layer.bitmap.eraseColor(0)
+                pushPixelEdit(layer, r, before)
+            }
+            listener?.onMessage("Cut")
+        } else listener?.onMessage("Copied")
+    }
+
+    val hasClipboard get() = clipboard != null
+
+    /** Pastes the clipboard onto a new layer, where it was copied from. */
+    fun pasteClipboard() {
+        if (busy()) return
+        val clip = clipboard ?: run { listener?.onMessage("Nothing copied yet"); return }
+        if (doc.layers.size >= doc.maxLayers()) { listener?.onMessage("Layer limit reached"); return }
+        val layer = doc.createLayer()
+        layer.name = L10n.tr("Pasted")
+        val at = clipboardAt
+        Canvas(layer.bitmap).drawBitmap(clip, at.x.toFloat().coerceAtMost(doc.width - 1f), at.y.toFloat().coerceAtMost(doc.height - 1f), null)
+        val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
+        cmd.redo(doc)
+        pushCommand(cmd)
+        listener?.onLayerPicked()
+        listener?.onMessage("Pasted")
+    }
+
+    /** Turns the view around the screen's center (keyboard R). */
+    fun rotateViewBy(degrees: Float) {
+        viewMatrix.postRotate(degrees, width / 2f, height / 2f)
+        invalidate()
+    }
+
+    /** Zooms the view around the screen's center (keyboard Ctrl + / −). */
+    fun zoomViewBy(factor: Float) {
+        val z = zoom()
+        val f = (z * factor).coerceIn(0.03f, 64f) / z
+        viewMatrix.postScale(f, f, width / 2f, height / 2f)
+        invalidate()
+    }
+
+    /** Moves what is being transformed by (dx, dy) document pixels (arrow keys). */
+    fun nudgeTransform(dx: Float, dy: Float): Boolean {
+        val t = transform ?: return false
+        t.matrix.postTranslate(dx, dy)
+        invalidate()
+        return true
     }
 
     /** Copies the selected pixels of the active layer onto a new layer. */

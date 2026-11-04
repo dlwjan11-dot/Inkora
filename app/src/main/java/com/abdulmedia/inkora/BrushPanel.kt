@@ -33,7 +33,11 @@ fun grainPaintFor(b: Brush): Paint? {
     }
 }
 
-/** Brush library: every brush with a preview, import, and a small Brush Studio for the selected one. */
+/**
+ * Brush library: the sets down the side (each with its icon), the chosen set's brushes beside it,
+ * each with a stroke drawn by the brush itself. Tap a brush to paint with it; tap it again to
+ * open the Brush Studio. Imported sets are listed after Zerin's own.
+ */
 @SuppressLint("ViewConstructor")
 class BrushPanel(
     context: Context,
@@ -44,123 +48,175 @@ class BrushPanel(
     private val onImportFile: () -> Unit,
     private val onImportLink: () -> Unit,
     private val onDelete: (Brush) -> Unit,
-    private val onPin: (() -> Unit)? = null
+    private val onPin: (() -> Unit)? = null,
+    private val onDeleteSet: ((String, List<Brush>) -> Unit)? = null
 ) : LinearLayout(context) {
 
-    private val scroll = ScrollView(context)
+    private val setsColumn = LinearLayout(context)
     private val list = LinearLayout(context)
+    private val listScroll = ScrollView(context)
     private var studio = false
+    private var currentSet: String = selected.preset.category
 
     init {
         orientation = VERTICAL
         setPadding(14.dp, 14.dp, 14.dp, 14.dp)
-        background = Ui.rounded(Ui.PANEL, 18f)
+        background = Ui.rounded(Ui.PANEL, 22f, 0x14FFFFFF, 1)
+        isClickable = true
+        setsColumn.orientation = VERTICAL
         list.orientation = VERTICAL
-        scroll.addView(list)
+        listScroll.isVerticalScrollBarEnabled = false
+        listScroll.addView(list)
         rebuild()
+    }
+
+    private fun sets(): List<String> {
+        val seen = LinkedHashSet<String>()
+        for (b in brushes) if (!b.preset.imported) seen.add(b.preset.category)
+        for (b in brushes) if (b.preset.imported) seen.add(b.preset.category)
+        return seen.toList()
+    }
+
+    private fun iconFor(set: String, imported: Boolean): Icon = when {
+        imported -> Icon.FOLDER
+        set.startsWith("Ink") -> Icon.INK
+        set.startsWith("Callig") -> Icon.NIB
+        set.startsWith("Sketch") -> Icon.PENCIL
+        set.startsWith("Paint") -> Icon.PALETTE
+        set.startsWith("Water") -> Icon.DROP
+        set.startsWith("Air") -> Icon.SPRAY
+        set.startsWith("Textur") -> Icon.TEXTURE
+        set.startsWith("Effect") -> Icon.SPARKLE
+        set.startsWith("Pixel") -> Icon.PIXEL
+        else -> Icon.BRUSH
     }
 
     private fun rebuild() {
         removeAllViews()
-        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(Ui.text(context, if (studio) "Brush Studio" else title, 17f, bold = true), LayoutParams(0, -2, 1f))
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(6.dp, 0, 0, 10.dp) }
         if (studio) {
-            head.addView(Ui.button(context, "‹ Library") { studio = false; rebuild() })
-        } else {
-            if (onPin != null) {
-                val pin = IconView(context, Icon.PIN)
-                pin.setOnClickListener { onPin.invoke() }
-                head.addView(pin, LayoutParams(40.dp, 40.dp))
-            }
-            head.addView(Ui.button(context, "Edit brush") { studio = true; rebuild() })
-        }
-        addView(head)
-        if (!studio) {
-            val imports = LinearLayout(context).apply { orientation = HORIZONTAL }
-            imports.addView(Ui.button(context, "Import file…") { onImportFile() }.apply { textSize = 13f }, LayoutParams(0, -2, 1f))
-            imports.addView(Ui.button(context, "Import from link…") { onImportLink() }.apply { textSize = 13f },
-                LayoutParams(0, -2, 1f).apply { leftMargin = 6.dp })
-            addView(imports, LayoutParams(-1, -2).apply { topMargin = 8.dp })
-            buildList()
-            addView(scroll, LayoutParams(-1, 0, 1f).apply { topMargin = 6.dp })
-        } else {
+            head.addView(Ui.button(context, "‹ Library") { studio = false; rebuild() }.apply { background = null; textSize = 15f })
+            head.addView(Ui.text(context, "Brush Studio", 20f, bold = true), LayoutParams(0, -2, 1f).apply { marginStart = 6.dp })
+            addView(head)
             val s = ScrollView(context)
             s.addView(buildStudio())
-            addView(s, LayoutParams(-1, 0, 1f).apply { topMargin = 6.dp })
+            addView(s, LayoutParams(-1, 0, 1f))
+            return
+        }
+        head.addView(Ui.text(context, title, 22f, bold = true), LayoutParams(0, -2, 1f))
+        if (onPin != null) {
+            head.addView(IconView(context, Icon.PIN).apply {
+                contentDescription = L10n.tr("Pin")
+                setOnClickListener { onPin.invoke() }
+            }, LayoutParams(40.dp, 40.dp))
+        }
+        val plus = IconView(context, Icon.PLUS).apply { contentDescription = L10n.tr("Import brushes…") }
+        plus.setOnClickListener {
+            val pm = android.widget.PopupMenu(context, plus)
+            pm.menu.add(0, 1, 1, "Import file…")
+            pm.menu.add(0, 2, 2, "Import from link…")
+            pm.setOnMenuItemClickListener { if (it.itemId == 1) onImportFile() else onImportLink(); true }
+            L10n.menu(pm.menu); pm.show()
+        }
+        head.addView(plus, LayoutParams(44.dp, 44.dp))
+        addView(head)
+
+        val row = LinearLayout(context).apply { orientation = HORIZONTAL }
+        val setScroll = ScrollView(context).apply { isVerticalScrollBarEnabled = false }
+        setsColumn.removeAllViews()
+        (setsColumn.parent as? android.view.ViewGroup)?.removeView(setsColumn)
+        setScroll.addView(setsColumn)
+        row.addView(setScroll, LayoutParams(172.dp, -1))
+        row.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1, -1).apply { marginStart = 8.dp; marginEnd = 8.dp })
+        (listScroll.parent as? android.view.ViewGroup)?.removeView(listScroll)
+        row.addView(listScroll, LayoutParams(0, -1, 1f))
+        addView(row, LayoutParams(-1, 0, 1f))
+
+        val all = sets()
+        if (currentSet !in all) currentSet = all.firstOrNull() ?: ""
+        for (set in all) {
+            val imported = brushes.any { it.preset.category == set && it.preset.imported } && brushes.none { it.preset.category == set && !it.preset.imported }
+            val on = set == currentSet
+            val hasSelected = selected.preset.category == set
+            val item = LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(10.dp, 0, 8.dp, 0)
+                background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
+                setOnClickListener { currentSet = set; buildList(); refreshSets() }
+                if (imported && onDeleteSet != null) setOnLongClickListener {
+                    onDeleteSet.invoke(set, brushes.filter { it.preset.category == set }); true
+                }
+                tag = set
+            }
+            item.addView(IconView(context, iconFor(set, imported)).apply {
+                isClickable = false
+                tint = if (on) 0xFFFFFFFF.toInt() else Ui.TEXT_DIM
+            }, LayoutParams(30.dp, 30.dp))
+            item.addView(Ui.text(context, set, 14.5f, if (on) 0xFFFFFFFF.toInt() else Ui.TEXT, on).apply {
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LayoutParams(0, -2, 1f).apply { marginStart = 8.dp })
+            if (hasSelected && !on) item.addView(View(context).apply { background = Ui.rounded(Ui.ACCENT, 4f) }, LayoutParams(7.dp, 7.dp))
+            setsColumn.addView(item, LayoutParams(-1, 50.dp).apply { bottomMargin = 6.dp })
+        }
+        buildList()
+    }
+
+    private fun refreshSets() {
+        for (i in 0 until setsColumn.childCount) {
+            val item = setsColumn.getChildAt(i) as? LinearLayout ?: continue
+            val on = item.tag == currentSet
+            item.background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
+            (item.getChildAt(0) as? IconView)?.let { it.tint = if (on) 0xFFFFFFFF.toInt() else Ui.TEXT_DIM; it.invalidate() }
+            (item.getChildAt(1) as? android.widget.TextView)?.let {
+                it.setTextColor(if (on) 0xFFFFFFFF.toInt() else Ui.TEXT)
+                it.paint.isFakeBoldText = on
+                it.invalidate()
+            }
         }
     }
 
-    // a getter (no stored field): buildList() runs from init, before fields declared down here exist
-    private val prefs: android.content.SharedPreferences
-        get() = context.getSharedPreferences("inkora", Context.MODE_PRIVATE)
-
-    private fun isCollapsed(cat: String) = prefs.getBoolean("collapsed_$cat", false)
-    private fun setCollapsed(cat: String, v: Boolean) = prefs.edit().putBoolean("collapsed_$cat", v).apply()
-
     private fun buildList() {
         list.removeAllViews()
-        // groups in their natural order; the group with the selected brush is opened automatically
-        val groups = LinkedHashMap<String, MutableList<Brush>>()
-        for (b in brushes) groups.getOrPut(b.preset.category) { mutableListOf() }.add(b)
-
-        val bar = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.END }
-        bar.addView(Ui.button(context, "Expand all") { groups.keys.forEach { setCollapsed(it, false) }; buildList() }.apply { textSize = 11f; background = null })
-        bar.addView(Ui.button(context, "Collapse all") { groups.keys.forEach { setCollapsed(it, true) }; buildList() }.apply { textSize = 11f; background = null })
-        list.addView(bar)
-
-        for ((cat, items) in groups) {
-            val collapsed = isCollapsed(cat)
-            val header = LinearLayout(context).apply {
-                orientation = HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(6.dp, 10.dp, 6.dp, 6.dp)
-                setOnClickListener {
-                    setCollapsed(cat, !collapsed)
-                    buildList()
-                }
+        val items = brushes.filter { it.preset.category == currentSet }
+        for (b in items) {
+            val on = b === selected
+            val card = LinearLayout(context).apply {
+                orientation = VERTICAL
+                setPadding(14.dp, 9.dp, 12.dp, 4.dp)
+                background = Ui.rounded(if (on) Ui.ACCENT else 0, 14f)
             }
-            header.addView(Ui.text(context, if (collapsed) "▸" else "▾", 14f, Ui.ACCENT, true), LayoutParams(22.dp, -2))
-            val hasSelected = items.any { it === selected }
-            header.addView(Ui.text(context, cat.uppercase() + if (collapsed && hasSelected) "  •" else "", 12f,
-                if (hasSelected) Ui.ACCENT else Ui.TEXT, true), LayoutParams(0, -2, 1f))
-            header.addView(Ui.text(context, "${items.size}", 11f, Ui.TEXT_DIM).apply {
-                setPadding(8.dp, 2.dp, 8.dp, 2.dp)
-                background = Ui.rounded(Ui.PANEL_ROW, 8f)
+            card.addView(Ui.text(context, b.preset.name, 14.5f, if (on) 0xFFFFFFFF.toInt() else Ui.TEXT, on).apply {
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            list.addView(header, LayoutParams(-1, -2))
-            if (collapsed) continue
-
-            for (b in items) {
-                val row = LinearLayout(context).apply {
-                    orientation = HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(10.dp, 6.dp, 10.dp, 6.dp)
-                    background = Ui.rounded(if (b === selected) Ui.PANEL_ROW_ACTIVE else Ui.PANEL_ROW, 10f)
-                }
-                row.addView(Ui.text(context, b.preset.name, 14f).apply { maxLines = 2 }, LayoutParams(118.dp, -2))
-                val img = ImageView(context)
-                img.setImageBitmap(preview(b))
-                img.scaleType = ImageView.ScaleType.FIT_CENTER
-                row.addView(img, LayoutParams(0, 46.dp, 1f))
-                row.setOnClickListener {
+            val img = ImageView(context)
+            img.setImageBitmap(preview(b))
+            img.scaleType = ImageView.ScaleType.FIT_XY
+            card.addView(img, LayoutParams(-1, 42.dp))
+            card.setOnClickListener {
+                if (b === selected) {
+                    // the brush in hand, tapped again: its settings
+                    studio = true
+                    rebuild()
+                } else {
                     selected = b
                     onSelect(b)
                     buildList()
+                    refreshSets()
                 }
-                if (b.preset.imported) {
-                    row.setOnLongClickListener {
-                        onDelete(b)
-                        true
-                    }
-                }
-                list.addView(row, LayoutParams(-1, -2).apply { bottomMargin = 4.dp; leftMargin = 6.dp })
             }
+            if (b.preset.imported) card.setOnLongClickListener { onDelete(b); true }
+            list.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 2.dp })
         }
-        if (brushes.none { it.preset.imported }) {
-            list.addView(Ui.text(context,
-                "Tip: download Procreate brushes (.brush / .brushset) or PNG stamps, then tap Import. Long-press an imported brush to delete it.",
-                12f, Ui.TEXT_DIM).apply { setPadding(4.dp, 12.dp, 4.dp, 4.dp) })
+        val hint = when {
+            brushes.none { it.preset.imported } ->
+                "Tap + to import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Zerin from your Files app."
+            items.any { it.preset.imported } -> "Long-press a brush to delete it, or long-press the set to delete all of it."
+            else -> "Tap the brush you're using again to change its settings."
         }
+        list.addView(Ui.text(context, hint, 12f, Ui.TEXT_DIM).apply { setPadding(14.dp, 10.dp, 8.dp, 8.dp) })
     }
 
     private fun buildStudio(): View {
@@ -233,7 +289,7 @@ class BrushPanel(
 
         /** Draws a sample S-curve stroke (light → heavy → light pressure). */
         fun render(source: Brush): Bitmap {
-            val w = 300
+            val w = 420
             val h = 64
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val brush = Brush(source.preset).apply {

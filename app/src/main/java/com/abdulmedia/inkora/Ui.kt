@@ -110,7 +110,8 @@ enum class Icon { BRUSH, ERASER, LAYERS, ACTIONS, UNDO, REDO, SYMMETRY, EYEDROPP
     HOME, MENU, FILL, ADJUST, SPARKLE, EDIT, STAR, STAR_FILLED, CLOSE, CHECK, SETTINGS, SHARE, PHOTO, FLIP, FIT, FOCUS,
     RULER, SHAPE, BLUR, INVERT, CONTRAST, NOISE, POSTERIZE, BW, SHARPEN, HUE, BALANCE,
     SEL_RECT, SEL_ELLIPSE, SEL_ALL, DESELECT, SEL_INVERT, FEATHER, ROTATE, CUSTOMIZE, DRAG, EXPORT, CLOCK, COPY,
-    NAVIGATOR, ORB, REFERENCE, GLOBE, LIGHTBULB }
+    NAVIGATOR, ORB, REFERENCE, GLOBE, LIGHTBULB,
+    WHEEL, HAND, KEYBOARD, VIDEO, HELP, MODIFY, INK, PENCIL, NIB, PALETTE, DROP, SPRAY, TEXTURE, PIXEL, FOLDER, CLEAR, WRENCH, CURSOR }
 
 /** Simple vector icons drawn in code (24x24 design grid). */
 /** Draws the app's vector icons (24x24 design grid) anywhere. */
@@ -609,6 +610,117 @@ object IconPainter {
                 // two stacked photos
                 canvas.drawRoundRect(RectF(7f, 3.5f, 21f, 15f), 2f, 2f, stroke)
                 canvas.drawRoundRect(RectF(3f, 8.5f, 17f, 20.5f), 2f, 2f, fill)
+            }
+            Icon.WHEEL -> {
+                canvas.drawCircle(12f, 12f, 8.5f, stroke)
+                canvas.drawCircle(12f, 12f, 3.2f, stroke)
+                for (k in 0 until 6) {
+                    val a = Math.toRadians(k * 60.0 - 90.0)
+                    canvas.drawCircle(12f + 6f * Math.cos(a).toFloat(), 12f + 6f * Math.sin(a).toFloat(), 1.1f, fill)
+                }
+            }
+            Icon.HAND -> {
+                path.reset()
+                path.moveTo(8f, 13f); path.lineTo(8f, 5.5f); path.cubicTo(8f, 4f, 10.5f, 4f, 10.5f, 5.5f); path.lineTo(10.5f, 11f)
+                path.moveTo(10.5f, 10f); path.lineTo(10.5f, 4.2f); path.cubicTo(10.5f, 2.7f, 13f, 2.7f, 13f, 4.2f); path.lineTo(13f, 10.5f)
+                path.moveTo(13f, 10f); path.lineTo(13f, 5.2f); path.cubicTo(13f, 3.7f, 15.5f, 3.7f, 15.5f, 5.2f); path.lineTo(15.5f, 11f)
+                path.moveTo(15.5f, 10f); path.lineTo(15.5f, 7.5f); path.cubicTo(15.5f, 6f, 18f, 6f, 18f, 7.5f); path.lineTo(18f, 14f)
+                path.cubicTo(18f, 18.5f, 15.5f, 21f, 12f, 21f); path.cubicTo(9f, 21f, 7.5f, 19.5f, 6f, 17f)
+                path.lineTo(4f, 13.2f); path.cubicTo(3.3f, 11.8f, 5.2f, 10.6f, 6.3f, 11.8f); path.lineTo(8f, 13.8f)
+                canvas.drawPath(path, stroke)
+            }
+            Icon.KEYBOARD -> {
+                canvas.drawRoundRect(RectF(2.5f, 6f, 21.5f, 18f), 2.5f, 2.5f, stroke)
+                for (r in 0..1) for (c in 0..4) canvas.drawCircle(6f + c * 3f, 9.5f + r * 3f, 0.9f, fill)
+                canvas.drawLine(8f, 15f, 16f, 15f, stroke)
+            }
+            Icon.VIDEO -> {
+                canvas.drawRoundRect(RectF(2.5f, 6.5f, 15.5f, 17.5f), 2.5f, 2.5f, stroke)
+                path.reset(); path.moveTo(15.5f, 10.5f); path.lineTo(21.5f, 7f); path.lineTo(21.5f, 17f); path.lineTo(15.5f, 13.5f)
+                canvas.drawPath(path, stroke)
+            }
+            Icon.HELP -> {
+                canvas.drawCircle(12f, 12f, 9f, stroke)
+                path.reset(); path.moveTo(9.3f, 9.5f); path.cubicTo(9.5f, 6.5f, 14.7f, 6.5f, 14.7f, 9.5f)
+                path.cubicTo(14.7f, 11.5f, 12f, 11.7f, 12f, 14f)
+                canvas.drawPath(path, stroke)
+                canvas.drawCircle(12f, 17.2f, 1.1f, fill)
+            }
+            Icon.MODIFY -> canvas.drawRoundRect(RectF(5f, 5f, 19f, 19f), 3.5f, 3.5f, stroke)
+            Icon.INK -> {
+                // ink bottle with a nib
+                canvas.drawRoundRect(RectF(5.5f, 11f, 18.5f, 20.5f), 2.5f, 2.5f, stroke)
+                canvas.drawRect(RectF(9f, 7.5f, 15f, 11f), stroke)
+                canvas.drawLine(12f, 3f, 12f, 7.5f, stroke)
+                canvas.drawRect(RectF(8.5f, 14.5f, 15.5f, 17.5f), fill)
+            }
+            Icon.PENCIL -> {
+                path.reset()
+                path.moveTo(16f, 3.5f); path.lineTo(20.5f, 8f); path.lineTo(8.5f, 20f); path.lineTo(3.5f, 20.5f)
+                path.lineTo(4f, 15.5f); path.close()
+                canvas.drawPath(path, stroke)
+                canvas.drawLine(13.5f, 6f, 18f, 10.5f, stroke)
+            }
+            Icon.NIB -> {
+                path.reset()
+                path.moveTo(12f, 21f); path.lineTo(6f, 12f); path.lineTo(9f, 4.5f); path.lineTo(15f, 4.5f); path.lineTo(18f, 12f); path.close()
+                canvas.drawPath(path, stroke)
+                canvas.drawLine(12f, 21f, 12f, 12.5f, stroke)
+                canvas.drawCircle(12f, 11f, 1.4f, fill)
+            }
+            Icon.PALETTE -> {
+                path.reset()
+                path.moveTo(12f, 3.5f); path.cubicTo(6.5f, 3.5f, 3f, 7.5f, 3f, 12f); path.cubicTo(3f, 17f, 7f, 20.5f, 11.5f, 20.5f)
+                path.cubicTo(13.5f, 20.5f, 13.8f, 18.5f, 12.8f, 17.3f); path.cubicTo(11.8f, 16f, 12.6f, 14.5f, 14.3f, 14.5f)
+                path.lineTo(16.5f, 14.5f); path.cubicTo(19.2f, 14.5f, 21f, 12.7f, 21f, 10.5f); path.cubicTo(21f, 6.5f, 17f, 3.5f, 12f, 3.5f); path.close()
+                canvas.drawPath(path, stroke)
+                canvas.drawCircle(7.5f, 11.5f, 1.3f, fill); canvas.drawCircle(10f, 7.5f, 1.3f, fill)
+                canvas.drawCircle(14.5f, 7.5f, 1.3f, fill); canvas.drawCircle(17.2f, 10.5f, 1.3f, fill)
+            }
+            Icon.DROP -> {
+                path.reset()
+                path.moveTo(12f, 3f); path.cubicTo(15f, 7.5f, 18.5f, 10.5f, 18.5f, 14.5f)
+                path.cubicTo(18.5f, 18.2f, 15.6f, 21f, 12f, 21f); path.cubicTo(8.4f, 21f, 5.5f, 18.2f, 5.5f, 14.5f)
+                path.cubicTo(5.5f, 10.5f, 9f, 7.5f, 12f, 3f); path.close()
+                canvas.drawPath(path, stroke)
+            }
+            Icon.SPRAY -> {
+                canvas.drawRoundRect(RectF(4.5f, 10f, 12.5f, 21f), 2f, 2f, stroke)
+                canvas.drawRect(RectF(6.5f, 6.5f, 10.5f, 10f), stroke)
+                for ((dx, dy) in listOf(15f to 5f, 18f to 3.5f, 17.5f to 7f, 20.5f to 6f, 15.5f to 9f, 20f to 9.5f))
+                    canvas.drawCircle(dx, dy, 0.95f, fill)
+            }
+            Icon.TEXTURE -> {
+                canvas.drawRoundRect(RectF(3.5f, 3.5f, 20.5f, 20.5f), 3f, 3f, stroke)
+                for (r in 0..3) for (c in 0..3) if ((r + c) % 2 == 0) canvas.drawCircle(6.5f + c * 3.7f, 6.5f + r * 3.7f, 1.1f, fill)
+            }
+            Icon.PIXEL -> {
+                for ((cx0, cy0) in listOf(4f to 4f, 10f to 4f, 4f to 10f, 16f to 10f, 10f to 16f, 16f to 16f))
+                    canvas.drawRect(RectF(cx0, cy0, cx0 + 4.5f, cy0 + 4.5f), fill)
+            }
+            Icon.FOLDER -> {
+                path.reset()
+                path.moveTo(3f, 6.5f); path.cubicTo(3f, 5.4f, 3.9f, 4.5f, 5f, 4.5f); path.lineTo(9.5f, 4.5f); path.lineTo(11.5f, 7f)
+                path.lineTo(19f, 7f); path.cubicTo(20.1f, 7f, 21f, 7.9f, 21f, 9f); path.lineTo(21f, 17.5f)
+                path.cubicTo(21f, 18.6f, 20.1f, 19.5f, 19f, 19.5f); path.lineTo(5f, 19.5f); path.cubicTo(3.9f, 19.5f, 3f, 18.6f, 3f, 17.5f); path.close()
+                canvas.drawPath(path, stroke)
+            }
+            Icon.CLEAR -> {
+                canvas.drawRoundRect(RectF(3.5f, 5f, 20.5f, 19f), 2.5f, 2.5f, stroke)
+                canvas.drawLine(9f, 9f, 15f, 15f, stroke); canvas.drawLine(15f, 9f, 9f, 15f, stroke)
+            }
+            Icon.WRENCH -> {
+                path.reset()
+                path.moveTo(14.5f, 3.6f); path.cubicTo(12f, 3f, 9.5f, 5.2f, 10f, 8f); path.lineTo(3.8f, 14.2f)
+                path.cubicTo(2.7f, 15.3f, 2.7f, 17f, 3.8f, 18.1f); path.lineTo(5.9f, 20.2f); path.cubicTo(7f, 21.3f, 8.7f, 21.3f, 9.8f, 20.2f)
+                path.lineTo(16f, 14f); path.cubicTo(18.8f, 14.5f, 21f, 12f, 20.4f, 9.5f); path.lineTo(17.5f, 12.4f)
+                path.lineTo(14.8f, 11.8f); path.lineTo(14.2f, 9.1f); path.close()
+                canvas.drawPath(path, stroke)
+            }
+            Icon.CURSOR -> {
+                path.reset()
+                path.moveTo(5f, 3.5f); path.lineTo(18.5f, 12f); path.lineTo(12.3f, 13.3f); path.lineTo(9.3f, 19.5f); path.close()
+                canvas.drawPath(path, stroke)
             }
             Icon.GLOBE -> {
                 canvas.drawCircle(12f, 12f, 8.5f, stroke)

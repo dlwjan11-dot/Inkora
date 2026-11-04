@@ -340,16 +340,14 @@ class QuickMenuView(context: Context) : View(context) {
         line.strokeWidth = 1f.dp; line.color = 0x55000000
         canvas.drawCircle(kx, ky, if (active) 11f.dp else 9f.dp, line)
 
-        // Live visual brush tip diameter preview on size slider
-        if (name == "SIZE") {
-            val previewR = (v * 24f.dp).coerceAtLeast(2f.dp)
-            paint.color = 0xAAFFFFFF.toInt()
-            // inside the arc, so it stays on the menu
-            val (px, py) = place(arc.first + (arc.second - arc.first) * v, rBubbles - 30f.dp - previewR)
-            canvas.drawCircle(px, py, previewR, paint)
-            line.strokeWidth = 1f.dp
+        // while the size is being dragged, the brush's size shows in the middle of the wheel
+        if (name == "SIZE" && active) {
+            val previewR = (v * (rDisc - 8f.dp)).coerceAtLeast(2f.dp)
+            paint.color = 0x99FFFFFF.toInt()
+            canvas.drawCircle(cx, cy, previewR, paint)
+            line.strokeWidth = 1.5f.dp
             line.color = Ui.ACCENT
-            canvas.drawCircle(px, py, previewR, line)
+            canvas.drawCircle(cx, cy, previewR, line)
         }
 
         // caption + value, inside the arc
@@ -384,7 +382,8 @@ class QuickMenuView(context: Context) : View(context) {
             canvas.save()
             clip.reset(); clip.addCircle(b.x, b.y, r - 2f.dp, Path.Direction.CW)
             canvas.clipPath(clip)
-            paint.color = 0xFFEDEDF0.toInt()
+            // the stroke is drawn in light ink, so it sits on a dark bubble
+            paint.color = if (hot) 0xFF2F5FB8.toInt() else 0xFF34343C.toInt()
             canvas.drawCircle(b.x, b.y, r, paint)
             val w = r * 2.6f
             val h = w * pv.height / pv.width

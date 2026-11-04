@@ -109,6 +109,9 @@ class History {
     }
 
     val canUndo get() = undoStack.isNotEmpty()
+
+    /** the command the next undo would take back */
+    fun top(): Command? = undoStack.lastOrNull()
     val canRedo get() = redoStack.isNotEmpty()
 
     fun push(cmd: Command, doc: Document) {
