@@ -16,7 +16,9 @@ object Gallery {
 
     class Entry(
         val id: String, val title: String, val width: Int, val height: Int,
-        val modified: Long, val created: Long, val origin: String, val thumb: File
+        val modified: Long, val created: Long, val origin: String, val thumb: File,
+        /** the stack it is in, if any */
+        val stack: String? = null
     ) {
         val imported get() = origin == "imported"
     }
@@ -37,7 +39,8 @@ object Gallery {
                 val o = JSONObject(f.readText())
                 val modified = o.optLong("modified", f.lastModified())
                 Entry(id, o.optString("title", "Untitled"), o.optInt("width"), o.optInt("height"),
-                    modified, o.optLong("created", modified), o.optString("origin", "drawn"), thumbFile(ctx, id))
+                    modified, o.optLong("created", modified), o.optString("origin", "drawn"), thumbFile(ctx, id),
+                    o.optString("stack", "").ifBlank { null })
             }.getOrNull()
         }.sortedByDescending { it.modified }
     }
@@ -81,6 +84,7 @@ object Gallery {
             put("modified", now)
             put("created", old?.optLong("created", now) ?: now)
             put("origin", old?.optString("origin", origin) ?: origin)
+            old?.optString("stack", "")?.takeIf { it.isNotBlank() }?.let { put("stack", it) }
         }.toString())
     }
 
@@ -100,6 +104,19 @@ object Gallery {
         val o = runCatching { JSONObject(f.readText()) }.getOrDefault(JSONObject())
         o.put("title", title)
         f.writeText(o.toString())
+    }
+
+    /** Puts an artwork in the stack [name], or takes it out ([name] null). */
+    fun setStack(ctx: Context, id: String, name: String?) {
+        val f = metaFile(ctx, id)
+        val o = runCatching { JSONObject(f.readText()) }.getOrDefault(JSONObject())
+        if (name.isNullOrBlank()) o.remove("stack") else o.put("stack", name.trim())
+        f.writeText(o.toString())
+    }
+
+    /** Renames a stack (every artwork in it follows); [to] null unstacks them all. */
+    fun renameStack(ctx: Context, from: String, to: String?) {
+        for (e in list(ctx)) if (e.stack == from) setStack(ctx, e.id, to)
     }
 
     fun duplicate(ctx: Context, id: String): String? {

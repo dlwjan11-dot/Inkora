@@ -140,6 +140,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             cv.fingerDrawingAuto = false
         }
         smudgeBrushes.forEach { it.size = 50f; it.opacity = 0.75f }
+        // each brush's Brush Studio settings, as the user left them
+        for (t in Tool.entries) for (b in brushListFor(t)) BrushSettings.load(prefs, t, b)
         cv.smudgeBrush = smudgeBrushes.first { it.preset.name == "Soft Airbrush" }
         noteRecent()
 
@@ -607,6 +609,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     /** closes a full-screen overlay (gesture controls, keyboard shortcuts) */
     private fun closeSettings(): Boolean {
         val v = root.findViewWithTag<View>("overlay") ?: return false
+        // the Brush Studio saves its changes on the way out (it calls back here to be removed)
+        if (v is BrushStudioView && !v.closing) { v.finish(); return true }
         root.removeView(v)
         return true
     }
@@ -1193,7 +1197,10 @@ class MainActivity : Activity(), CanvasView.Listener {
             },
             onDelete = { b -> confirmDeleteBrush(b, tool) },
             onPin = if (pinned) null else ({ popup?.dismiss(); pinPanel("brushes") }),
-            onDeleteSet = { set, list -> confirmDeleteSet(set, list) })
+            onDeleteSet = { set, list -> confirmDeleteSet(set, list) },
+            onEdit = { b -> popup?.dismiss(); openStudio(tool, b) },
+            onNewBrush = { popup?.dismiss(); duplicateBrush(tool, current) },
+            onExportSet = { set, list -> popup?.dismiss(); exportBrushSet(set, list) })
     }
 
     // ---------- pinned panels ----------
@@ -1377,6 +1384,143 @@ class MainActivity : Activity(), CanvasView.Listener {
         } else toast(r.message)
     }
 
+    // =========================================================
+    // Brush Studio
+    // =========================================================
+
+    private var studioTool = Tool.BRUSH
+
+    private fun openStudio(tool: Tool, b: Brush) {
+        if (busy()) return
+        studioTool = tool
+        showOverlay(BrushStudioView(this, b, studioHost))
+    }
+
+    private val studioHost = object : BrushStudioHost {
+        override val padColor get() = cv.color
+
+        override fun onStudioClosed(brush: Brush, changed: Boolean) {
+            closeSettings()
+            if (changed) BrushSettings.save(prefs, studioTool, brush)
+            refreshAll()
+        }
+
+        override fun duplicate(brush: Brush) = duplicateBrush(studioTool, brush)
+
+        override fun export(brush: Brush) {
+            pendingExport = listOf(brush) to null
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
+                putExtra(Intent.EXTRA_TITLE, BrushExport.fileName(brush.preset.name, ".brush"))
+            }, REQ_BRUSH_EXPORT)
+        }
+
+        override fun rename(brush: Brush, name: String) {
+            BrushImport.rename(this@MainActivity, brush.preset, name)
+            val fresh = BrushImport.reload(this@MainActivity, brush.preset) ?: return
+            val nb = replacePreset(brush.preset, fresh, studioTool)
+            closeSettings()
+            if (nb != null) openStudio(studioTool, nb)
+            hud.show("Renamed")
+        }
+
+        override fun pickImage(brush: Brush, file: String) {
+            pendingImage = Triple(studioTool, brush, file)
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+            }, REQ_BRUSH_IMAGE)
+        }
+    }
+
+    /** a copy of [b] as a brush of the user's own, in "My Brushes", then its studio */
+    private fun duplicateBrush(tool: Tool, b: Brush) {
+        val p = runCatching { BrushImport.saveCustom(this, b, b.preset.name + " " + L10n.tr("copy"), "My Brushes") }
+            .getOrElse { toast("Could not copy the brush"); return }
+        val made = HashMap<Tool, Brush>()
+        for (t in Tool.entries) {
+            val nb = Brush(p)
+            if (t == tool) { nb.size = b.size; nb.opacity = b.opacity }
+            else if (t == Tool.ERASER) nb.size = 40f
+            else if (t == Tool.SMUDGE) { nb.size = 50f; nb.opacity = 0.75f }
+            brushListFor(t).add(nb)
+            made[t] = nb
+        }
+        val nb = made[tool]!!
+        useBrush(tool, nb)
+        hud.show("Duplicated · " + p.name)
+        openStudio(tool, nb)
+    }
+
+    /** a brush's preset was made again (renamed, new image): every tool's copy follows it */
+    private fun replacePreset(old: BrushPreset, fresh: BrushPreset, keepTool: Tool): Brush? {
+        var result: Brush? = null
+        BrushPanel.forget(old.id)
+        for (t in Tool.entries) {
+            val list = brushListFor(t)
+            val i = list.indexOfFirst { it.preset === old }
+            if (i < 0) continue
+            val ob = list[i]
+            val nb = Brush(fresh)
+            BrushSettings.apply(nb, BrushSettings.toJson(ob))
+            nb.size = ob.size; nb.opacity = ob.opacity
+            if (fresh.grain != GrainType.NONE && old.grain == GrainType.NONE) nb.grainOn = true
+            list[i] = nb
+            when (t) {
+                Tool.BRUSH -> if (cv.paintBrush === ob) cv.paintBrush = nb
+                Tool.ERASER -> if (cv.eraserBrush === ob) cv.eraserBrush = nb
+                Tool.SMUDGE -> if (cv.smudgeBrush === ob) cv.smudgeBrush = nb
+            }
+            for (k in recentTools.indices) if (recentTools[k].second === ob) recentTools[k] = recentTools[k].first to nb
+            if (t == keepTool) result = nb
+        }
+        refreshAll()
+        return result
+    }
+
+    private var pendingExport: Pair<List<Brush>, String?>? = null
+    private var pendingImage: Triple<Tool, Brush, String>? = null
+
+    private fun exportBrushSet(name: String, list: List<Brush>) {
+        if (list.isEmpty()) return
+        pendingExport = list to name
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
+            putExtra(Intent.EXTRA_TITLE, BrushExport.fileName(L10n.tr(name), ".brushset"))
+        }, REQ_BRUSH_EXPORT)
+    }
+
+    private fun writeBrushFile(uri: Uri) {
+        val (list, setName) = pendingExport ?: return
+        pendingExport = null
+        hud.show("Exporting…", sticky = true)
+        thread(name = "inkora-brush-export") {
+            val ok = runCatching {
+                contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                    if (setName == null) BrushExport.writeBrush(list[0], out) else BrushExport.writeSet(L10n.tr(setName), list, out)
+                } != null
+            }.getOrDefault(false)
+            main.post {
+                hud.hideSoon()
+                toast(if (ok) (if (setName == null) "Brush exported" else "Brush set exported") else "Could not export")
+            }
+        }
+    }
+
+    /** a new shape, grain or dual image for a brush of the user's own */
+    private fun setBrushImage(uri: Uri) {
+        val (tool, b, file) = pendingImage ?: return
+        pendingImage = null
+        val bmp = runCatching { ProjectIO.decodeImage(this, uri, 1024, 1024) }.getOrNull()
+        if (bmp == null) { toast("Could not open that image"); return }
+        val alpha = if (file == "grain.png") BrushImport.grainFromImage(bmp) else BrushImport.tipFromImage(bmp)
+        bmp.recycle()
+        BrushImport.replaceImage(this, b.preset, file, alpha)
+        val fresh = BrushImport.reload(this, b.preset) ?: return
+        val nb = replacePreset(b.preset, fresh, tool)
+        closeSettings()
+        if (nb != null) openStudio(tool, nb)
+    }
+
     private fun confirmDeleteSet(set: String, list: List<Brush>) {
         val presets = list.map { it.preset }.filter { it.imported }.toSet()
         if (presets.isEmpty()) return
@@ -1550,6 +1694,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 "jpeg" -> exportImage(jpeg = true, share = false)
                 "svg" -> exportSvg()
                 "project" -> saveProjectAs()
+                "psd", "pdf", "tiff" -> exportFile(kind)
             }
         }
         override fun exportTimeLapse() = this@MainActivity.exportTimeLapse()
@@ -1683,6 +1828,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             REQ_IMAGE -> insertImage(uri)
             REQ_PHOTO_NEW -> photoAsArtwork(uri)
             REQ_SVG -> writeSvg(uri)
+            REQ_BRUSH_EXPORT -> writeBrushFile(uri)
+            REQ_EXPORT_FILE -> writeExportFile(uri)
+            REQ_BRUSH_IMAGE -> setBrushImage(uri)
             REQ_REF_IMAGE -> {
                 val bmp = runCatching { ProjectIO.decodeImage(this, uri, 2048, 2048) }.getOrNull()
                 if (bmp == null) toast("Could not open that image")
@@ -1703,6 +1851,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun openProject(uri: Uri) {
+        val head = runCatching { contentResolver.openInputStream(uri)?.use { s -> ByteArray(4).also { s.read(it) } } }.getOrNull()
+        if (head != null && PsdIO.isPsd(head)) { openPsd(uri); return }
         val d = runCatching { contentResolver.openInputStream(uri)?.use { ProjectIO.read(it) } }.getOrNull()
         if (d == null) {
             toast("This is not an Inkora project file")
@@ -1718,6 +1868,100 @@ class MainActivity : Activity(), CanvasView.Listener {
         openDocument(d)
         autosave(force = true)
         toast("Project opened")
+    }
+
+    /** A Photoshop file becomes a new artwork, with its layers. Read on a background thread. */
+    private fun openPsd(uri: Uri) {
+        hud.show("Opening…", sticky = true)
+        thread(name = "inkora-psd-open") {
+            val r = runCatching {
+                contentResolver.openInputStream(uri)?.use { PsdIO.read(it) { w, h -> Document(w, h).maxLayers() } }
+            }
+            main.post {
+                hud.hideSoon()
+                val res = r.getOrNull()
+                if (res == null) {
+                    val why = r.exceptionOrNull()?.let { if (it is OutOfMemoryError) "Not enough memory to open it" else it.message }
+                    toast(why ?: "Could not open this Photoshop file")
+                    return@post
+                }
+                autosave()
+                closeGallery()
+                val d = res.doc
+                d.galleryId = Gallery.newId()
+                d.title = displayName(uri)?.substringBeforeLast('.') ?: "Photoshop file"
+                d.origin = "imported"
+                d.revision = 1
+                openDocument(d)
+                autosave(force = true)
+                toast(res.note?.let { L10n.tr(it) } ?: (L10n.tr("Opened") + " · ${d.layers.size} " + L10n.tr("Layers")))
+            }
+        }
+    }
+
+    // ---------- PSD, PDF and TIFF export ----------
+
+    private var pendingFormat = "psd"
+
+    private fun exportFile(kind: String) {
+        pendingFormat = kind
+        val (mime, ext) = when (kind) {
+            "psd" -> "image/vnd.adobe.photoshop" to ".psd"
+            "pdf" -> "application/pdf" to ".pdf"
+            else -> "image/tiff" to ".tif"
+        }
+        startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = mime
+            putExtra(Intent.EXTRA_TITLE, BrushExport.fileName(cv.doc.title.ifBlank { "Artwork" }, ext))
+        }, REQ_EXPORT_FILE)
+    }
+
+    private fun writeExportFile(uri: Uri) {
+        val kind = pendingFormat
+        val doc = cv.doc
+        // copies of the layers (or the flattened image), so painting can go on while it writes
+        val snap = runCatching { if (kind == "psd") ProjectIO.snapshot(doc) else null }.getOrNull()
+        val flat = if (kind == "psd") null else runCatching { doc.flatten(withBackground = true, forceOpaque = kind == "pdf") }.getOrNull()
+        if ((kind == "psd" && snap == null) || (kind != "psd" && flat == null)) { toast("Not enough memory to export it"); return }
+        hud.show("Exporting…", sticky = true)
+        thread(name = "inkora-export-file") {
+            val ok = runCatching {
+                contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                    when (kind) {
+                        "psd" -> {
+                            val s = snap!!
+                            val d = Document(s.width, s.height)
+                            d.backgroundColor = s.background
+                            d.backgroundVisible = s.backgroundVisible
+                            for (l in s.layers) d.layers.add(Layer(l.bitmap, l.name).apply {
+                                visible = l.visible; opacity = l.opacity; alphaLock = l.alphaLock; isClippingMask = l.clipping
+                                blend = runCatching { LayerBlend.valueOf(l.blend) }.getOrDefault(LayerBlend.NORMAL)
+                            })
+                            PsdIO.write(d, out, cacheDir)
+                        }
+                        "pdf" -> {
+                            val b = flat!!
+                            // printed at 300 dpi: a page of the artwork's size
+                            val k = (72f / 300f).coerceAtMost(14400f / maxOf(b.width, b.height))
+                            val pw = (b.width * k).toInt().coerceAtLeast(1); val ph = (b.height * k).toInt().coerceAtLeast(1)
+                            val pdf = android.graphics.pdf.PdfDocument()
+                            val page = pdf.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(pw, ph, 1).create())
+                            page.canvas.drawBitmap(b, null, android.graphics.RectF(0f, 0f, pw.toFloat(), ph.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
+                            pdf.finishPage(page)
+                            pdf.writeTo(out)
+                            pdf.close()
+                        }
+                        else -> TiffIO.write(flat!!, out)
+                    }
+                } != null
+            }.getOrDefault(false)
+            snap?.layers?.forEach { it.bitmap.recycle() }
+            flat?.recycle()
+            main.post {
+                hud.hideSoon()
+                toast(if (ok) "Exported" else "Could not export")
+            }
+        }
     }
 
     /** A photo becomes a new artwork of the same size (max 24 megapixels). */
@@ -2389,7 +2633,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onImport = { anchor ->
                     val pm = PopupMenu(this, anchor)
                     pm.menu.add(0, 1, 1, "Photo as a new artwork…")
-                    pm.menu.add(0, 2, 2, "Inkora project (.inkora)…")
+                    pm.menu.add(0, 2, 2, "Inkora project or Photoshop file…")
                     pm.setOnMenuItemClickListener {
                         if (it.itemId == 1) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
@@ -2693,7 +2937,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             val name = displayName(first)?.lowercase() ?: ""
             val type = contentResolver.getType(first) ?: ""
             when {
-                name.endsWith(".inkora") || name.endsWith(".zerin") -> openProject(first)
+                name.endsWith(".inkora") || name.endsWith(".zerin") || name.endsWith(".psd") -> openProject(first)
                 type.startsWith("image/") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") ->
                     AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle(L10n.tr("What should Inkora do with this image?"))
@@ -2755,5 +2999,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         private const val REQ_PHOTO_NEW = 105
         private const val REQ_SVG = 106
         private const val REQ_REF_IMAGE = 109
+        private const val REQ_BRUSH_EXPORT = 110
+        private const val REQ_BRUSH_IMAGE = 111
+        private const val REQ_EXPORT_FILE = 112
     }
 }

@@ -20,7 +20,7 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|uiMode|density"
             android:windowSoftInputMode="adjustNothing">
-            <!-- Procreate brushes (.brush, .brushset), zip files and .inkora projects opened from another app -->
+            <!-- Procreate brushes (.brush, .brushset), zip files, .inkora projects and Photoshop files opened from another app -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -31,6 +31,11 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="application/x-zip" />
+                <data android:mimeType="image/vnd.adobe.photoshop" />
+                <data android:mimeType="application/x-photoshop" />
+                <data android:mimeType="application/photoshop" />
+                <data android:mimeType="image/x-photoshop" />
+                <data android:mimeType="image/psd" />
             </intent-filter>
             <!-- shared to Zerin: brush files, projects and images -->
             <intent-filter>

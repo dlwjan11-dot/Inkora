@@ -91,6 +91,11 @@ class CanvasView(context: Context) : View(context) {
     private val greyPaint = Paint().apply {
         colorFilter = android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix().apply { setSaturation(0f) })
     }
+    /** the dual brush's mask for the current stroke (null: no dual brush) */
+    private var strokeMask: Bitmap? = null
+    private var maskBitmap: Bitmap? = null
+    private val maskDstIn = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_IN }
+
     /** what the current stroke was told to do by a gesture (erase, smudge, follow the guide) */
     private var strokeOverride: GesturePurpose? = null
 
@@ -463,12 +468,14 @@ class CanvasView(context: Context) : View(context) {
             overlayPaint.isFilterBitmap = filter
             val grain = strokeGrain
             val sel = selection
+            val mask = strokeMask
             doc.draw(canvas, filter, { c ->
-                if (grain == null && sel == null) c.drawBitmap(sb, 0f, 0f, overlayPaint)
+                if (grain == null && sel == null && mask == null) c.drawBitmap(sb, 0f, 0f, overlayPaint)
                 else {
-                    // stroke × paper texture × selection, then blended into the layer
+                    // stroke × dual brush × paper texture × selection, then blended into the layer
                     val s = c.saveLayer(doc.bounds, overlayPaint)
                     c.drawBitmap(sb, 0f, 0f, plainBitmapPaint)
+                    if (mask != null) c.drawBitmap(mask, 0f, 0f, maskDstIn)
                     if (grain != null) c.drawRect(doc.bounds, grain)
                     if (sel != null) c.drawBitmap(sel.mask, 0f, 0f, Selections.dstIn)
                     c.restoreToCount(s)
@@ -694,7 +701,7 @@ class CanvasView(context: Context) : View(context) {
     private fun strokeBlend(): BlendMode = when {
         strokeErasing -> BlendMode.DST_OUT
         doc.active.alphaLock -> BlendMode.SRC_ATOP
-        else -> BlendMode.SRC_OVER
+        else -> engine.brush.dyn.blend.mode
     }
 
     // =========================================================
@@ -1123,6 +1130,16 @@ class CanvasView(context: Context) : View(context) {
             smudger = sm
             engine.dabHandler = { x, y, d, a, ang -> sm.dab(x, y, d, a, ang) }
         } else engine.dabHandler = null
+        // wet mix picks up the layer's colors; the dual brush stamps its second shape into a mask
+        engine.wetSource = if (!smudging && !strokeErasing && engine.brush.dyn.hasWetMix) layer.bitmap else null
+        strokeMask = if (!smudging && engine.brush.dualTip() != null) {
+            val mb = maskBitmap?.takeIf { it.width == doc.width && it.height == doc.height }
+                ?: run { maskBitmap?.recycle(); runCatching { Bitmap.createBitmap(doc.width, doc.height, Bitmap.Config.ALPHA_8) }.getOrNull() }
+            maskBitmap = mb
+            mb?.eraseColor(0)
+            mb
+        } else null
+        engine.maskTarget = strokeMask
         engine.symmetry = symmetry
         engine.centerX = doc.width / 2f
         engine.centerY = doc.height / 2f
@@ -1252,11 +1269,13 @@ class CanvasView(context: Context) : View(context) {
         val lc = Canvas(layer.bitmap)
         val grain = strokeGrain
         val sel = selection
-        if (grain == null && sel == null) lc.drawBitmap(sb, r, r, commitPaint)
+        val mask = strokeMask
+        if (grain == null && sel == null && mask == null) lc.drawBitmap(sb, r, r, commitPaint)
         else {
             val rf = RectF(r)
             val s = lc.saveLayer(rf, commitPaint)
             lc.drawBitmap(sb, r, r, null)
+            if (mask != null) lc.drawBitmap(mask, r, r, maskDstIn)
             if (grain != null) lc.drawRect(rf, grain)
             if (sel != null) lc.drawBitmap(sel.mask, r, r, Selections.dstIn)
             lc.restoreToCount(s)
@@ -1293,6 +1312,9 @@ class CanvasView(context: Context) : View(context) {
         engine.color = ls.color
         engine.dabHandler = null
         engine.symmetry = symmetry
+        engine.wetSource = null
+        strokeMask?.eraseColor(0)
+        engine.maskTarget = strokeMask
         val wasErasing = strokeErasing
         strokeErasing = ls.erasing
         strokeGrain = ls.grain
@@ -1361,6 +1383,7 @@ class CanvasView(context: Context) : View(context) {
     private fun renderShape(s: Shape) {
         val sb = strokeBitmap ?: return
         sb.eraseColor(0)
+        strokeMask?.eraseColor(0)
         engine.renderPoints(sb, QuickShape.toPoints(s), shapePressure, shapeSeed)
         invalidate()
     }

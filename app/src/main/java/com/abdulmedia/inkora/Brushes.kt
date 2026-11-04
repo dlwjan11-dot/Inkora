@@ -55,7 +55,11 @@ class BrushPreset(
     /** for imported brushes */
     val id: String = "builtin:$name",
     val customTip: Bitmap? = null,
-    val customGrain: Bitmap? = null
+    val customGrain: Bitmap? = null,
+    /** the studio settings it starts with (null: from the fields above) */
+    val dynamics: BrushDynamics? = null,
+    /** a dual brush's own second shape (from an imported brush) */
+    val dualTip: Bitmap? = null
 ) {
     val imported get() = id.startsWith("user:")
 }
@@ -74,6 +78,8 @@ class Brush(val preset: BrushPreset) {
     var angle = preset.angle
     var grainScale = preset.grainScale
     var grainOn = preset.grain != GrainType.NONE
+    /** the Brush Studio's other settings */
+    var dyn = BrushDynamics.fromPreset(preset)
 
     val minSize get() = 1f - sizePressure
     val minFlow get() = 1f - flowPressure
@@ -93,6 +99,14 @@ class Brush(val preset: BrushPreset) {
         angle = preset.angle
         grainScale = preset.grainScale
         grainOn = preset.grain != GrainType.NONE
+        dyn = BrushDynamics.fromPreset(preset)
+    }
+
+    /** the dual brush's second shape */
+    fun dualTip(): Bitmap? = when {
+        !dyn.dualOn -> null
+        dyn.dualShape == "CUSTOM" -> preset.dualTip ?: Brushes.tip(TipShape.CHARCOAL)
+        else -> Brushes.tip(runCatching { TipShape.valueOf(dyn.dualShape) }.getOrDefault(TipShape.CHARCOAL))
     }
 }
 

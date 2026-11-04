@@ -41,6 +41,8 @@ class GalleryView(
 
     private var filter = Filter.ALL
     private var query = ""
+    /** the stack being looked into (null: the whole gallery) */
+    private var openStack: String? = null
     private val content = LinearLayout(context)
     private val chips = LinearLayout(context)
     private var entries: List<Gallery.Entry> = emptyList()
@@ -150,6 +152,19 @@ class GalleryView(
             content.addView(emptyState())
             return
         }
+        val stack = openStack
+        if (stack != null) {
+            // inside a stack: its artworks only
+            val inside = entries.filter { it.stack == stack }
+            if (inside.isEmpty()) { openStack = null; render(); return }
+            val bar = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(4.dp, 12.dp, 0, 4.dp) }
+            bar.addView(Ui.button(context, "‹ All artworks") { openStack = null; render() }.apply { background = null; textSize = 15f })
+            bar.addView(Ui.text(context, stack, 22f, bold = true).apply { setPadding(10.dp, 0, 0, 0) })
+            bar.addView(Ui.text(context, "  ${inside.size}", 15f, Ui.TEXT_DIM))
+            content.addView(bar)
+            content.addView(gridOf(inside.map { e -> { w: Int -> card(e, w) } }))
+            return
+        }
         val shown = entries.filter {
             when (filter) {
                 Filter.ALL -> true
@@ -163,22 +178,99 @@ class GalleryView(
         }
 
         var rest = shown
+        val stacked = filter == Filter.ALL && query.isEmpty()
         // "Continue" hero card for the most recent artwork
-        if (filter == Filter.ALL && query.isEmpty()) {
+        if (stacked) {
             content.addView(section("Continue"))
             content.addView(hero(shown[0]), LinearLayout.LayoutParams(-1, -2).apply { setMargins(8.dp, 0, 8.dp, 8.dp) })
             rest = shown.drop(1)
             if (rest.isNotEmpty()) content.addView(section("Recent"))
         }
+        // stacks show as one card each, where their newest artwork would be
+        val cards = ArrayList<(Int) -> View>()
+        val seen = HashSet<String>()
+        for (e in rest) {
+            val st = e.stack
+            if (stacked && st != null) {
+                if (seen.add(st)) cards.add { w -> stackCard(st, entries.filter { it.stack == st }, w) }
+            } else cards.add { w -> card(e, w) }
+        }
+        content.addView(gridOf(cards))
+    }
 
+    private fun gridOf(cards: List<(Int) -> View>): View {
         val cardW = 230.dp
         val cols = max(1, (width - 32.dp) / (cardW + 16.dp))
         val grid = GridLayout(context).apply { columnCount = cols }
-        for (e in rest) grid.addView(card(e, cardW), GridLayout.LayoutParams().apply {
+        for (make in cards) grid.addView(make(cardW), GridLayout.LayoutParams().apply {
             width = cardW
             setMargins(8.dp, 8.dp, 8.dp, 8.dp)
         })
-        content.addView(grid)
+        return grid
+    }
+
+    /** a stack: its newest artworks fanned out, its name and how many */
+    private fun stackCard(name: String, list: List<Gallery.Entry>, w: Int): View {
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(8.dp, 8.dp, 8.dp, 10.dp)
+            background = Ui.rounded(Ui.PANEL_ROW, 14f)
+        }
+        val frame = FrameLayout(context)
+        val top = list.sortedByDescending { it.modified }.take(3)
+        for ((i, e) in top.withIndex().reversed()) {
+            val v = thumb(e)
+            val off = (i * 9).dp
+            v.rotation = if (i == 0) 0f else if (i == 1) -4f else 4f
+            v.elevation = (6 - i).toFloat()
+            frame.addView(v, LayoutParams(-1, -1).apply { setMargins(off, off / 2, off, 0) })
+        }
+        card.addView(frame, LinearLayout.LayoutParams(-1, (w * 0.7f).toInt()))
+        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        row.addView(IconView(context, Icon.FOLDER).apply { isClickable = false; tint = Ui.ACCENT }, LinearLayout.LayoutParams(22.dp, 22.dp))
+        row.addView(Ui.text(context, name, 15f, bold = true).apply { maxLines = 1; setPadding(6.dp, 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+        card.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
+        card.addView(Ui.text(context, L10n.tr("Stack") + " · ${list.size}", 11.5f, Ui.TEXT_DIM).apply { setPadding(2.dp, 2.dp, 2.dp, 0) })
+        card.setOnClickListener { openStack = name; render() }
+        card.setOnLongClickListener {
+            val pm = PopupMenu(context, card)
+            pm.menu.add(0, 1, 1, "Rename stack")
+            pm.menu.add(0, 2, 2, "Unstack")
+            pm.setOnMenuItemClickListener { item ->
+                if (item.itemId == 1) askName("Rename stack", name) { n -> Gallery.renameStack(context, name, n); refresh() }
+                else { Gallery.renameStack(context, name, null); refresh() }
+                true
+            }
+            L10n.menu(pm.menu); pm.show()
+            true
+        }
+        return card
+    }
+
+    /** a small dialog asking for a name */
+    private fun askName(title: String, start: String, done: (String) -> Unit) {
+        val input = EditText(context).apply { setText(start); setSingleLine(); setSelection(start.length) }
+        val box = FrameLayout(context).apply { setPadding(24.dp, 8.dp, 24.dp, 0); addView(input) }
+        android.app.AlertDialog.Builder(context, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr(title))
+            .setView(box)
+            .setPositiveButton(L10n.tr("OK")) { _, _ -> input.text.toString().trim().takeIf { it.isNotEmpty() }?.let(done) }
+            .setNegativeButton(L10n.tr("Cancel"), null)
+            .show()
+    }
+
+    /** Move to stack: one of the stacks there are, or a new one */
+    private fun moveToStack(e: Gallery.Entry) {
+        val names = entries.mapNotNull { it.stack }.distinct().filter { it != e.stack }
+        val items = names + L10n.tr("New stack…")
+        android.app.AlertDialog.Builder(context, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Move to stack"))
+            .setItems(items.toTypedArray()) { _, i ->
+                if (i < names.size) { Gallery.setStack(context, e.id, names[i]); refresh() }
+                else askName("New stack", L10n.tr("Stack") + " ${names.size + 1}") { n -> Gallery.setStack(context, e.id, n); refresh() }
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null)
+            .show()
     }
 
     private fun section(t: String) = Ui.text(context, t.uppercase(), 12f, Ui.TEXT_DIM, true).apply {
@@ -248,12 +340,16 @@ class GalleryView(
         val pm = PopupMenu(context, anchor)
         pm.menu.add(0, 1, 1, "Rename")
         pm.menu.add(0, 2, 2, "Duplicate")
-        pm.menu.add(0, 3, 3, "Delete")
+        pm.menu.add(0, 4, 3, "Move to stack…")
+        if (e.stack != null) pm.menu.add(0, 5, 4, "Take out of the stack")
+        pm.menu.add(0, 3, 5, "Delete")
         pm.setOnMenuItemClickListener {
             when (it.itemId) {
                 1 -> onRename(e)
                 2 -> onDuplicate(e)
                 3 -> onDelete(e)
+                4 -> moveToStack(e)
+                5 -> { Gallery.setStack(context, e.id, null); refresh() }
             }
             true
         }

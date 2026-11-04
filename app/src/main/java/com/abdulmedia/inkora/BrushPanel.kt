@@ -27,9 +27,16 @@ fun grainPaintFor(b: Brush): Paint? {
     val sc = b.grainScale.coerceIn(0.1f, 8f) * 256f / max(g.width, g.height)
     m.setScale(sc, sc)
     shader.setLocalMatrix(m)
+    val depth = b.dyn.grainDepth.coerceIn(0f, 1f)
     return Paint(Paint.FILTER_BITMAP_FLAG).apply {
         this.shader = shader
         blendMode = BlendMode.DST_IN
+        // grain depth: less depth lets paint show between the grain too
+        if (depth < 0.999f) colorFilter = android.graphics.ColorMatrixColorFilter(floatArrayOf(
+            1f, 0f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f, 0f,
+            0f, 0f, 1f, 0f, 0f,
+            0f, 0f, 0f, depth, (1f - depth) * 255f))
     }
 }
 
@@ -49,13 +56,16 @@ class BrushPanel(
     private val onImportLink: () -> Unit,
     private val onDelete: (Brush) -> Unit,
     private val onPin: (() -> Unit)? = null,
-    private val onDeleteSet: ((String, List<Brush>) -> Unit)? = null
+    private val onDeleteSet: ((String, List<Brush>) -> Unit)? = null,
+    /** opens the Brush Studio for the brush */
+    private val onEdit: (Brush) -> Unit = {},
+    private val onNewBrush: (() -> Unit)? = null,
+    private val onExportSet: ((String, List<Brush>) -> Unit)? = null
 ) : LinearLayout(context) {
 
     private val setsColumn = LinearLayout(context)
     private val list = LinearLayout(context)
     private val listScroll = ScrollView(context)
-    private var studio = false
     private var currentSet: String = selected.preset.category
 
     init {
@@ -94,15 +104,6 @@ class BrushPanel(
     private fun rebuild() {
         removeAllViews()
         val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(6.dp, 0, 0, 10.dp) }
-        if (studio) {
-            head.addView(Ui.button(context, "‹ Library") { studio = false; rebuild() }.apply { background = null; textSize = 15f })
-            head.addView(Ui.text(context, "Brush Studio", 20f, bold = true), LayoutParams(0, -2, 1f).apply { marginStart = 6.dp })
-            addView(head)
-            val s = ScrollView(context)
-            s.addView(buildStudio())
-            addView(s, LayoutParams(-1, 0, 1f))
-            return
-        }
         head.addView(Ui.text(context, title, 22f, bold = true), LayoutParams(0, -2, 1f))
         if (onPin != null) {
             head.addView(IconView(context, Icon.PIN).apply {
@@ -115,7 +116,11 @@ class BrushPanel(
             val pm = android.widget.PopupMenu(context, plus)
             pm.menu.add(0, 1, 1, "Import file…")
             pm.menu.add(0, 2, 2, "Import from link…")
-            pm.setOnMenuItemClickListener { if (it.itemId == 1) onImportFile() else onImportLink(); true }
+            if (onNewBrush != null) pm.menu.add(0, 3, 3, "New brush from this one")
+            pm.setOnMenuItemClickListener {
+                when (it.itemId) { 1 -> onImportFile(); 2 -> onImportLink(); else -> onNewBrush?.invoke() }
+                true
+            }
             L10n.menu(pm.menu); pm.show()
         }
         head.addView(plus, LayoutParams(44.dp, 44.dp))
@@ -144,8 +149,18 @@ class BrushPanel(
                 setPadding(10.dp, 0, 8.dp, 0)
                 background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
                 setOnClickListener { currentSet = set; buildList(); refreshSets() }
-                if (imported && onDeleteSet != null) setOnLongClickListener {
-                    onDeleteSet.invoke(set, brushes.filter { it.preset.category == set }); true
+                // long-press a set: export it (any set), or delete it (yours)
+                setOnLongClickListener { v ->
+                    val list = brushes.filter { it.preset.category == set }
+                    val pm = android.widget.PopupMenu(context, v)
+                    if (onExportSet != null) pm.menu.add(0, 1, 1, "Export set (.brushset)…")
+                    if (imported && onDeleteSet != null) pm.menu.add(0, 2, 2, "Delete set")
+                    pm.setOnMenuItemClickListener {
+                        if (it.itemId == 1) onExportSet?.invoke(set, list) else onDeleteSet?.invoke(set, list)
+                        true
+                    }
+                    L10n.menu(pm.menu); pm.show()
+                    true
                 }
                 tag = set
             }
@@ -197,9 +212,8 @@ class BrushPanel(
             card.addView(img, LayoutParams(-1, 42.dp))
             card.setOnClickListener {
                 if (b === selected) {
-                    // the brush in hand, tapped again: its settings
-                    studio = true
-                    rebuild()
+                    // the brush in hand, tapped again: the Brush Studio
+                    onEdit(b)
                 } else {
                     selected = b
                     onSelect(b)
@@ -213,79 +227,25 @@ class BrushPanel(
         val hint = when {
             brushes.none { it.preset.imported } ->
                 "Tap + to import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
-            items.any { it.preset.imported } -> "Long-press a brush to delete it, or long-press the set to delete all of it."
+            items.any { it.preset.imported } -> "Long-press a brush to delete it. Long-press the set to export or delete it."
             else -> "Tap the brush you're using again to change its settings."
         }
         list.addView(Ui.text(context, hint, 12f, Ui.TEXT_DIM).apply { setPadding(14.dp, 10.dp, 8.dp, 8.dp) })
     }
 
-    private fun buildStudio(): View {
-        val b = selected
-        val box = LinearLayout(context).apply { orientation = VERTICAL }
-        val livePreview = ImageView(context).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            background = Ui.rounded(Ui.PANEL_ROW, 10f)
-        }
-        fun refreshPreview() = livePreview.setImageBitmap(render(b))
-        refreshPreview()
-        box.addView(Ui.text(context, b.preset.name, 14f, Ui.TEXT, true))
-        box.addView(livePreview, LayoutParams(-1, 70.dp).apply { topMargin = 6.dp; bottomMargin = 4.dp })
-
-        fun pct(v: Float) = "${(v * 100).roundToInt()}%"
-        box.addView(Ui.sliderRow(context, "StreamLine (smoothing)", b.streamline, ::pct) { b.streamline = it })
-        box.addView(Ui.sliderRow(context, "Spacing", ((b.spacing - 0.01f) / 1.5f).coerceIn(0f, 1f), { pct(0.01f + it * 1.5f) }) {
-            b.spacing = 0.01f + it * 1.5f; refreshPreview()
-        })
-        box.addView(Ui.sliderRow(context, "Scatter", (b.scatter / 1.5f).coerceIn(0f, 1f), { pct(it * 1.5f) }) {
-            b.scatter = it * 1.5f; refreshPreview()
-        })
-        box.addView(Ui.sliderRow(context, "Flow", b.flow, ::pct) { b.flow = it.coerceAtLeast(0.02f); refreshPreview() })
-        box.addView(Ui.sliderRow(context, "Pressure → Size", b.sizePressure, ::pct) { b.sizePressure = it; refreshPreview() })
-        box.addView(Ui.sliderRow(context, "Pressure → Opacity", b.flowPressure, ::pct) { b.flowPressure = it; refreshPreview() })
-
-        box.addView(Ui.text(context, "Tip rotation", 13f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 8.dp })
-        val rot = LinearLayout(context).apply { orientation = HORIZONTAL }
-        RotationMode.values().forEach { m ->
-            val chip = Ui.button(context, m.label) {}.apply {
-                textSize = 11.5f
-                setPadding(6.dp, 8.dp, 6.dp, 8.dp)
-                background = Ui.rounded(if (b.rotation == m) Ui.PANEL_ROW_ACTIVE else Ui.PANEL_ROW, 8f)
-            }
-            chip.setOnClickListener { b.rotation = m; rebuild() }
-            rot.addView(chip, LayoutParams(0, -2, 1f).apply { leftMargin = 3.dp })
-        }
-        box.addView(rot, LayoutParams(-1, -2).apply { topMargin = 4.dp })
-        if (b.rotation == RotationMode.FIXED || b.rotation == RotationMode.FOLLOW) {
-            box.addView(Ui.sliderRow(context, "Angle", (b.angle + 180f) / 360f, { "${(it * 360f - 180f).roundToInt()}°" }) {
-                b.angle = it * 360f - 180f; refreshPreview()
-            })
-        }
-
-        if (b.preset.grain != GrainType.NONE) {
-            val g = Ui.button(context, if (b.grainOn) "Texture (grain): ON" else "Texture (grain): off") {}
-            g.setOnClickListener { b.grainOn = !b.grainOn; rebuild() }
-            box.addView(g, LayoutParams(-1, -2).apply { topMargin = 10.dp })
-            if (b.grainOn) {
-                box.addView(Ui.sliderRow(context, "Texture scale", (b.grainScale - 0.2f) / 3.8f, { String.format("%.1f×", 0.2f + it * 3.8f) }) {
-                    b.grainScale = 0.2f + it * 3.8f; refreshPreview()
-                })
-            }
-        }
-
-        box.addView(Ui.button(context, "Reset brush settings") { b.resetSettings(); rebuild() },
-            LayoutParams(-1, -2).apply { topMargin = 12.dp })
-        return box
-    }
-
     companion object {
         private val cache = HashMap<String, Bitmap>()
 
-        fun preview(b: Brush): Bitmap = cache.getOrPut(b.preset.id) {
-            // a broken brush must never take the whole app down
-            runCatching { render(Brush(b.preset)) }.getOrElse { Bitmap.createBitmap(300, 64, Bitmap.Config.ARGB_8888) }
+        /** the brush's stroke as it is set now (a changed setting draws a new one) */
+        fun preview(b: Brush): Bitmap {
+            val key = b.preset.id + "#" + BrushSettings.toJson(b).toString().hashCode()
+            return cache.getOrPut(key) {
+                // a broken brush must never take the whole app down
+                runCatching { render(b) }.getOrElse { Bitmap.createBitmap(420, 64, Bitmap.Config.ARGB_8888) }
+            }
         }
 
-        fun forget(id: String) { cache.remove(id) }
+        fun forget(id: String) { cache.keys.removeAll { it == id || it.startsWith("$id#") } }
 
         /** Draws a sample S-curve stroke (light → heavy → light pressure). */
         fun render(source: Brush): Bitmap {
@@ -304,10 +264,13 @@ class BrushPanel(
                 angle = source.angle
                 grainOn = source.grainOn
                 grainScale = source.grainScale * 0.5f
+                dyn = source.dyn.copy()
             }
             val engine = StrokeEngine()
             engine.brush = brush
             engine.color = 0xFFF2F2F5.toInt()
+            val mask = if (brush.dualTip() != null) Bitmap.createBitmap(w, h, Bitmap.Config.ALPHA_8) else null
+            engine.maskTarget = mask
             val pts = ArrayList<InputPoint>()
             val n = 120
             for (i in 0..n) {
@@ -318,6 +281,7 @@ class BrushPanel(
                 pts.add(InputPoint(x, y, 0.15f + 0.85f * p, 0f))
             }
             engine.renderPressurePoints(bmp, pts, 7)
+            if (mask != null) { StrokeEngine.applyMask(bmp, mask); mask.recycle() }
             grainPaintFor(brush)?.let { Canvas(bmp).drawRect(0f, 0f, w.toFloat(), h.toFloat(), it) }
             return bmp
         }

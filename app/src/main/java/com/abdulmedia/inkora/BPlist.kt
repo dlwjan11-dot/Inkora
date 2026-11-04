@@ -100,6 +100,122 @@ class BPlist private constructor(private val b: ByteArray) {
         fun parse(bytes: ByteArray): BPlist = BPlist(bytes)
 
         /**
+         * Writes a binary plist: maps (string keys), lists, strings, whole numbers, decimals,
+         * booleans, byte arrays and [Uid]s. Equal strings are written once.
+         */
+        fun write(root: Any?): ByteArray {
+            val objs = ArrayList<Any?>()
+            val strIndex = HashMap<String, Int>()
+            // flatten: each container's children get their own indices
+            fun add(o: Any?): Int {
+                if (o is String) strIndex[o]?.let { return it }
+                val i = objs.size
+                objs.add(o)
+                if (o is String) strIndex[o] = i
+                when (o) {
+                    is Map<*, *> -> {
+                        val refs = ArrayList<Int>()
+                        val keys = o.keys.map { it.toString() }
+                        for (k in keys) refs.add(add(k))
+                        for (k in keys) refs.add(add(o[k]))
+                        objs[i] = WDict(refs, keys.size)
+                    }
+                    is List<*> -> objs[i] = WArray(o.map { add(it) })
+                }
+                return i
+            }
+            add(root)
+            val n = objs.size
+            val refSize = if (n < 256) 1 else if (n < 65536) 2 else 4
+            val out = java.io.ByteArrayOutputStream()
+            out.write("bplist00".toByteArray(Charsets.US_ASCII))
+            val offsets = LongArray(n)
+            fun be(v: Long, size: Int) { for (k in size - 1 downTo 0) out.write(((v shr (8 * k)) and 0xFF).toInt()) }
+            fun header(type: Int, len: Int) {
+                if (len < 15) out.write((type shl 4) or len)
+                else {
+                    out.write((type shl 4) or 0xF)
+                    when {
+                        len < 256 -> { out.write(0x10); be(len.toLong(), 1) }
+                        len < 65536 -> { out.write(0x11); be(len.toLong(), 2) }
+                        else -> { out.write(0x12); be(len.toLong(), 4) }
+                    }
+                }
+            }
+            for ((i, o) in objs.withIndex()) {
+                offsets[i] = out.size().toLong()
+                when (o) {
+                    null -> out.write(0x00)
+                    is Boolean -> out.write(if (o) 0x09 else 0x08)
+                    is Int, is Long -> {
+                        val v = (o as Number).toLong()
+                        when {
+                            v in 0..0xFF -> { out.write(0x10); be(v, 1) }
+                            v in 0..0xFFFF -> { out.write(0x11); be(v, 2) }
+                            v in 0..0xFFFFFFFFL -> { out.write(0x12); be(v, 4) }
+                            else -> { out.write(0x13); be(v, 8) }
+                        }
+                    }
+                    is Float, is Double -> { out.write(0x23); be(java.lang.Double.doubleToLongBits((o as Number).toDouble()), 8) }
+                    is ByteArray -> { header(0x4, o.size); out.write(o) }
+                    is String -> {
+                        if (o.all { it.code < 128 }) { header(0x5, o.length); out.write(o.toByteArray(Charsets.US_ASCII)) }
+                        else { header(0x6, o.length); out.write(o.toByteArray(Charsets.UTF_16BE)) }
+                    }
+                    is Uid -> {
+                        val v = o.value
+                        when {
+                            v < 256 -> { out.write(0x80); be(v, 1) }
+                            v < 65536 -> { out.write(0x81); be(v, 2) }
+                            else -> { out.write(0x83); be(v, 4) }
+                        }
+                    }
+                    is WArray -> { header(0xA, o.refs.size); for (r in o.refs) be(r.toLong(), refSize) }
+                    is WDict -> { header(0xD, o.count); for (r in o.refs) be(r.toLong(), refSize) }
+                    else -> throw IllegalArgumentException("can't write ${o.javaClass.simpleName}")
+                }
+            }
+            val tableOffset = out.size().toLong()
+            val offSize = if (tableOffset < 256) 1 else if (tableOffset < 65536) 2 else if (tableOffset < 0xFFFFFFFFL) 4 else 8
+            for (off in offsets) be(off, offSize)
+            repeat(6) { out.write(0) }
+            out.write(offSize); out.write(refSize)
+            be(n.toLong(), 8); be(0, 8); be(tableOffset, 8)
+            return out.toByteArray()
+        }
+
+        private class WArray(val refs: List<Int>)
+        private class WDict(val refs: List<Int>, val count: Int)
+
+        /**
+         * An NSKeyedArchiver plist with one root object of class [className] holding [fields]
+         * (strings are stored as references, numbers and booleans in place), as Procreate's
+         * Brush.archive is.
+         */
+        fun keyedArchive(className: String, fields: Map<String, Any?>): ByteArray {
+            val objects = ArrayList<Any?>()
+            objects.add("\$null")
+            val root = LinkedHashMap<String, Any?>()
+            objects.add(root)
+            for ((k, v) in fields) {
+                when (v) {
+                    null -> root[k] = Uid(0)
+                    is String -> { objects.add(v); root[k] = Uid((objects.size - 1).toLong()) }
+                    else -> root[k] = v
+                }
+            }
+            objects.add(mapOf("\$classname" to className, "\$classes" to listOf(className, "NSObject")))
+            root["\$class"] = Uid((objects.size - 1).toLong())
+            val top = linkedMapOf<String, Any?>(
+                "\$version" to 100000,
+                "\$archiver" to "NSKeyedArchiver",
+                "\$top" to mapOf("root" to Uid(1)),
+                "\$objects" to objects
+            )
+            return write(top)
+        }
+
+        /**
          * For an NSKeyedArchiver plist: the root object's fields, with UID references
          * to simple values (strings, numbers) resolved.
          */

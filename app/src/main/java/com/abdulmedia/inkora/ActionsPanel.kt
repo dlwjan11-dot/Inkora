@@ -192,7 +192,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         group(
             row("Insert a photo", "As a new layer") { host.insertPhoto() },
             row("Add text", "Any language, 9 fonts") { host.addText() },
-            row("Open a project file", ".inkora, made with this app") { host.openProjectFile() }
+            row("Open a project file", ".inkora from Inkora, or .psd from Photoshop") { host.openProjectFile() }
         )
         group(
             row("Import brushes…", "Procreate .brush and .brushset, .zip, or PNG stamps") { host.importBrushes() },
@@ -247,7 +247,10 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             row("Export SVG…", "Vector layers, for logos") { host.export("svg") }
         )
         group(
-            row("Save project (.inkora)…", "Keeps every layer, to open again in Inkora") { host.export("project") }
+            row("Save project (.inkora)…", "Keeps every layer, to open again in Inkora") { host.export("project") },
+            row("Photoshop (.psd)…", "With your layers, for Photoshop and other apps") { host.export("psd") },
+            row("PDF…", "For printing and sending") { host.export("pdf") },
+            row("TIFF…", "Full quality, with transparency, for print shops") { host.export("tiff") }
         )
     }
 

@@ -134,7 +134,13 @@ object BrushImport {
                     grainType = stockGrain(grainPath ?: "")
                     null
                 }
-                out.add(save(ctx, name, category, tip, grain, grainType, meta, stamp = false))
+                // a dual brush keeps its second brush in Sub01/: its shape becomes ours
+                val dual = get(prefix + "Sub01/Shape.png")?.let { b ->
+                    val subMeta = get(prefix + "Sub01/Brush.archive")?.let { runCatching { BPlist.keyedRootFields(it) }.getOrNull() } ?: emptyMap()
+                    val inv = subMeta["shapeInverted"] == true || (subMeta["shapeInverted"] as? Number)?.toInt() == 1
+                    BitmapFactory.decodeByteArray(b, 0, b.size)?.let { bmp -> tipFromProcreate(bmp, inv).also { bmp.recycle() } }
+                }
+                out.add(save(ctx, name, category, tip, grain, grainType, meta, stamp = false, dual = dual))
             }
         }
 
@@ -308,7 +314,7 @@ object BrushImport {
      * (Procreate keeps most of them as 0..1 amounts) in brush.json.
      */
     private fun save(ctx: Context, name: String, category: String, tip: Bitmap, grain: Bitmap?, grainType: GrainType,
-                     meta: Map<String, Any?>, stamp: Boolean): BrushPreset {
+                     meta: Map<String, Any?>, stamp: Boolean, dual: Bitmap? = null): BrushPreset {
         val id = UUID.randomUUID().toString()
         val dir = File(root(ctx), id).apply { mkdirs() }
         val spacing = num(meta, "plotSpacing")?.takeIf { it > 0f && it <= 4f }?.coerceIn(0.02f, 2f)
@@ -353,11 +359,107 @@ object BrushImport {
             put("taper", (taper * 8f).toDouble())
             if (grainType != GrainType.NONE) put("grainType", grainType.name)
             grainScale?.let { put("grainScale", (0.3f + it * 3f).toDouble()) }
+            put("dyn", dynamicsFrom(meta, taper * 8f, dual != null))
         }
         File(dir, "brush.json").writeText(json.toString(2))
         writeAlpha(tip, File(dir, "shape.png"))
         if (grain != null) writeAlpha(grain, File(dir, "grain.png"))
-        return makePreset(id, json, tip, grain)
+        if (dual != null) writeAlpha(dual, File(dir, "dual.png"))
+        return makePreset(id, json, tip, grain, dual)
+    }
+
+    /** the Brush Studio's settings, from the file's (Procreate's names, and Inkora's own) */
+    private fun dynamicsFrom(meta: Map<String, Any?>, taperLength: Float, hasDual: Boolean): JSONObject {
+        val d = BrushDynamics(taperLength = taperLength)
+        fun n(k: String) = num(meta, k)
+        fun flag(k: String) = meta[k] == true || (meta[k] as? Number)?.toInt() == 1
+        n("plotMovingAverageStabilization")?.let { d.stabilization = it.coerceIn(0f, 1f) }
+        n("plotFFTSmoothingAmount")?.let { d.motionFilter = it.coerceIn(0f, 1f) }
+        (n("pencilTaperSize") ?: n("taperSize"))?.let { d.taperSize = it.coerceIn(0f, 1f) }
+        (n("pencilTaperOpacity") ?: n("taperOpacity"))?.let { d.taperOpacity = it.coerceIn(0f, 1f) }
+        n("shapeRoundness")?.let { d.roundness = it.coerceIn(0.05f, 1f) }
+        d.flipX = flag("shapeFlipXJitter"); d.flipY = flag("shapeFlipYJitter")
+        n("grainDepth")?.let { d.grainDepth = it.coerceIn(0f, 1f) }
+        n("dynamicsJitterHue")?.let { d.hueJitter = it.coerceIn(0f, 1f) }
+        n("dynamicsJitterSaturation")?.let { d.satJitter = it.coerceIn(0f, 1f) }
+        (n("dynamicsJitterLightness") ?: n("dynamicsJitterDarkness"))?.let { d.lightJitter = it.coerceIn(0f, 1f) }
+        n("dynamicsJitterStrokeHue")?.let { d.strokeHueJitter = it.coerceIn(0f, 1f) }
+        (n("dynamicsJitterStrokeLightness") ?: n("dynamicsJitterStrokeDarkness"))?.let { d.strokeLightJitter = it.coerceIn(0f, 1f) }
+        n("dynamicsPressureHue")?.let { d.pressureHue = it.coerceIn(-1f, 1f) }
+        n("dynamicsPressureSaturation")?.let { d.pressureSat = it.coerceIn(-1f, 1f) }
+        n("dynamicsPressureBrightness")?.let { d.pressureBright = it.coerceIn(-1f, 1f) }
+        n("dynamicsTiltBrightness")?.let { d.tiltBright = it.coerceIn(-1f, 1f) }
+        n("dynamicsMix")?.let { d.wetDilution = it.coerceIn(0f, 1f) }
+        n("dynamicsLoad")?.let { d.wetCharge = it.coerceIn(0f, 1f) }
+        n("dynamicsWetAccumulation")?.let { d.wetPull = it.coerceIn(0f, 1f) }
+        n("dynamicsJitterSize")?.let { d.sizeJitter = it.coerceIn(0f, 1f) }
+        n("dynamicsJitterOpacity")?.let { d.opacityJitter = it.coerceIn(0f, 1f) }
+        (meta["inkoraBlend"] as? String)?.let { b -> runCatching { d.blend = LayerBlend.valueOf(b) } }
+        if (meta.containsKey("inkoraTiltShading")) d.tiltShading = flag("inkoraTiltShading")
+        n("inkoraPressureCurve")?.let { d.pressureCurve = it.coerceIn(0.3f, 3f) }
+        n("inkoraDualSize")?.let { d.dualSize = it.coerceIn(0.1f, 4f) }
+        n("inkoraDualScatter")?.let { d.dualScatter = it.coerceIn(0f, 2f) }
+        if (hasDual) { d.dualOn = true; d.dualShape = "CUSTOM" }
+        return d.toJson()
+    }
+
+    /**
+     * Keeps a copy of [b] as a brush of the user's own, named [name] in [category], with its
+     * shape, grain and every setting as they are now (Duplicate in the Brush Studio).
+     */
+    fun saveCustom(ctx: Context, b: Brush, name: String, category: String): BrushPreset {
+        val id = UUID.randomUUID().toString()
+        val dir = File(root(ctx), id).apply { mkdirs() }
+        val json = JSONObject().apply {
+            put("name", name)
+            put("category", category)
+            put("spacing", b.spacing.toDouble())
+            put("scatter", b.scatter.toDouble())
+            put("stamp", false)
+            put("size", b.size.toDouble())
+            put("pressureSize", b.sizePressure.toDouble())
+            put("pressureOpacity", b.flowPressure.toDouble())
+            put("streamline", b.streamline.toDouble())
+            put("opacity", b.opacity.toDouble())
+            put("flow", b.flow.toDouble())
+            put("rotation", b.rotation.name)
+            put("angle", b.angle.toDouble())
+            put("taper", b.dyn.taperLength.toDouble())
+            put("grainScale", b.grainScale.toDouble())
+            put("dyn", b.dyn.toJson())
+        }
+        val tip = b.tip()
+        val grain = if (b.preset.grain != GrainType.NONE) (b.preset.customGrain ?: Brushes.grain(b.preset.grain)) else null
+        val dual = b.preset.dualTip
+        File(dir, "brush.json").writeText(json.toString(2))
+        writeAlpha(tip, File(dir, "shape.png"))
+        if (grain != null) writeAlpha(grain, File(dir, "grain.png"))
+        if (dual != null) writeAlpha(dual, File(dir, "dual.png"))
+        return makePreset(id, json, readAlpha(File(dir, "shape.png")) ?: tip, grain?.let { readAlpha(File(dir, "grain.png")) }, dual)
+    }
+
+    /** Renames a brush of the user's own (kept in brush.json). */
+    fun rename(ctx: Context, preset: BrushPreset, name: String) {
+        if (!preset.imported) return
+        val f = File(File(root(ctx), preset.id.removePrefix("user:")), "brush.json")
+        runCatching { f.writeText(JSONObject(f.readText()).put("name", name).toString(2)) }
+    }
+
+    /** Replaces the shape or grain image of a brush of the user's own ("shape.png" / "grain.png"). */
+    fun replaceImage(ctx: Context, preset: BrushPreset, file: String, alpha: Bitmap) {
+        if (!preset.imported) return
+        writeAlpha(alpha, File(File(root(ctx), preset.id.removePrefix("user:")), file))
+    }
+
+    /** Reloads one brush of the user's own from disk (after its images or name changed). */
+    fun reload(ctx: Context, preset: BrushPreset): BrushPreset? {
+        if (!preset.imported) return null
+        val dir = File(root(ctx), preset.id.removePrefix("user:"))
+        return runCatching {
+            val json = JSONObject(File(dir, "brush.json").readText())
+            val tip = readAlpha(File(dir, "shape.png")) ?: return null
+            makePreset(dir.name, json, tip, readAlpha(File(dir, "grain.png")), readAlpha(File(dir, "dual.png")))
+        }.getOrNull()
     }
 
     private fun writeAlpha(alpha: Bitmap, f: File) {
@@ -375,7 +477,7 @@ object BrushImport {
         return a
     }
 
-    private fun makePreset(id: String, json: JSONObject, tip: Bitmap, grain: Bitmap?): BrushPreset {
+    private fun makePreset(id: String, json: JSONObject, tip: Bitmap, grain: Bitmap?, dual: Bitmap? = null): BrushPreset {
         val stamp = json.optBoolean("stamp", false)
         fun f(key: String, def: Float) = json.optDouble(key, def.toDouble()).toFloat().takeIf { it.isFinite() } ?: def
         val stockGrain = runCatching { GrainType.valueOf(json.optString("grainType", "NONE")) }.getOrDefault(GrainType.NONE)
@@ -398,7 +500,9 @@ object BrushImport {
             grainScale = f("grainScale", 1f),
             id = "user:$id",
             customTip = tip,
-            customGrain = grain
+            customGrain = grain,
+            dynamics = json.optJSONObject("dyn")?.let { d -> BrushDynamics(taperLength = f("taper", 0f)).also { it.read(d) } },
+            dualTip = dual
         )
     }
 
@@ -408,7 +512,7 @@ object BrushImport {
             runCatching {
                 val json = JSONObject(File(dir, "brush.json").readText())
                 val tip = readAlpha(File(dir, "shape.png")) ?: return@runCatching null
-                makePreset(dir.name, json, tip, readAlpha(File(dir, "grain.png")))
+                makePreset(dir.name, json, tip, readAlpha(File(dir, "grain.png")), readAlpha(File(dir, "dual.png")))
             }.getOrNull()
         }
     }
