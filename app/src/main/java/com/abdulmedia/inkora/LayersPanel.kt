@@ -229,7 +229,10 @@ class LayersPanel(
             cv.listener?.onMessage("Layer limit reached for this canvas size")
             return
         }
-        val layer = doc.createLayer()
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) {
+            cv.listener?.onMessage("Not enough memory for another layer right now")
+            return
+        }
         val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
         cmd.redo(doc)
         cv.pushCommand(cmd)
@@ -242,7 +245,9 @@ class LayersPanel(
             cv.listener?.onMessage("Layer limit reached for this canvas size")
             return
         }
-        val l = Layer(src.bitmap.copy(Bitmap.Config.ARGB_8888, true), src.name + " copy")
+        val copy = try { src.bitmap.copy(Bitmap.Config.ARGB_8888, true) } catch (e: OutOfMemoryError) { null }
+        if (copy == null) { cv.listener?.onMessage("Not enough memory for another layer right now"); return }
+        val l = Layer(copy, src.name + " copy")
         l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock; l.isClippingMask = src.isClippingMask; l.visible = src.visible
         l.vector = src.vector?.copy()
         val cmd = AddLayerCmd(l, index + 1, index)

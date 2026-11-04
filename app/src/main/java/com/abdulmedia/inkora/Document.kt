@@ -77,10 +77,10 @@ class Document(val width: Int, val height: Int) {
 
     fun createLayer(): Layer = Layer(newLayerBitmap(), "Layer ${layerNameCounter++}")
 
-    /** How many layers fit in a safe memory budget (like Procreate's limit). */
+    /** How many layers fit in this device's memory budget (like Procreate's limit). */
     fun maxLayers(): Int {
         val bytes = width.toLong() * height * 4
-        return (1_100_000_000L / bytes).toInt().coerceIn(3, 64)
+        return (layerBudget / bytes).toInt().coerceIn(3, 200)
     }
 
     fun clampActive() {
@@ -169,6 +169,19 @@ class Document(val width: Int, val height: Int) {
     }
 
     companion object {
+        /**
+         * Memory for all layers together: a quarter of the device's RAM (layer pixels live in
+         * native memory, not the Java heap), between 600 MB and 4 GB. Set at start-up.
+         * 12 GB of RAM gives about 137 layers at 2960 × 1848.
+         */
+        var layerBudget = 1_100_000_000L
+            private set
+
+        fun setDeviceMemory(totalRamBytes: Long) {
+            if (totalRamBytes <= 0) return
+            layerBudget = (totalRamBytes / 4).coerceIn(600_000_000L, 4_000_000_000L)
+        }
+
         fun blank(width: Int, height: Int): Document {
             val d = Document(width, height)
             d.layers.add(d.createLayer())

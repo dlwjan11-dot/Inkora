@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.1.apk"><img src="https://img.shields.io/badge/Download_APK-0.10.1-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.10.1"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.2.apk"><img src="https://img.shields.io/badge/Download_APK-0.10.2-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.10.2"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
@@ -90,13 +90,13 @@ Change any of them in **Actions › Prefs › Gesture controls**.
 
 ### Install
 
-1. Download **[Inkora-0.10.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.1.apk)** on your Android device.
+1. Download **[Inkora-0.10.2.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.2.apk)** on your Android device.
 2. Open it. If Android asks, allow installs from this source.
 3. If Play Protect warns you, tap **Install anyway** — Inkora isn't on Google Play yet.
 4. Open Inkora and draw.
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too, with your finger.
-SHA-256: `04b7d064d4a5f263eda4d4a7a2cc9208bb72537d529be7e7defa695d12e571c5`
+SHA-256: `b5ddd57eb170f31c3eb3ac818a2f7dc78fb847cf98b37c28609bb9fbd94abfe9`
 
 ### Build it yourself
 
@@ -147,7 +147,7 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Inkora-0.10.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.1.apk)** على جهازك.
+1. حمّل **[Inkora-0.10.2.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.2.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
 4. افتح Inkora وابدأ الرسم.
@@ -178,7 +178,7 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Inkora-0.10.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.1.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Inkora-0.10.2.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.10.2.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
 4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.

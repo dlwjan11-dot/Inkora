@@ -1650,7 +1650,9 @@ class CanvasView(context: Context) : View(context) {
         if (doc.layers.size >= doc.maxLayers()) { listener?.onMessage("Layer limit reached"); return }
         val src = doc.active
         val index = doc.activeIndex
-        val l = Layer(src.bitmap.copy(Bitmap.Config.ARGB_8888, true), src.name + " copy")
+        val copy = try { src.bitmap.copy(Bitmap.Config.ARGB_8888, true) } catch (e: OutOfMemoryError) { null }
+        if (copy == null) { listener?.onMessage("Not enough memory for another layer right now"); return }
+        val l = Layer(copy, src.name + " copy")
         l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock
         l.isClippingMask = src.isClippingMask; l.visible = src.visible
         l.vector = src.vector?.copy()
@@ -1694,7 +1696,9 @@ class CanvasView(context: Context) : View(context) {
         if (busy()) return
         val clip = clipboard ?: run { listener?.onMessage("Nothing copied yet"); return }
         if (doc.layers.size >= doc.maxLayers()) { listener?.onMessage("Layer limit reached"); return }
-        val layer = doc.createLayer()
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) {
+            listener?.onMessage("Not enough memory for another layer right now"); return
+        }
         layer.name = L10n.tr("Pasted")
         val at = clipboardAt
         Canvas(layer.bitmap).drawBitmap(clip, at.x.toFloat().coerceAtMost(doc.width - 1f), at.y.toFloat().coerceAtMost(doc.height - 1f), null)

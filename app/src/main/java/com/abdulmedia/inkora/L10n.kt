@@ -789,6 +789,8 @@ object L10n {
         "Insert it as a layer", "إدراجها كطبقة", "دانانی وەک چین",
         "Make it a brush", "تحويلها إلى فرشاة", "کردنی بە فڵچە",
 
+        "Not enough memory for another layer right now", "لا توجد ذاكرة كافية لطبقة جديدة الآن", "ئێستا بیرگەی پێویست نییە بۆ چینێکی تر",
+
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

@@ -108,6 +108,13 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installCrashReporter()
+        // the layer limit follows this device's memory
+        runCatching {
+            val am = getSystemService(android.app.ActivityManager::class.java)
+            val mi = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mi)
+            Document.setDeviceMemory(mi.totalMem)
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setBackgroundDrawable(ColorDrawable(0xFF2B2B30.toInt()))
         buildUi()
