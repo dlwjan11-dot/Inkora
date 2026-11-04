@@ -36,7 +36,7 @@ fun grainPaintFor(b: Brush): Paint? {
 /**
  * Brush library: the sets down the side (each with its icon), the chosen set's brushes beside it,
  * each with a stroke drawn by the brush itself. Tap a brush to paint with it; tap it again to
- * open the Brush Studio. Imported sets are listed after Zerin's own.
+ * open the Brush Studio. Imported sets are listed after Inkora's own.
  */
 @SuppressLint("ViewConstructor")
 class BrushPanel(
@@ -212,7 +212,7 @@ class BrushPanel(
         }
         val hint = when {
             brushes.none { it.preset.imported } ->
-                "Tap + to import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Zerin from your Files app."
+                "Tap + to import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
             items.any { it.preset.imported } -> "Long-press a brush to delete it, or long-press the set to delete all of it."
             else -> "Tap the brush you're using again to change its settings."
         }

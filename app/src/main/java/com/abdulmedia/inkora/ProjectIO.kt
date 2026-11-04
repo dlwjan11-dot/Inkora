@@ -80,7 +80,7 @@ object ProjectIO {
     fun write(s: Snapshot, out: OutputStream) {
         ZipOutputStream(out.buffered()).use { zip ->
             val json = JSONObject()
-            json.put("app", "Zerin")
+            json.put("app", "Inkora")
             json.put("version", 1)
             json.put("width", s.width)
             json.put("height", s.height)
@@ -125,7 +125,7 @@ object ProjectIO {
                 e = zip.nextEntry
             }
         }
-        val jsonBytes = files["document.json"] ?: throw IllegalArgumentException("Not an Zerin project")
+        val jsonBytes = files["document.json"] ?: throw IllegalArgumentException("Not an Inkora project")
         val json = JSONObject(String(jsonBytes))
         val doc = Document(json.getInt("width"), json.getInt("height"))
         doc.backgroundColor = json.optInt("background", 0xFFFFFFFF.toInt())
@@ -187,9 +187,9 @@ object ProjectIO {
     fun exportToGallery(ctx: Context, bmp: Bitmap, jpeg: Boolean): Uri? {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
         val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "Zerin_$stamp." + if (jpeg) "jpg" else "png")
+            put(MediaStore.Images.Media.DISPLAY_NAME, "Inkora_$stamp." + if (jpeg) "jpg" else "png")
             put(MediaStore.Images.Media.MIME_TYPE, if (jpeg) "image/jpeg" else "image/png")
-            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Zerin")
+            put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/Inkora")
             put(MediaStore.Images.Media.IS_PENDING, 1)
         }
         val resolver = ctx.contentResolver

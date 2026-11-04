@@ -332,7 +332,7 @@ class CanvasView(context: Context) : View(context) {
     private val tmpPts = FloatArray(2)
 
     companion object {
-        /** Zerin's own clipboard: shared by every artwork while the app runs */
+        /** Inkora's own clipboard: shared by every artwork while the app runs */
         private var clipboard: Bitmap? = null
         private var clipboardAt = android.graphics.Point(0, 0)
     }
@@ -1661,7 +1661,7 @@ class CanvasView(context: Context) : View(context) {
         listener?.onMessage("Layer duplicated")
     }
 
-    /** Copies the selection (or the whole layer) to Zerin's clipboard; [cut] also removes it. */
+    /** Copies the selection (or the whole layer) to Inkora's clipboard; [cut] also removes it. */
     fun copyToClipboard(cut: Boolean) {
         if (busy()) return
         val layer = doc.active

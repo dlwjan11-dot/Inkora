@@ -192,7 +192,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         group(
             row("Insert a photo", "As a new layer") { host.insertPhoto() },
             row("Add text", "Any language, 9 fonts") { host.addText() },
-            row("Open a project file", ".zerin, made with this app") { host.openProjectFile() }
+            row("Open a project file", ".inkora, made with this app") { host.openProjectFile() }
         )
         group(
             row("Import brushes…", "Procreate .brush and .brushset, .zip, or PNG stamps") { host.importBrushes() },
@@ -247,7 +247,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             row("Export SVG…", "Vector layers, for logos") { host.export("svg") }
         )
         group(
-            row("Save project (.zerin)…", "Keeps every layer, to open again in Zerin") { host.export("project") }
+            row("Save project (.inkora)…", "Keeps every layer, to open again in Inkora") { host.export("project") }
         )
     }
 
@@ -349,6 +349,6 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         }
         body.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 10.dp })
         val ver = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
-        note("Zerin $ver · Abdulmedia")
+        note("Inkora $ver · Abdulmedia")
     }
 }

@@ -59,7 +59,7 @@ class GalleryView(
         }
         val titles = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         titles.addView(TextView(context).apply {
-            text = "Zerin"
+            text = "Inkora"
             textSize = 30f
             setTextColor(Ui.TEXT)
             typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.NORMAL)
@@ -266,7 +266,7 @@ class GalleryView(
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(24.dp, 80.dp, 24.dp, 24.dp)
         }
-        box.addView(Ui.text(context, "Welcome to Zerin", 24f, bold = true))
+        box.addView(Ui.text(context, "Welcome to Inkora", 24f, bold = true))
         box.addView(Ui.text(context, "Start a new canvas, or import a photo or project.", 15f, Ui.TEXT_DIM).apply { setPadding(0, 8.dp, 0, 20.dp) })
         box.addView(Ui.button(context, "＋  New canvas") { onNew() }.apply {
             background = Ui.rounded(Ui.ACCENT, 12f)

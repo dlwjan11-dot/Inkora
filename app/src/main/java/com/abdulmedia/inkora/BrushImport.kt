@@ -448,7 +448,7 @@ object BrushImport {
             conn.instanceFollowRedirects = false
             conn.connectTimeout = 15000
             conn.readTimeout = 30000
-            conn.setRequestProperty("User-Agent", "Zerin/0.9 (Android)")
+            conn.setRequestProperty("User-Agent", "Inkora/0.9 (Android)")
             val code = conn.responseCode
             if (code in 300..399) {
                 val loc = conn.getHeaderField("Location") ?: throw IllegalArgumentException("Bad redirect")

@@ -153,7 +153,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         restorePins()
         // the app always starts on the home screen
         showGallery(fromCanvas = false)
-        // a brush file, project or image opened with Zerin from another app
+        // a brush file, project or image opened with Inkora from another app
         handleIncoming(intent)
     }
 
@@ -206,7 +206,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 val sw = java.io.StringWriter()
                 e.printStackTrace(java.io.PrintWriter(sw))
                 val version = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull()
-                crashFile().writeText("Zerin $version · Android ${Build.VERSION.RELEASE} · ${Build.MODEL}\n\n$sw")
+                crashFile().writeText("Inkora $version · Android ${Build.VERSION.RELEASE} · ${Build.MODEL}\n\n$sw")
             }
             previous?.uncaughtException(t, e)
         }
@@ -226,12 +226,12 @@ class MainActivity : Activity(), CanvasView.Listener {
             setPadding(24.dp, 8.dp, 24.dp, 8.dp)
         }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(L10n.tr("Zerin closed unexpectedly last time"))
+            .setTitle(L10n.tr("Inkora closed unexpectedly last time"))
             .setMessage(L10n.tr("Tap Copy and send this text to the developer so it can be fixed."))
             .setView(android.widget.ScrollView(this).apply { addView(tv) })
             .setPositiveButton(L10n.tr("Copy")) { _, _ ->
                 val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("Zerin crash", text))
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("Inkora crash", text))
                 toast("Copied")
             }
             .setNegativeButton(L10n.tr("Close"), null)
@@ -1363,7 +1363,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             selectTool(Tool.BRUSH)
             AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(r.message)
-                .setMessage(L10n.tr("You'll find them in the Brush Library, after Zerin's own sets."))
+                .setMessage(L10n.tr("You'll find them in the Brush Library, after Inkora's own sets."))
                 .setPositiveButton(L10n.tr("Open library")) { _, _ -> showBrushes(Tool.BRUSH) }
                 .setNegativeButton(L10n.tr("Draw"), null)
                 .show()
@@ -1375,7 +1375,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (presets.isEmpty()) return
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(L10n.tr("Delete this set?") + "  \u2068$set\u2069")
-            .setMessage(L10n.tr("This removes all of its brushes from Zerin.") + " (${presets.size})")
+            .setMessage(L10n.tr("This removes all of its brushes from Inkora.") + " (${presets.size})")
             .setPositiveButton(L10n.tr("Delete")) { _, _ ->
                 for (p in presets) { BrushImport.delete(this, p); BrushPanel.forget(p.id) }
                 paintBrushes.removeAll { it.preset in presets }
@@ -1396,7 +1396,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun confirmDeleteBrush(b: Brush, tool: Tool) {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(L10n.tr("Delete \"${b.preset.name}\"?"))
-            .setMessage(L10n.tr("This removes the imported brush from Zerin."))
+            .setMessage(L10n.tr("This removes the imported brush from Inkora."))
             .setPositiveButton(L10n.tr("Delete")) { _, _ ->
                 val p = b.preset
                 BrushImport.delete(this, p)
@@ -1576,7 +1576,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun saveProjectAs() {
         startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE); type = "application/octet-stream"
-            putExtra(Intent.EXTRA_TITLE, (cv.doc.title.ifBlank { "Artwork" }) + ".zerin")
+            putExtra(Intent.EXTRA_TITLE, (cv.doc.title.ifBlank { "Artwork" }) + ".inkora")
         }, REQ_SAVE)
     }
 
@@ -1652,7 +1652,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     startActivity(Intent.createChooser(i, "Share artwork"))
-                } else toast("Saved to Pictures/Zerin")
+                } else toast("Saved to Pictures/Inkora")
             }
         }
     }
@@ -1698,7 +1698,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun openProject(uri: Uri) {
         val d = runCatching { contentResolver.openInputStream(uri)?.use { ProjectIO.read(it) } }.getOrNull()
         if (d == null) {
-            toast("This is not an Zerin project file")
+            toast("This is not an Inkora project file")
             return
         }
         // an opened project becomes a new artwork in the gallery
@@ -2382,7 +2382,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onImport = { anchor ->
                     val pm = PopupMenu(this, anchor)
                     pm.menu.add(0, 1, 1, "Photo as a new artwork…")
-                    pm.menu.add(0, 2, 2, "Zerin project (.zerin)…")
+                    pm.menu.add(0, 2, 2, "Inkora project (.inkora)…")
                     pm.setOnMenuItemClickListener {
                         if (it.itemId == 1) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
@@ -2506,7 +2506,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 }
                 AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                     .setTitle(L10n.tr("Time-lapse saved"))
-                    .setMessage(L10n.tr("$count steps · saved to Movies/Zerin"))
+                    .setMessage(L10n.tr("$count steps · saved to Movies/Inkora"))
                     .setPositiveButton(L10n.tr("Share")) { _, _ ->
                         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                             type = "video/mp4"
@@ -2654,7 +2654,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     // =========================================================
-    // files opened with Zerin (Procreate brushes, .zerin projects, images)
+    // files opened with Inkora (Procreate brushes, .inkora projects, images)
     // =========================================================
 
     override fun onNewIntent(intent: Intent) {
@@ -2686,10 +2686,10 @@ class MainActivity : Activity(), CanvasView.Listener {
             val name = displayName(first)?.lowercase() ?: ""
             val type = contentResolver.getType(first) ?: ""
             when {
-                name.endsWith(".zerin") || name.endsWith(".inkora") -> openProject(first)
+                name.endsWith(".inkora") || name.endsWith(".zerin") -> openProject(first)
                 type.startsWith("image/") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") ->
                     AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                        .setTitle(L10n.tr("What should Zerin do with this image?"))
+                        .setTitle(L10n.tr("What should Inkora do with this image?"))
                         .setItems(arrayOf(L10n.tr("Insert it as a layer"), L10n.tr("Make it a brush"))) { _, which ->
                             if (which == 0) insertImage(first) else importBrushFiles(uris)
                         }

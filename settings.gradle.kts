@@ -16,5 +16,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Zerin"
+rootProject.name = "Inkora"
 include(":app")
