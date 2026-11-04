@@ -86,6 +86,7 @@ class BrushStudioView(
         top.addView(Ui.text(context, "Brush Studio", 22f, bold = true))
         top.addView(Ui.text(context, "  ·  " + brush.preset.name, 16f, Ui.TEXT_DIM).apply { maxLines = 1 },
             LinearLayout.LayoutParams(0, -2, 1f))
+        top.addView(Ui.pill(context, "Reset") { confirmReset() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
         top.addView(Ui.pill(context, "Cancel") { close(keep = false) }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
         top.addView(Ui.pill(context, "Done", primary = true) { close(keep = true) })
         column.addView(top)
@@ -133,6 +134,22 @@ class BrushStudioView(
         }
         pad.release()
         host.onStudioClosed(brush, keep && changed)
+    }
+
+    /** every setting back to how the brush came */
+    private fun confirmReset() {
+        android.app.AlertDialog.Builder(context, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Reset this brush?"))
+            .setMessage(L10n.tr("All of its settings go back to how the brush came."))
+            .setPositiveButton(L10n.tr("Reset")) { _, _ ->
+                brush.resetSettings()
+                brush.size = brush.preset.defaultSize
+                brush.opacity = brush.preset.defaultOpacity
+                touched()
+                rebuild()
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null)
+            .show()
     }
 
     /** a setting changed: try it on the pad */

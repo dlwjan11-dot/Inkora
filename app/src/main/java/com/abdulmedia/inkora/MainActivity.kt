@@ -619,6 +619,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         closeSettings()
         v.tag = "overlay"
         v.alpha = 0f
+        // above the bars, the toolbar, the sliders and pinned windows (they are raised too)
+        v.elevation = 60f.dp
         root.addView(v, FrameLayout.LayoutParams(-1, -1))
         v.animate().alpha(1f).setDuration(160).start()
     }
