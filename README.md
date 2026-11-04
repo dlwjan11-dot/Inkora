@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.8.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.8.0"></a>
   &nbsp;
-  <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-English_|_عربي_|_کوردی-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
 
 <p align="center">
