@@ -37,7 +37,7 @@
                 <data android:mimeType="image/x-photoshop" />
                 <data android:mimeType="image/psd" />
             </intent-filter>
-            <!-- shared to Zerin: brush files, projects and images -->
+            <!-- shared to Inkora: brush files, projects and images -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />
