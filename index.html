@@ -137,6 +137,11 @@
   .shots .device img { border-radius: 18px; border: 8px solid #12121a; box-shadow: 0 30px 60px rgba(20,10,60,.22); }
   .shots .cut img { width: min(100%, 440px); margin-inline: auto; filter: drop-shadow(0 22px 34px rgba(20,10,60,.22)); }
   .shots figcaption { color: var(--text-2); font-size: 14.5px; margin-top: 14px; }
+  /* the artist behind it */
+  .story { padding-bottom: 10px; }
+  .story-card { max-width: 760px; margin-inline: auto; padding-inline-start: 26px; border-inline-start: 4px solid #ffbe3d; }
+  .story-card p { font-size: 18.5px; color: var(--text); margin: 0 0 16px; }
+  .story-card p.sign { font: 600 16px var(--head); color: var(--accent); margin-top: 6px; }
   /* install */
   .steps { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
   .steps ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
@@ -236,6 +241,31 @@
 </header>
 
 <main>
+  <!-- ===== the artist behind it ===== -->
+  <section class="story">
+    <div class="wrap">
+      <div class="story-card">
+        <h2><span class="ar">من فنان، للفنانين</span><span class="en">Made by an artist, for artists</span><span class="ckb">لە هونەرمەندێکەوە، بۆ هونەرمەندان</span></h2>
+        <p>
+          <span class="ar">أنا عبد الرحمن، مصمم وفنان. بحثت طويلاً عن تطبيق رسم على أندرويد يشبه Procreate، ولم أجد واحداً جيداً. فصنعت Inkora.</span>
+          <span class="en">I'm Abdulrahman, a designer and artist. I looked for a long time for a drawing app on Android that feels like Procreate, and never found a good one. So I made Inkora.</span>
+          <span class="ckb">من عەبدولڕەحمانم، دیزاینەر و هونەرمەند. ماوەیەکی زۆر بەدوای ئەپێکی وێنەکێشاندا گەڕام لەسەر ئەندرۆید کە وەک Procreate بێت، بەڵام هیچ یەکێکی باشم نەدۆزییەوە. بۆیە Inkoraم دروست کرد.</span>
+        </p>
+        <p>
+          <span class="ar">قبل أن أضع أي زر، جرّبت تطبيقات الرسم الموجودة وأخذت أفضل ما في كل واحد منها. كل شيء في Inkora في مكانه لسبب: قائمة القلم تفتح تحت قلمك، والمنزلقات بجانب يدك الأخرى، وكل ما عدا ذلك يبقى بعيداً عن الرسمة.</span>
+          <span class="en">Before placing a single button, I went through the art apps out there and took the best of each one. Everything in Inkora is where it is for a reason: the pen menu opens under your pen, the sliders sit by your other hand, and everything else stays out of the way of your drawing.</span>
+          <span class="ckb">پێش ئەوەی یەک دوگمەش دابنێم، ئەپەکانی وێنەکێشانم تاقی کردەوە و باشترین شتی هەر یەکێکیانم وەرگرت. هەموو شتێک لە Inkora بە هۆیەکەوە لە شوێنی خۆیدایە: مێنیوی قەڵەم لە ژێر قەڵەمەکەتدا دەکرێتەوە، خلیسکێنەکان لە تەنیشت دەستەکەی ترتن، و هەموو شتێکی تر لە وێنەکەت دوور دەمێنێتەوە.</span>
+        </p>
+        <p>
+          <span class="ar">Inkora يجلب طريقة العمل في Procreate إلى أندرويد: الفُرَش والطبقات والإيماءات وQuickShape واستيراد فُرَش Procreate، ويضيف أشياء خاصة به، مثل دولاب الألوان تحت قلم S Pen وشريط أدوات تبنيه بنفسك.</span>
+          <span class="en">Inkora brings the Procreate way of working to Android: the brushes, layers, gestures, QuickShape and Procreate brush import. And it adds things of its own, like the color wheel under the S Pen and a toolbar you build yourself.</span>
+          <span class="ckb">Inkora شێوازی کارکردنی Procreate دەهێنێتە سەر ئەندرۆید: فڵچە، چین، جووڵەکان، QuickShape و هاوردەکردنی فڵچەی Procreate. و شتی تایبەت بە خۆی زیاد دەکات، وەک چەرخی ڕەنگ لە ژێر S Pen و شریتی ئامرازێک کە خۆت دروستی دەکەیت.</span>
+        </p>
+        <p class="sign"><span class="ar">عبد الرحمن · Abdulmedia</span><span class="en">Abdulrahman · Abdulmedia</span><span class="ckb">عەبدولڕەحمان · Abdulmedia</span></p>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== download ===== -->
   <section id="download">
     <div class="wrap">

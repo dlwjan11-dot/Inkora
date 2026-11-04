@@ -28,6 +28,10 @@
 
 **Inkora is a free drawing and painting app for Android tablets.** Nothing like Procreate existed on Android, so this is an attempt at one: pressure-sensitive brushes, layers, perspective grids, vector shapes for logos and comics, and a color wheel that opens right under your pen.
 
+### Made by an artist, for artists
+
+I'm Abdulrahman, a designer and artist. I looked for a long time for a drawing app on Android that feels like Procreate, and never found a good one, so I made Inkora. Before placing a single button I went through the art apps out there and took the best of each one. Everything in Inkora is where it is for a reason: the pen menu opens under your pen, the sliders sit by your other hand, and everything else stays out of the way of your drawing.
+
 ### New in 0.10: gestures, shortcuts and Procreate brush sets
 
 - **Gesture controls**, like Procreate: choose what a touch, touch-and-hold, a three-finger swipe, a four-finger tap, a three-finger scrub, the S Pen button (click, double-click, hold), the pen held still, and the **□ modify button** do: eyedropper, smudge, erase, QuickShape, quick menu, full screen, clear layer, copy & paste, layer select. Plus rapid undo (hold two fingers), a quick pinch in to fit the canvas, one-finger panning and hover + finger for size and opacity.
@@ -127,6 +131,9 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 
 **Inkora تطبيق رسم وتلوين مجاني لأجهزة أندرويد اللوحية.** لم يكن على أندرويد تطبيق مثل Procreate، فهذه محاولة لصنعه: فُرَش تستجيب لضغط القلم، وطبقات، وشبكات منظور، وأشكال فيكتور للشعارات والقصص المصوّرة، ودولاب ألوان يفتح تحت قلمك مباشرة.
 
+### من فنان، للفنانين
+أنا عبد الرحمن، مصمم وفنان. بحثت طويلاً عن تطبيق رسم على أندرويد يشبه Procreate ولم أجد واحداً جيداً، فصنعت Inkora. جرّبت تطبيقات الرسم الموجودة وأخذت أفضل ما في كل واحد منها، وكل شيء في Inkora في مكانه لسبب.
+
 ### الجديد في 0.10
 - **التحكم بالإيماءات** مثل Procreate: اختر ماذا يفعل اللمس والضغط المطوّل وسحب ثلاث أصابع ونقرة أربع أصابع وزر S Pen وزر □.
 - **اختصارات لوحة المفاتيح**: اضغط Ctrl مطوّلاً لترى القائمة كلها.
@@ -165,6 +172,9 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 <p align="center"><img src="art/site-ckb.png" alt="ماڵپەڕی Inkora بە کوردی" width="100%"></p>
 
 **Inkora ئەپێکی بێبەرامبەری وێنەکێشان و ڕەنگکردنە بۆ تابلێتەکانی ئەندرۆید.** فڵچەی هەستیار بە پەستانی قەڵەم، چینەکان، تۆڕی پێرسپێکتیڤ، شێوەی ڤێکتەر بۆ لۆگۆ و چیرۆکی وێنەدار، و چەرخێکی ڕەنگ کە ڕاستەوخۆ لە ژێر قەڵەمەکەتدا دەکرێتەوە.
+
+### لە هونەرمەندێکەوە، بۆ هونەرمەندان
+من عەبدولڕەحمانم، دیزاینەر و هونەرمەند. ماوەیەکی زۆر بەدوای ئەپێکی وێنەکێشاندا گەڕام لەسەر ئەندرۆید کە وەک Procreate بێت و هیچ یەکێکی باشم نەدۆزییەوە، بۆیە Inkoraم دروست کرد. ئەپەکانی وێنەکێشانم تاقی کردەوە و باشترینی هەر یەکێکیانم وەرگرت، و هەموو شتێک لە Inkora بە هۆیەکەوە لە شوێنی خۆیدایە.
 
 ### نوێ لە 0.10
 - **کۆنترۆڵی جووڵەکان** وەک Procreate: هەڵبژێرە دەستلێدان، ڕاگرتن، ڕاکێشانی سێ پەنجە، کرتەی چوار پەنجە، دوگمەی S Pen و دوگمەی □ چی بکەن.
