@@ -61,3 +61,8 @@
 - **📌 تثبيت** قائمة الطبقات والفراشي — بتنسحب وين ما بدك وبتشف وقت الرسم
 - **67 فرشاية** بمجموعات بتنطوي (▸/▾): Inking، Calligraphy (منها Qalam للعربي)، Sketching، Painting، Watercolor، Airbrushing، Textures & Elements، Effects (مطر، ثلج، فقاعات، نجوم، Hatching…)، Pixel Art
 - تصليح QuickShape، وتحديث Gradle لنسخة Android Studio الجديدة
+
+## الموقع
+
+موقع التطبيق موجود بمجلد `docs/` ويشتغل على GitHub Pages:
+https://dlwjan11-dot.github.io/Inkora/
