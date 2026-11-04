@@ -20,7 +20,7 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|uiMode|density"
             android:windowSoftInputMode="adjustNothing">
-            <!-- Procreate brushes (.brush, .brushset), zip files and .zerin projects opened from another app -->
+            <!-- Procreate brushes (.brush, .brushset), zip files and .inkora projects opened from another app -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
