@@ -339,12 +339,25 @@ class QuickMenuView(context: Context) : View(context) {
         canvas.drawCircle(kx, ky, if (active) 11f.dp else 9f.dp, paint)
         line.strokeWidth = 1f.dp; line.color = 0x55000000
         canvas.drawCircle(kx, ky, if (active) 11f.dp else 9f.dp, line)
+
+        // Live visual brush tip diameter preview on size slider
+        if (name == "SIZE") {
+            val previewR = (v * 24f.dp).coerceAtLeast(2f.dp)
+            paint.color = 0xAAFFFFFF.toInt()
+            // inside the arc, so it stays on the menu
+            val (px, py) = place(arc.first + (arc.second - arc.first) * v, rBubbles - 30f.dp - previewR)
+            canvas.drawCircle(px, py, previewR, paint)
+            line.strokeWidth = 1f.dp
+            line.color = Ui.ACCENT
+            canvas.drawCircle(px, py, previewR, line)
+        }
+
         // caption + value, inside the arc
         val mid = (arc.first + arc.second) / 2f
         val (tx, ty) = place(mid, rBubbles - 34f.dp)
         text.textSize = 8.5f.dp
         text.color = Ui.TEXT_DIM
-        canvas.drawText(name, tx, ty - 5f.dp, text)
+        canvas.drawText(L10n.tr(name), tx, ty - 5f.dp, text)
         text.textSize = 12.5f.dp
         text.color = if (active) Ui.ACCENT else Ui.TEXT
         canvas.drawText(value, tx, ty + 10f.dp, text)
@@ -382,8 +395,8 @@ class QuickMenuView(context: Context) : View(context) {
     }
 
     private fun drawTooltip(canvas: Canvas) {
-        val label = hotBubble?.item?.label ?: when {
-            hotSwatch != null && hotSwatch?.color == null -> "Save color to palette"
+        val label = hotBubble?.item?.label?.let { L10n.tr(it) } ?: when {
+            hotSwatch != null && hotSwatch?.color == null -> L10n.tr("Save color to palette")
             else -> null
         } ?: return
         text.textSize = 13f.dp

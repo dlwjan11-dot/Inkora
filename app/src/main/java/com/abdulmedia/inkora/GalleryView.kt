@@ -257,7 +257,7 @@ class GalleryView(
             }
             true
         }
-        pm.show()
+        L10n.menu(pm.menu); pm.show()
     }
 
     private fun emptyState(): View {

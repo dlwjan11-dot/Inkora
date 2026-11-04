@@ -14,8 +14,14 @@ import kotlin.math.pow
 import kotlin.math.sin
 import kotlin.random.Random
 
-enum class Symmetry(val label: String) {
-    OFF("Off"), VERTICAL("Vertical"), HORIZONTAL("Horizontal"), QUADRANT("Quadrant"), RADIAL("Radial")
+enum class Symmetry(val label: String, val axes: Int) {
+    OFF("Off", 0),
+    VERTICAL("Vertical", 1),
+    HORIZONTAL("Horizontal", 1),
+    QUADRANT("Quadrant", 2),
+    RADIAL("Radial (8)", 8),
+    MANDALA_12("Mandala (12)", 12),
+    MANDALA_16("Mandala (16)", 16)
 }
 
 /** A recorded input sample (document coordinates). */
@@ -213,8 +219,8 @@ class StrokeEngine {
                 dab(c, tip, cx, 2 * centerY - cy, d, -angle)
                 dab(c, tip, 2 * centerX - cx, 2 * centerY - cy, d, angle + 180f)
             }
-            Symmetry.RADIAL -> {
-                val n = radialCount
+            Symmetry.RADIAL, Symmetry.MANDALA_12, Symmetry.MANDALA_16 -> {
+                val n = symmetry.axes
                 val ox = cx - centerX
                 val oy = cy - centerY
                 for (k in 0 until n) {

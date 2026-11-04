@@ -22,6 +22,7 @@ enum class GuideType(val label: String, val usesSize: Boolean, val vanishingPoin
     HEXAGON("Hexagon Grid", true, intArrayOf()),
     POLAR("Polar (circles)", true, intArrayOf()),
     THIRDS("Rule of Thirds", false, intArrayOf()),
+    ELLIPSE_RULER("Circle Ruler", true, intArrayOf()),
     PERSPECTIVE_1("1-Point Perspective", true, intArrayOf(0)),
     PERSPECTIVE_2("2-Point Perspective", true, intArrayOf(1, 2)),
     PERSPECTIVE_3("3-Point Perspective", true, intArrayOf(1, 2, 3));
@@ -146,6 +147,9 @@ object Guides {
                     lines.add(x); lines.add(0f); lines.add(x); lines.add(h.toFloat())
                     lines.add(0f); lines.add(y); lines.add(w.toFloat()); lines.add(y)
                 }
+            }
+            GuideType.ELLIPSE_RULER -> {
+                circles.add(cx); circles.add(cy); circles.add(s)
             }
             GuideType.PERSPECTIVE_1 -> {
                 val vx = g.vpX(0, w); val vy = g.vpY(0, h)
@@ -296,6 +300,12 @@ object Guides {
             GuideType.PERSPECTIVE_2 -> { toward(g.vpX(1, w), g.vpY(1, h)); toward(g.vpX(2, w), g.vpY(2, h)); angle(90f) }
             GuideType.PERSPECTIVE_3 -> {
                 toward(g.vpX(1, w), g.vpY(1, h)); toward(g.vpX(2, w), g.vpY(2, h)); toward(g.vpX(3, w), g.vpY(3, h))
+            }
+            GuideType.ELLIPSE_RULER -> {
+                // strokes follow circles around the canvas center
+                val cx = w / 2f; val cy = h / 2f
+                val r = hypot(sx - cx, sy - cy)
+                if (r > 1f) cands.add(Constraint.Circle(cx, cy, r))
             }
             GuideType.OFF -> {}
         }

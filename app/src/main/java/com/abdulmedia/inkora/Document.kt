@@ -34,6 +34,7 @@ class Layer(var bitmap: Bitmap, var name: String) {
     var opacity = 1f
     var blend = LayerBlend.NORMAL
     var alphaLock = false
+    var isClippingMask = false
     /** non-null = this is a vector layer; [bitmap] is then a rendered copy of the shapes */
     var vector: VectorData? = null
 
@@ -69,6 +70,7 @@ class Document(val width: Int, val height: Int) {
 
     private val layerPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val plainPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val dstInPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_IN }
     private val bgPaint = Paint()
 
     fun newLayerBitmap(): Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -97,18 +99,50 @@ class Document(val width: Int, val height: Int) {
         }
         layerPaint.isFilterBitmap = filter
         plainPaint.isFilterBitmap = filter
+        dstInPaint.isFilterBitmap = filter
         for (i in layers.indices) {
             val layer = layers[i]
             if (!layer.visible) continue
             layerPaint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
             layerPaint.blendMode = layer.blend.mode
-            if (overlay != null && i == activeIndex) {
-                val s = canvas.saveLayer(bounds, layerPaint)
-                canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
-                overlay.draw(canvas)
-                canvas.restoreToCount(s)
+            if (layer.isClippingMask) {
+                var baseIndex = i - 1
+                while (baseIndex >= 0 && layers[baseIndex].isClippingMask) baseIndex--
+                val baseLayer = if (baseIndex >= 0) layers[baseIndex] else null
+                if (baseLayer != null && baseLayer.visible) {
+                    val s = canvas.saveLayer(bounds, layerPaint)
+                    if (overlay != null && i == activeIndex) {
+                        val sInner = canvas.saveLayer(bounds, plainPaint)
+                        canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
+                        overlay.draw(canvas)
+                        canvas.restoreToCount(sInner)
+                    } else {
+                        canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
+                    }
+                    canvas.drawBitmap(baseLayer.bitmap, 0f, 0f, dstInPaint)
+                    canvas.restoreToCount(s)
+                } else if (baseLayer != null) {
+                    // base layer hidden: whatever is clipped to it is hidden too
+                    continue
+                } else {
+                    if (overlay != null && i == activeIndex) {
+                        val s = canvas.saveLayer(bounds, layerPaint)
+                        canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
+                        overlay.draw(canvas)
+                        canvas.restoreToCount(s)
+                    } else {
+                        canvas.drawBitmap(layer.bitmap, 0f, 0f, layerPaint)
+                    }
+                }
             } else {
-                canvas.drawBitmap(layer.bitmap, 0f, 0f, layerPaint)
+                if (overlay != null && i == activeIndex) {
+                    val s = canvas.saveLayer(bounds, layerPaint)
+                    canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
+                    overlay.draw(canvas)
+                    canvas.restoreToCount(s)
+                } else {
+                    canvas.drawBitmap(layer.bitmap, 0f, 0f, layerPaint)
+                }
             }
         }
         canvas.restoreToCount(outer)

@@ -19,6 +19,15 @@ import kotlin.math.hypot
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+enum class HarmonyMode(val label: String) {
+    NONE("None"),
+    COMPLEMENTARY("Complementary"),
+    TRIADIC("Triadic"),
+    ANALOGOUS("Analogous"),
+    SPLIT_COMPLEMENTARY("Split-Comp"),
+    TETRADIC("Tetradic")
+}
+
 /**
  * The standard color wheel: a hue ring with a saturation/brightness square inside.
  * Drawn into any canvas (the pen quick menu uses it) or shown with [ColorDiscView].
@@ -32,8 +41,20 @@ class ColorDisc {
         private set
     var value = 0f
         private set
+    var harmony = HarmonyMode.NONE
 
     val color: Int get() = Color.HSVToColor(floatArrayOf(hue, sat, value))
+
+    fun getHarmonyHues(): List<Float> {
+        return when (harmony) {
+            HarmonyMode.NONE -> emptyList()
+            HarmonyMode.COMPLEMENTARY -> listOf((hue + 180f) % 360f)
+            HarmonyMode.TRIADIC -> listOf((hue + 120f) % 360f, (hue + 240f) % 360f)
+            HarmonyMode.ANALOGOUS -> listOf((hue + 30f) % 360f, (hue + 330f) % 360f)
+            HarmonyMode.SPLIT_COMPLEMENTARY -> listOf((hue + 150f) % 360f, (hue + 210f) % 360f)
+            HarmonyMode.TETRADIC -> listOf((hue + 90f) % 360f, (hue + 180f) % 360f, (hue + 270f) % 360f)
+        }
+    }
 
     // geometry (set by layout())
     var cx = 0f; private set
@@ -96,7 +117,25 @@ class ColorDisc {
         // hue handle
         val a = Math.toRadians((hue - 90f).toDouble())
         val rm = (rOut + rIn) / 2f
-        handle(canvas, cx + (cos(a) * rm).toFloat(), cy + (sin(a) * rm).toFloat(), ringW / 2f + 1.5f.dp, pure, alpha)
+        val mainX = cx + (cos(a) * rm).toFloat()
+        val mainY = cy + (sin(a) * rm).toFloat()
+
+        // harmony lines and nodes
+        for (secHue in getHarmonyHues()) {
+            val secA = Math.toRadians((secHue - 90f).toDouble())
+            val secX = cx + (cos(secA) * rm).toFloat()
+            val secY = cy + (sin(secA) * rm).toFloat()
+
+            line.color = 0xAAFFFFFF.toInt()
+            line.strokeWidth = 2f.dp
+            line.alpha = alpha
+            canvas.drawLine(mainX, mainY, secX, secY, line)
+
+            val secColor = Color.HSVToColor(floatArrayOf(secHue, sat, value))
+            handle(canvas, secX, secY, ringW / 2.5f, secColor, alpha)
+        }
+
+        handle(canvas, mainX, mainY, ringW / 2f + 1.5f.dp, pure, alpha)
         // color handle
         handle(canvas, sq.left + sat * sq.width(), sq.top + (1f - value) * sq.height(), 9f.dp, color, alpha)
     }

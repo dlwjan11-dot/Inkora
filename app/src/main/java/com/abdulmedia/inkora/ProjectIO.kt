@@ -64,14 +64,15 @@ object ProjectIO {
     class LayerSnap(
         val name: String, val visible: Boolean, val opacity: Float,
         val blend: String, val alphaLock: Boolean, val bitmap: Bitmap,
-        val vector: String? = null
+        val vector: String? = null,
+        val clipping: Boolean = false
     )
 
     fun snapshot(doc: Document) = Snapshot(
         doc.width, doc.height, doc.backgroundColor, doc.backgroundVisible, doc.activeIndex,
         doc.layers.map {
             LayerSnap(it.name, it.visible, it.opacity, it.blend.name, it.alphaLock, it.bitmap.copy(Bitmap.Config.ARGB_8888, false),
-                it.vector?.let { v -> VGeom.toJson(v).toString() })
+                it.vector?.let { v -> VGeom.toJson(v).toString() }, it.isClippingMask)
         },
         guideToJson(doc.guide)
     )
@@ -96,6 +97,7 @@ object ProjectIO {
                     put("opacity", l.opacity.toDouble())
                     put("blend", l.blend)
                     put("alphaLock", l.alphaLock)
+                    put("clipping", l.clipping)
                     put("file", file)
                     if (l.vector != null) put("vector", JSONArray(l.vector))
                 })
@@ -145,6 +147,7 @@ object ProjectIO {
             layer.opacity = o.optDouble("opacity", 1.0).toFloat()
             layer.blend = runCatching { LayerBlend.valueOf(o.optString("blend", "NORMAL")) }.getOrDefault(LayerBlend.NORMAL)
             layer.alphaLock = o.optBoolean("alphaLock", false)
+            layer.isClippingMask = o.optBoolean("clipping", false)
             o.optJSONArray("vector")?.let { va ->
                 val data = VGeom.fromJson(va)
                 layer.vector = data

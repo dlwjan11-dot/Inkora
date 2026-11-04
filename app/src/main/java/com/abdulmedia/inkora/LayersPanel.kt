@@ -53,7 +53,7 @@ class LayersPanel(
                 if (it.itemId == 1) addLayer() else onAddVector()
                 true
             }
-            pm.show()
+            L10n.menu(pm.menu); pm.show()
         }
         head.addView(plus, LayoutParams(44.dp, 44.dp))
         addView(head)
@@ -80,7 +80,7 @@ class LayersPanel(
             val row = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(8.dp, 6.dp, 4.dp, 6.dp)
+                setPadding((if (layer.isClippingMask) 22.dp else 8.dp), 6.dp, 4.dp, 6.dp)
                 background = Ui.rounded(if (isActive) Ui.PANEL_ROW_ACTIVE else Ui.PANEL_ROW, 10f)
             }
             val img = ImageView(context)
@@ -88,8 +88,10 @@ class LayersPanel(
             row.addView(img, LayoutParams(64.dp, 44.dp))
 
             val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(10.dp, 0, 0, 0) }
-            texts.addView(Ui.text(context, layer.name, 14f))
+            val displayName = if (layer.isClippingMask) "↳ ${layer.name}" else layer.name
+            texts.addView(Ui.text(context, displayName, 14f))
             val sub = buildString {
+                if (layer.isClippingMask) append("Clipping Mask · ")
                 if (layer.vector != null) append("VECTOR · ${layer.vector!!.shapes.size} shapes · ")
                 append(layer.blend.label)
                 if (layer.opacity < 0.999f) append(" · ${(layer.opacity * 100).roundToInt()}%")
@@ -165,12 +167,15 @@ class LayersPanel(
                 changed()
                 true
             }
-            pm.show()
+            L10n.menu(pm.menu); pm.show()
         }
         box.addView(blendBtn, LayoutParams(-1, -2).apply { topMargin = 6.dp })
 
         val actions = mutableListOf(
             "Rename" to { rename(layer) },
+            (if (layer.isClippingMask) "Clipping Mask: ON" else "Clipping Mask: off") to {
+                layer.isClippingMask = !layer.isClippingMask; changed()
+            },
             (if (layer.alphaLock) "Alpha Lock: ON" else "Alpha Lock: off") to {
                 layer.alphaLock = !layer.alphaLock; changed()
             },
@@ -238,7 +243,7 @@ class LayersPanel(
             return
         }
         val l = Layer(src.bitmap.copy(Bitmap.Config.ARGB_8888, true), src.name + " copy")
-        l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock; l.visible = src.visible
+        l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock; l.isClippingMask = src.isClippingMask; l.visible = src.visible
         l.vector = src.vector?.copy()
         val cmd = AddLayerCmd(l, index + 1, index)
         cmd.redo(doc)
@@ -336,16 +341,16 @@ class LayersPanel(
         input.setText(layer.name)
         input.setSelectAllOnFocus(true)
         AlertDialog.Builder(context, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Rename layer")
+            .setTitle(L10n.tr("Rename layer"))
             .setView(input)
-            .setPositiveButton("OK") { _, _ ->
+            .setPositiveButton(L10n.tr("OK")) { _, _ ->
                 val t = input.text.toString().trim()
                 if (t.isNotEmpty()) {
                     layer.name = t
                     changed()
                 }
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 }

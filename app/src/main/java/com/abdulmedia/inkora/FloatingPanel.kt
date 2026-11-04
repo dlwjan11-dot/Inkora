@@ -27,14 +27,15 @@ class FloatingPanel(
         orientation = VERTICAL
         background = Ui.rounded(0xE61E1E22.toInt(), 16f, 0x33FFFFFF, 1)
         elevation = 14f.dp
-        alpha = idleAlpha
+        alpha = 0f
+        animate().alpha(idleAlpha).setDuration(180).start()
 
         val strip = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(12.dp, 4.dp, 4.dp, 0)
         }
-        strip.addView(Ui.text(context, "⠿  $title", 12f, Ui.TEXT_DIM, true), LayoutParams(0, -2, 1f))
+        strip.addView(Ui.text(context, "⠿  ${L10n.tr(title)}", 12f, Ui.TEXT_DIM, true), LayoutParams(0, -2, 1f))
         strip.addView(Ui.button(context, "Unpin ✕") { onClose() }.apply {
             textSize = 11f
             background = null

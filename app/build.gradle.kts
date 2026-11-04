@@ -11,8 +11,8 @@ android {
         applicationId = "com.abdulmedia.inkora"
         minSdk = 29
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.8.0"
+        versionCode = 13
+        versionName = "0.9.0"
     }
 
     buildTypes {

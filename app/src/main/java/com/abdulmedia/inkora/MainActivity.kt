@@ -65,6 +65,9 @@ class MainActivity : Activity(), CanvasView.Listener {
     private var dockIds = mutableListOf<String>()
     private var leftHanded = false
     private var focusMode = false
+    private lateinit var brushDot: BrushDotView
+    private lateinit var opacityLabel: android.widget.TextView
+    private lateinit var layerName: android.widget.TextView
     private lateinit var selectBtn: IconView
     private lateinit var transformBtn: IconView
     private lateinit var adjustBtn: IconView
@@ -93,6 +96,11 @@ class MainActivity : Activity(), CanvasView.Listener {
     // lifecycle
     // =========================================================
 
+    /** Arabic and Kurdish switch the whole interface to right-to-left */
+    override fun attachBaseContext(newBase: android.content.Context) {
+        super.attachBaseContext(L10n.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installCrashReporter()
@@ -114,6 +122,12 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)
+        cv.fillThreshold = prefs.getFloat("fillThreshold", cv.fillThreshold)
+        cv.quickShapeEnabled = prefs.getBoolean("quickShape", true)
+        if (prefs.contains("fingerDrawing")) {
+            cv.fingerDrawing = prefs.getBoolean("fingerDrawing", true)
+            cv.fingerDrawingAuto = false
+        }
         smudgeBrushes.forEach { it.size = 50f; it.opacity = 0.75f }
         cv.smudgeBrush = smudgeBrushes.first { it.preset.name == "Soft Airbrush" }
         noteRecent()
@@ -159,6 +173,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onBackPressed() {
         when {
             quickMenu.isOpen -> quickMenu.close()
+            root.findViewWithTag<View>("tips") != null -> root.findViewWithTag<View>("tips")?.let { root.removeView(it); prefs.edit().putBoolean("tips_done", true).apply() }
+            root.findViewWithTag<View>("settings_dialog") != null -> closeSettings()
             focusMode -> setFocus(false)
             colorWheel.isOpen -> colorWheel.close()
             adjustKind != null -> endAdjust(false)
@@ -204,15 +220,15 @@ class MainActivity : Activity(), CanvasView.Listener {
             setPadding(24.dp, 8.dp, 24.dp, 8.dp)
         }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Inkora closed unexpectedly last time")
-            .setMessage("Tap Copy and send this text to the developer so it can be fixed.")
+            .setTitle(L10n.tr("Inkora closed unexpectedly last time"))
+            .setMessage(L10n.tr("Tap Copy and send this text to the developer so it can be fixed."))
             .setView(android.widget.ScrollView(this).apply { addView(tv) })
-            .setPositiveButton("Copy") { _, _ ->
+            .setPositiveButton(L10n.tr("Copy")) { _, _ ->
                 val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 cm.setPrimaryClip(android.content.ClipData.newPlainText("Inkora crash", text))
                 toast("Copied")
             }
-            .setNegativeButton("Close", null)
+            .setNegativeButton(L10n.tr("Close"), null)
             .show()
     }
 
@@ -379,7 +395,19 @@ class MainActivity : Activity(), CanvasView.Listener {
 
         layersBtn = IconView(this, Icon.LAYERS).apply { contentDescription = "Layers" }
         layersBtn.setOnClickListener { if (!busy()) showLayers() }
-        bar.addView(layersBtn, LinearLayout.LayoutParams(48.dp, 48.dp).apply { leftMargin = 6.dp })
+        val layersBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+        }
+        layersBox.addView(layersBtn, LinearLayout.LayoutParams(44.dp, 36.dp))
+        layerName = Ui.text(this, "", 9f, Ui.TEXT_DIM).apply {
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            gravity = Gravity.CENTER
+            setOnClickListener { if (!busy()) showLayers() }
+        }
+        layersBox.addView(layerName, LinearLayout.LayoutParams(64.dp, -2).apply { topMargin = (-3).dp })
+        bar.addView(layersBox, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 4.dp })
 
         colorBtn = ColorSwatchView(this)
         setupColorButton()
@@ -398,10 +426,12 @@ class MainActivity : Activity(), CanvasView.Listener {
             elevation = 8f.dp
         }
         sideBar = side
-        side.addView(Ui.text(this, "SIZE", 8.5f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER })
+        brushDot = BrushDotView(this).apply { setOnClickListener { if (!busy()) showBrushes(cv.tool) } }
+        side.addView(brushDot, LinearLayout.LayoutParams(40.dp, 40.dp))
         sizeSlider = VerticalSlider(this)
         sizeSlider.onChange = { v ->
             cv.currentBrush.size = Brushes.sizeFromSlider(v)
+            brushDot.sizePx = cv.currentBrush.size
             showSizeHud(true)
         }
         sizeSlider.onDragState = { dragging -> if (dragging) showSizeHud(true) else hud.hideSoon() }
@@ -414,13 +444,16 @@ class MainActivity : Activity(), CanvasView.Listener {
         opacitySlider = VerticalSlider(this)
         opacitySlider.onChange = { v ->
             cv.currentBrush.opacity = v.coerceIn(0.01f, 1f)
+            brushDot.opacity = cv.currentBrush.opacity
+            opacityLabel.text = "${(cv.currentBrush.opacity * 100).roundToInt()}%"
             hud.show("Opacity ${(cv.currentBrush.opacity * 100).roundToInt()}%", sticky = true)
         }
         opacitySlider.onDragState = { dragging ->
             if (dragging) hud.show("Opacity ${(cv.currentBrush.opacity * 100).roundToInt()}%", sticky = true) else hud.hideSoon()
         }
         side.addView(opacitySlider, LinearLayout.LayoutParams(44.dp, 180.dp))
-        side.addView(Ui.text(this, "OPACITY", 8.5f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER })
+        opacityLabel = Ui.text(this, "100%", 10f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER }
+        side.addView(opacityLabel, LinearLayout.LayoutParams(-1, -2))
 
         side.addView(Ui.divider(this), LinearLayout.LayoutParams(28.dp, 1.dp).apply { topMargin = 8.dp; bottomMargin = 4.dp })
         undoBtn = IconView(this, Icon.UNDO).apply { contentDescription = "Undo" }
@@ -463,7 +496,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         // dot that follows the finger during ColorDrop
         dropDot = ColorSwatchView(this)
         dropDot.visibility = View.GONE
-        root.addView(dropDot, FrameLayout.LayoutParams(44.dp, 44.dp))
+        root.addView(dropDot, FrameLayout.LayoutParams(44.dp, 44.dp, Gravity.TOP or Gravity.LEFT))
 
         // pen quick menu (S Pen button) — on top of everything
         quickMenu = QuickMenuView(this)
@@ -500,18 +533,78 @@ class MainActivity : Activity(), CanvasView.Listener {
         tab.background = Ui.rounded(if (on) Ui.ACCENT_SOFT else 0, 12f)
     }
 
-    /** sliders on one side, toolbar on the other (swapped for left-handed people) */
+    /** sliders on one side, toolbar on the other (swapped for left-handed people or customized placement) */
     private fun applySides() {
+        // sliders live on the left or right; the toolbar goes anywhere else
+        val slidersEdge = when (prefs.getString("sliders_edge", null)) {
+            "Left" -> "Left"; "Right" -> "Right"
+            else -> if (leftHanded) "Right" else "Left"
+        }
+        var dockEdge = prefs.getString("dock_edge", null) ?: (if (slidersEdge == "Left") "Right" else "Left")
+        if (dockEdge == slidersEdge) dockEdge = if (slidersEdge == "Left") "Right" else "Left"
+
+        // Sliders sidebar
         (sideBar.layoutParams as FrameLayout.LayoutParams).apply {
-            gravity = (if (leftHanded) Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL
+            gravity = (if (slidersEdge == "Right") Gravity.RIGHT else Gravity.LEFT) or Gravity.CENTER_VERTICAL
             leftMargin = 8.dp; rightMargin = 8.dp; topMargin = 56.dp
             sideBar.layoutParams = this
         }
+
+        // Toolbar
         (dock.layoutParams as FrameLayout.LayoutParams).apply {
-            gravity = (if (leftHanded) Gravity.START else Gravity.END) or Gravity.CENTER_VERTICAL
-            leftMargin = 8.dp; rightMargin = 8.dp; topMargin = 70.dp; bottomMargin = 14.dp
+            gravity = when (dockEdge) {
+                "Left" -> Gravity.LEFT or Gravity.CENTER_VERTICAL
+                "Top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                "Bottom" -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                else -> Gravity.RIGHT or Gravity.CENTER_VERTICAL
+            }
+            val isHoriz = (dockEdge == "Top" || dockEdge == "Bottom")
+            dock.setDockOrientation(if (isHoriz) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL)
+            leftMargin = 8.dp; rightMargin = 8.dp; topMargin = if (dockEdge == "Top") 56.dp else 70.dp; bottomMargin = 14.dp
             dock.layoutParams = this
         }
+    }
+
+    private fun closeSettings(): Boolean {
+        val v = root.findViewWithTag<View>("settings_dialog") ?: return false
+        root.removeView(v)
+        timeLapseOn = prefs.getBoolean("timelapse", true)
+        return true
+    }
+
+    private fun showSettingsDialog() {
+        (root.findViewWithTag<View>("settings_dialog"))?.let { root.removeView(it) }
+        val dlg = SettingsDialog(this, prefs, cv,
+            onLeftHanded = { on ->
+                leftHanded = on
+                prefs.edit().remove("dock_edge").remove("sliders_edge").apply()
+                applySides()
+            },
+            onToolbarPlacement = { edge ->
+                prefs.edit().putString("dock_edge", edge).apply()
+                applySides()
+            },
+            onSlidersPlacement = { edge ->
+                prefs.edit().putString("sliders_edge", edge).apply()
+                applySides()
+            },
+            onLanguage = { code ->
+                // save the artwork, then start again in the new language
+                autosave(force = true)
+                L10n.save(this, code)
+                afterSaves { recreate() }
+            },
+            onShowTips = {
+                closeSettings()
+                showTips()
+            },
+            onClose = { closeSettings() }
+        )
+        dlg.tag = "settings_dialog"
+        val lp = FrameLayout.LayoutParams(min(680.dp, root.width - 24.dp), min(480.dp, root.height - 80.dp), Gravity.CENTER)
+        dlg.alpha = 0f; dlg.scaleX = .96f; dlg.scaleY = .96f
+        root.addView(dlg, lp)
+        dlg.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180).start()
     }
 
     // =========================================================
@@ -540,7 +633,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             onChange = { list -> dockIds = list.toMutableList(); saveDock() },
             onLeftHanded = { on ->
                 leftHanded = on
-                prefs.edit().putBoolean("leftHanded", on).apply()
+                prefs.edit().putBoolean("leftHanded", on).remove("dock_edge").remove("sliders_edge").apply()
                 popup?.dismiss()
                 applySides()
                 root.postDelayed({ showToolbarEditor() }, 150)
@@ -595,6 +688,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             }
             id == "quickshape" -> {
                 cv.quickShapeEnabled = !cv.quickShapeEnabled
+                prefs.edit().putBoolean("quickShape", cv.quickShapeEnabled).apply()
                 hud.show(if (cv.quickShapeEnabled) "QuickShape on: hold the pen at the end of a stroke" else "QuickShape off")
             }
             id == "symmetry" -> showSymmetry(anchor)
@@ -602,6 +696,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             id.startsWith("adj_") -> AdjustKind.values().firstOrNull { "adj_${it.name}" == id }?.let { startAdjust(it) }
             id == "fit" -> cv.fitToScreen()
             id == "flip" -> cv.flipHorizontal()
+            id == "reference" -> toggleReference()
+            id == "navigator" -> toggleNavigator()
+            id == "lighting" -> toggleLighting()
             id == "focus" -> setFocus(!focusMode)
             id == "export" -> exportImage(jpeg = false, share = false)
             id == "share" -> exportImage(jpeg = false, share = true)
@@ -630,6 +727,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             "adjust" -> adjustKind != null
             "focus" -> focusMode
             "vector" -> cv.doc.active.vector != null
+            "reference" -> pinned.containsKey("reference")
+            "navigator" -> pinned.containsKey("navigator")
+            "lighting" -> pinned.containsKey("lighting")
             else -> if (id.startsWith("adj_")) adjustKind?.let { "adj_${it.name}" == id } ?: false else false
         }
     }
@@ -660,8 +760,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         pw.isOutsideTouchable = true
         pw.elevation = 16f.dp
         pw.setOnDismissListener { refreshAll() }
+        pw.animationStyle = android.R.style.Animation_Dialog
         popup = pw
-        pw.showAtLocation(root, Gravity.TOP or Gravity.START, x + rootLoc[0], y + rootLoc[1])
+        pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x + rootLoc[0], y + rootLoc[1])
     }
 
     // =========================================================
@@ -848,6 +949,12 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (cv.fillMode) { brushBtn.active = false; smudgeBtn.active = false; eraserBtn.active = false }
         if (::dock.isInitialized) dock.refresh()
         if (::titleView.isInitialized && cv.isDocReady()) titleView.text = cv.doc.title
+        if (::brushDot.isInitialized) {
+            brushDot.sizePx = cv.currentBrush.size
+            brushDot.opacity = cv.currentBrush.opacity
+            brushDot.color = if (cv.tool == Tool.ERASER) 0xFFFFFFFF.toInt() else cv.color
+            opacityLabel.text = "${(cv.currentBrush.opacity * 100).roundToInt()}%"
+        }
         onHistoryChanged()
     }
 
@@ -909,8 +1016,14 @@ class MainActivity : Activity(), CanvasView.Listener {
         pw.isOutsideTouchable = true
         pw.elevation = 16f.dp
         pw.setOnDismissListener { refreshAll() }
+        pw.animationStyle = android.R.style.Animation_Dialog
         popup = pw
-        pw.showAsDropDown(anchor, if (alignLeft) 0 else -(widthDp.dp - anchor.width), 6.dp)
+        // absolute position, so it is right in both left-to-right and right-to-left layouts
+        val loc = IntArray(2); anchor.getLocationInWindow(loc)
+        val w = widthDp.dp
+        val alignStart = alignLeft != L10n.isRtl
+        val x = (if (alignStart) loc[0] else loc[0] + anchor.width - w).coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
+        pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x, loc[1] + anchor.height + 6.dp)
     }
 
     private fun brushListFor(t: Tool) = when (t) {
@@ -971,21 +1084,51 @@ class MainActivity : Activity(), CanvasView.Listener {
     private val pinned = HashMap<String, FloatingPanel>()
     private var pinnedBrushTool: Tool? = null
 
-    private fun pinPanel(kind: String) {
+    private fun toggleReference() {
+        if (pinned.containsKey("reference")) unpin("reference") else pinPanel("reference")
+    }
+
+    private fun toggleNavigator() {
+        if (pinned.containsKey("navigator")) unpin("navigator") else pinPanel("navigator")
+    }
+
+    private fun toggleLighting() {
+        if (pinned.containsKey("lighting")) unpin("lighting") else pinPanel("lighting")
+    }
+
+    private fun pinPanel(kind: String, quiet: Boolean = false) {
         if (!cv.isDocReady()) return
         unpinView(kind)
         val content: View = when (kind) {
             "layers" -> LayersPanel(this, cv, { cv.color }, onAddVector = { addVectorLayer() }, onPin = null) { onHistoryChanged() }
+            "reference" -> ReferenceWindow(this, onImport = {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+                }, REQ_REF_IMAGE)
+            }, onColorPicked = { c ->
+                cv.color = c or 0xFF000000.toInt()
+                colorBtn.color = cv.color
+                ColorPanel.addRecent(recentColors, cv.color)
+                hud.show("Color picked from reference")
+            })
+            "navigator" -> NavigatorWindow(this, cv)
+            "lighting" -> LightingOrbView(this)
             else -> { pinnedBrushTool = cv.tool; brushPanelFor(cv.tool, pinned = true) }
         }
-        val title = if (kind == "layers") "Layers" else "Brushes"
+        val title = when (kind) {
+            "layers" -> "Layers"
+            "reference" -> "Reference"
+            "navigator" -> "Navigator"
+            "lighting" -> "Lighting Orb"
+            else -> "Brushes"
+        }
         val fp = FloatingPanel(this, title, content,
             onClose = { unpin(kind) },
             onMoved = { x, y -> prefs.edit().putInt("pin_${kind}_x", x).putInt("pin_${kind}_y", y).apply() })
-        val w = 320.dp
-        val h = min(560.dp, root.height - 120.dp).coerceAtLeast(300.dp)
+        val w = if (kind == "reference" || kind == "navigator" || kind == "lighting") 240.dp else 320.dp
+        val h = if (kind == "reference" || kind == "navigator" || kind == "lighting") FrameLayout.LayoutParams.WRAP_CONTENT else min(560.dp, root.height - 120.dp).coerceAtLeast(300.dp)
         val defX = if ((kind == "layers") != leftHanded) (root.width - w - 72.dp).coerceAtLeast(0) else 72.dp
-        val lp = FrameLayout.LayoutParams(w, h).apply {
+        val lp = FrameLayout.LayoutParams(w, h, Gravity.TOP or Gravity.LEFT).apply {
             leftMargin = prefs.getInt("pin_${kind}_x", defX).coerceIn(0, (root.width - w).coerceAtLeast(0))
             topMargin = prefs.getInt("pin_${kind}_y", 68.dp).coerceIn(56.dp, (root.height - 120.dp).coerceAtLeast(56.dp))
         }
@@ -993,7 +1136,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         root.addView(fp, root.indexOfChild(hud) + 1, lp)
         pinned[kind] = fp
         prefs.edit().putBoolean("pinned_$kind", true).apply()
-        hud.show("Pinned · drag it by its top strip")
+        if (!quiet) hud.show("Pinned · drag it by its top strip")
+        if (gallery != null) fp.visibility = View.GONE
     }
 
     private fun unpinView(kind: String) {
@@ -1007,8 +1151,8 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun restorePins() {
         root.post {
-            if (prefs.getBoolean("pinned_layers", false)) pinPanel("layers")
-            if (prefs.getBoolean("pinned_brushes", false)) pinPanel("brushes")
+            for (k in listOf("layers", "brushes", "navigator", "reference", "lighting"))
+                if (prefs.getBoolean("pinned_$k", false)) pinPanel(k, quiet = true)
         }
     }
 
@@ -1038,14 +1182,14 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         val box = LinearLayout(this).apply { setPadding(24.dp, 8.dp, 24.dp, 0); addView(input, LinearLayout.LayoutParams(-1, -2)) }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Import brushes from a link")
-            .setMessage("Paste a direct download link. Google Drive and Dropbox share links work too.")
+            .setTitle(L10n.tr("Import brushes from a link"))
+            .setMessage(L10n.tr("Paste a direct download link. Google Drive and Dropbox share links work too."))
             .setView(box)
-            .setPositiveButton("Download") { _, _ ->
+            .setPositiveButton(L10n.tr("Download")) { _, _ ->
                 val link = input.text.toString().trim()
                 if (link.startsWith("http")) downloadBrushes(link) else toast("That doesn't look like a link")
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 
@@ -1105,18 +1249,18 @@ class MainActivity : Activity(), CanvasView.Listener {
             selectTool(Tool.BRUSH)
             AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(r.message)
-                .setMessage("You'll find them under \"Imported\" at the bottom of the Brush Library.")
-                .setPositiveButton("Open library") { _, _ -> showBrushes(Tool.BRUSH) }
-                .setNegativeButton("Draw", null)
+                .setMessage(L10n.tr("You'll find them under \"Imported\" at the bottom of the Brush Library."))
+                .setPositiveButton(L10n.tr("Open library")) { _, _ -> showBrushes(Tool.BRUSH) }
+                .setNegativeButton(L10n.tr("Draw"), null)
                 .show()
         } else toast(r.message)
     }
 
     private fun confirmDeleteBrush(b: Brush, tool: Tool) {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Delete \"${b.preset.name}\"?")
-            .setMessage("This removes the imported brush from Inkora.")
-            .setPositiveButton("Delete") { _, _ ->
+            .setTitle(L10n.tr("Delete \"${b.preset.name}\"?"))
+            .setMessage(L10n.tr("This removes the imported brush from Inkora."))
+            .setPositiveButton(L10n.tr("Delete")) { _, _ ->
                 val p = b.preset
                 BrushImport.delete(this, p)
                 BrushPanel.forget(p.id)
@@ -1131,7 +1275,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 refreshAll()
                 showBrushes(tool)
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 
@@ -1231,12 +1375,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         brushes.add(0, 14, 1, "Import brushes…")
         brushes.add(0, 25, 2, "Pin brush library")
         brushes.add(0, 26, 3, "Pin layers")
-        val settings = m.addSubMenu(0, 104, 5, "Settings")
-        settings.add(0, 10, 1, "Draw with finger").apply { isCheckable = true; isChecked = cv.fingerDrawing }
-        settings.add(0, 11, 2, "QuickShape").apply { isCheckable = true; isChecked = cv.quickShapeEnabled }
-        settings.add(0, 15, 3, "S Pen button hold time…")
-        settings.add(0, 16, 4, "Pen pressure sensitivity…")
-        settings.add(0, 12, 5, "ColorDrop sensitivity…")
+        m.add(0, 104, 5, "Settings & Preferences…")
         m.add(0, 8, 6, "Fit canvas to screen")
         m.add(0, 9, 7, "Flip canvas horizontally")
         m.add(0, 13, 8, "Help & gestures")
@@ -1260,17 +1399,9 @@ class MainActivity : Activity(), CanvasView.Listener {
                 7 -> exportImage(jpeg = false, share = true)
                 8 -> cv.fitToScreen()
                 9 -> cv.flipHorizontal()
-                10 -> {
-                    cv.fingerDrawing = !cv.fingerDrawing
-                    cv.fingerDrawingAuto = false
-                    toast(if (cv.fingerDrawing) "Finger drawing ON" else "Finger drawing OFF")
-                }
-                11 -> cv.quickShapeEnabled = !cv.quickShapeEnabled
-                12 -> thresholdDialog()
                 13 -> helpDialog()
                 14 -> showBrushes(Tool.BRUSH)
-                15 -> holdTimeDialog()
-                16 -> pressureDialog()
+                104 -> showSettingsDialog()
                 20 -> textDialog()
                 24 -> exportSvg()
                 25 -> pinPanel("brushes")
@@ -1289,7 +1420,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             }
             true
         }
-        pm.show()
+        L10n.menu(pm.menu); pm.show()
     }
 
     // =========================================================
@@ -1306,7 +1437,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "Custom size…"
         )
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("New canvas (current artwork will be replaced)")
+            .setTitle(L10n.tr("New canvas (current artwork will be replaced)"))
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> newCanvas(sw, sh)
@@ -1316,7 +1447,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                     4 -> customSizeDialog()
                 }
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 
@@ -1327,9 +1458,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         box.addView(w, LinearLayout.LayoutParams(0, -2, 1f))
         box.addView(h, LinearLayout.LayoutParams(0, -2, 1f))
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Custom size (pixels)")
+            .setTitle(L10n.tr("Custom size (pixels)"))
             .setView(box)
-            .setPositiveButton("Create") { _, _ ->
+            .setPositiveButton(L10n.tr("Create")) { _, _ ->
                 val ww = w.text.toString().toIntOrNull() ?: 0
                 val hh = h.text.toString().toIntOrNull() ?: 0
                 // Android cannot draw a single bitmap larger than ~100 MB (25 megapixels)
@@ -1337,7 +1468,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                     toast("Size must be 64–8192 px per side and at most 24 megapixels")
                 } else newCanvas(ww, hh)
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 
@@ -1369,61 +1500,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
     }
 
-    private fun thresholdDialog() {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24.dp, 8.dp, 24.dp, 0) }
-        box.addView(Ui.sliderRow(this, "ColorDrop threshold", cv.fillThreshold, { "${(it * 100).roundToInt()}%" }) {
-            cv.fillThreshold = it
-        })
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("ColorDrop")
-            .setMessage("Higher = the fill spreads into more similar colors.")
-            .setView(box)
-            .setPositiveButton("Done", null)
-            .show()
-    }
-
-    private fun holdTimeDialog() {
-        val options = arrayOf("0.4 seconds (fast)", "0.6 seconds (default)", "1 second", "1.5 seconds", "2 seconds")
-        val values = longArrayOf(400, 600, 1000, 1500, 2000)
-        val current = values.indexOfFirst { it == cv.penHoldMs }.coerceAtLeast(0)
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Hold the S Pen button for…")
-            .setSingleChoiceItems(options, current) { d, which ->
-                cv.penHoldMs = values[which]
-                prefs.edit().putLong("penHoldMs", values[which]).apply()
-                d.dismiss()
-                toast("Quick menu opens after ${options[which].substringBefore(" (")}")
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun pressureDialog() {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24.dp, 8.dp, 24.dp, 0) }
-        // slider 0..1 -> gamma 2.0 (firm) .. 0.4 (soft)
-        val v = ((2f - cv.pressureGamma) / 1.6f).coerceIn(0f, 1f)
-        box.addView(Ui.sliderRow(this, "Soft ⟵   Pressure   ⟶ Firm", 1f - v, {
-            val g = 2f - (1f - it) * 1.6f
-            when {
-                g < 0.8f -> "Soft"
-                g > 1.25f -> "Firm"
-                else -> "Normal"
-            }
-        }) {
-            cv.pressureGamma = 2f - (1f - it) * 1.6f
-            prefs.edit().putFloat("pressureGamma", cv.pressureGamma).apply()
-        })
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Pen pressure")
-            .setMessage("Soft = light touches already give thick, dark lines. Firm = you need to press harder.")
-            .setView(box)
-            .setPositiveButton("Done", null)
-            .show()
-    }
-
     private fun helpDialog() {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Gestures")
+            .setTitle(L10n.tr("Gestures"))
             .setMessage(
                 "• Draw with the S Pen (pressure + tilt)\n" +
                     "• Pinch with two fingers: zoom / rotate / move\n" +
@@ -1443,7 +1522,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                     "• Hold it while drawing: erase\n\n" +
                     "If Samsung's Air command opens instead, turn off \"Air command\" in the tablet's S Pen settings."
             )
-            .setPositiveButton("OK", null)
+            .setPositiveButton(L10n.tr("OK"), null)
             .show()
     }
 
@@ -1466,6 +1545,11 @@ class MainActivity : Activity(), CanvasView.Listener {
             REQ_IMAGE -> insertImage(uri)
             REQ_PHOTO_NEW -> photoAsArtwork(uri)
             REQ_SVG -> writeSvg(uri)
+            REQ_REF_IMAGE -> {
+                val bmp = runCatching { ProjectIO.decodeImage(this, uri, 2048, 2048) }.getOrNull()
+                if (bmp == null) toast("Could not open that image")
+                else (pinned["reference"]?.getChildAt(1) as? ReferenceWindow)?.setImage(bmp)
+            }
         }
     }
 
@@ -1553,7 +1637,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         toast("Photo added as a new layer")
     }
 
-    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+    private fun toast(s: String) = Toast.makeText(this, L10n.tr(s), Toast.LENGTH_SHORT).show()
 
     // =========================================================
     // CanvasView.Listener
@@ -1623,7 +1707,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             val pm = PopupMenu(this, actions)
             listOf(4, 12, 30, 60).forEachIndexed { i, r -> pm.menu.add(0, r, i, "Feather $r px") }
             pm.setOnMenuItemClickListener { cv.featherSelection(it.itemId.toFloat()); true }
-            pm.show()
+            L10n.menu(pm.menu); pm.show()
         })
         actions.addBar(barButton("Deselect") { cv.selection = null })
         actions.addBar(barButton("Done", true) {
@@ -1805,8 +1889,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         popup = pw
         val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
-        val x = if (leftHanded) root.width - w - 12.dp else 12.dp
-        pw.showAtLocation(root, Gravity.TOP or Gravity.START, x + rootLoc[0], 64.dp + rootLoc[1])
+        // opens under the Creative / Editing tabs (they sit on the right in Arabic and Kurdish)
+        val x = if (leftHanded != L10n.isRtl) root.width - w - 12.dp else 12.dp
+        pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x + rootLoc[0], 64.dp + rootLoc[1])
     }
 
     // ---------- Vector layers ----------
@@ -1878,7 +1963,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 val pm = PopupMenu(this, combine)
                 BoolOp.values().forEachIndexed { i, o -> pm.menu.add(0, i, i, o.label) }
                 pm.setOnMenuItemClickListener { ed.booleanOp(BoolOp.values()[it.itemId]); true }
-                pm.show()
+                L10n.menu(pm.menu); pm.show()
             }
             acts.addBar(combine)
             val arrange = barButton("Arrange ▾") {}
@@ -1887,7 +1972,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 listOf("Bring to front" to "front", "Bring forward" to "forward", "Send backward" to "backward", "Send to back" to "back")
                     .forEachIndexed { i, (l, _) -> pm.menu.add(0, i, i, l) }
                 pm.setOnMenuItemClickListener { ed.arrange(listOf("front", "forward", "backward", "back")[it.itemId]); true }
-                pm.show()
+                L10n.menu(pm.menu); pm.show()
             }
             acts.addBar(arrange)
             val align = barButton("Align ▾") {}
@@ -1896,7 +1981,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 val opts = listOf("Left" to "left", "Center" to "hcenter", "Right" to "right", "Top" to "top", "Middle" to "vcenter", "Bottom" to "bottom")
                 opts.forEachIndexed { i, (l, _) -> pm.menu.add(0, i, i, "Align $l") }
                 pm.setOnMenuItemClickListener { ed.align(opts[it.itemId].second); true }
-                pm.show()
+                L10n.menu(pm.menu); pm.show()
             }
             acts.addBar(align)
             acts.addBar(barButton("Flip ↔") { ed.flip(true) })
@@ -1922,7 +2007,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         box.addView(Ui.sliderRow(this, "Polygon sides", (ed.polygonSides - 3) / 17f, { "${3 + (it * 17).roundToInt()}" }) { ed.polygonSides = 3 + (it * 17).roundToInt() })
         box.addView(Ui.sliderRow(this, "Star points", (ed.starPoints - 3) / 17f, { "${3 + (it * 17).roundToInt()}" }) { ed.starPoints = 3 + (it * 17).roundToInt() })
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Shape options").setView(box).setPositiveButton("Done", null).show()
+            .setTitle(L10n.tr("Shape options")).setView(box).setPositiveButton(L10n.tr("Done"), null).show()
     }
 
     /** Fill + stroke settings: change the selected shapes, and the style of new ones. */
@@ -2037,7 +2122,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         pw.elevation = 16f.dp
         pw.setOnDismissListener { ed.endStyle(); refreshAll() }
         popup = pw
-        pw.showAtLocation(root, Gravity.END or Gravity.CENTER_VERTICAL, 16.dp, 0)
+        pw.animationStyle = android.R.style.Animation_Dialog
+        pw.showAtLocation(root, Gravity.RIGHT or Gravity.CENTER_VERTICAL, 16.dp, 0)
     }
 
     /** a color picker popup next to [anchor] */
@@ -2047,6 +2133,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         pw.isOutsideTouchable = true
         pw.elevation = 20f.dp
+        pw.animationStyle = android.R.style.Animation_Dialog
         pw.showAtLocation(root, Gravity.CENTER, 0, 0)
     }
 
@@ -2097,7 +2184,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             val pm = PopupMenu(this, fontBtn)
             TextFont.values().forEachIndexed { i, f -> pm.menu.add(0, i, i, f.label) }
             pm.setOnMenuItemClickListener { font = TextFont.values()[it.itemId]; fontBtn.text = "Font: ${font.label}"; true }
-            pm.show()
+            L10n.menu(pm.menu); pm.show()
         }
         box.addView(fontBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
         var align = android.text.Layout.Alignment.ALIGN_CENTER
@@ -2120,10 +2207,10 @@ class MainActivity : Activity(), CanvasView.Listener {
             sizePx = cv.doc.height * (0.02f + it * 0.3f)
         })
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Add text")
+            .setTitle(L10n.tr("Add text"))
             .setView(box)
-            .setPositiveButton("Add") { _, _ -> addText(input.text.toString(), font, sizePx, align) }
-            .setNegativeButton("Cancel", null)
+            .setPositiveButton(L10n.tr("Add")) { _, _ -> addText(input.text.toString(), font, sizePx, align) }
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 
@@ -2170,7 +2257,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                         }, REQ_OPEN)
                         true
                     }
-                    pm.show()
+                    L10n.menu(pm.menu); pm.show()
                 },
                 onRename = { e -> renameDialog(e.title) { t ->
                     Gallery.rename(this, e.id, t)
@@ -2181,6 +2268,10 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onDelete = { e -> confirmDeleteArtwork(e) },
                 onClose = { closeGallery() })
             gallery = g
+            topBar.visibility = View.GONE
+            sideBar.visibility = View.GONE
+            dock.visibility = View.GONE
+            pinned.values.forEach { it.visibility = View.GONE }
             root.addView(g, FrameLayout.LayoutParams(-1, -1))
             g.refresh()
         }
@@ -2188,9 +2279,27 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private var galleryFromCanvas = true
 
+    private fun showTips() {
+        if (root.findViewWithTag<View>("tips") != null) return
+        val tips = TipsOverlay(this) { v ->
+            root.removeView(v)
+            prefs.edit().putBoolean("tips_done", true).apply()
+        }
+        tips.tag = "tips"
+        root.addView(tips, FrameLayout.LayoutParams(-1, -1))
+    }
+
     private fun closeGallery() {
+        val wasOpen = gallery != null
         gallery?.let { root.removeView(it) }
         gallery = null
+        if (wasOpen && !prefs.getBoolean("tips_done", false)) root.post { showTips() }
+        if (!focusMode) {
+            topBar.visibility = View.VISIBLE
+            sideBar.visibility = View.VISIBLE
+            dock.visibility = View.VISIBLE
+            pinned.values.forEach { it.visibility = View.VISIBLE }
+        }
     }
 
     private fun openFromGallery(id: String) {
@@ -2205,9 +2314,9 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun confirmDeleteArtwork(e: Gallery.Entry) {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Delete \"${e.title}\"?")
-            .setMessage("The artwork and its time-lapse will be deleted. This can't be undone.")
-            .setPositiveButton("Delete") { _, _ ->
+            .setTitle(L10n.tr("Delete \"${e.title}\"?"))
+            .setMessage(L10n.tr("The artwork and its time-lapse will be deleted. This can't be undone."))
+            .setPositiveButton(L10n.tr("Delete")) { _, _ ->
                 val wasCurrent = e.id == cv.doc.galleryId
                 Gallery.delete(this, e.id)
                 if (wasCurrent) {
@@ -2222,7 +2331,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                     showGallery()
                 } else gallery?.refresh()
             }
-            .setNegativeButton("Cancel", null)
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 
@@ -2230,10 +2339,10 @@ class MainActivity : Activity(), CanvasView.Listener {
         val input = EditText(this).apply { setText(current); setSelectAllOnFocus(true); setSingleLine() }
         val box = LinearLayout(this).apply { setPadding(24.dp, 8.dp, 24.dp, 0); addView(input, LinearLayout.LayoutParams(-1, -2)) }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("Name")
+            .setTitle(L10n.tr("Name"))
             .setView(box)
-            .setPositiveButton("OK") { _, _ -> input.text.toString().trim().takeIf { it.isNotEmpty() }?.let(onDone) }
-            .setNegativeButton("Cancel", null)
+            .setPositiveButton(L10n.tr("OK")) { _, _ -> input.text.toString().trim().takeIf { it.isNotEmpty() }?.let(onDone) }
+            .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
 
@@ -2261,16 +2370,16 @@ class MainActivity : Activity(), CanvasView.Listener {
                     return@post
                 }
                 AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                    .setTitle("Time-lapse saved")
-                    .setMessage("$count steps · saved to Movies/Inkora")
-                    .setPositiveButton("Share") { _, _ ->
+                    .setTitle(L10n.tr("Time-lapse saved"))
+                    .setMessage(L10n.tr("$count steps · saved to Movies/Inkora"))
+                    .setPositiveButton(L10n.tr("Share")) { _, _ ->
                         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                             type = "video/mp4"
                             putExtra(Intent.EXTRA_STREAM, uri)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                         }, "Share time-lapse"))
                     }
-                    .setNegativeButton("OK", null)
+                    .setNegativeButton(L10n.tr("OK"), null)
                     .show()
             }
         }
@@ -2282,6 +2391,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         redoBtn.isEnabled = cv.history.canRedo
         undoBtn.invalidate()
         redoBtn.invalidate()
+        if (::layerName.isInitialized) layerName.text = cv.doc.active.name
         syncVectorMode()
         refreshPins()
         // time-lapse: one frame shortly after each change
@@ -2322,5 +2432,6 @@ class MainActivity : Activity(), CanvasView.Listener {
         private const val REQ_BRUSH = 104
         private const val REQ_PHOTO_NEW = 105
         private const val REQ_SVG = 106
+        private const val REQ_REF_IMAGE = 109
     }
 }

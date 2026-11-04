@@ -334,6 +334,8 @@ class ToolsPanel(
                 Symmetry.HORIZONTAL -> "Top ⇄ bottom"
                 Symmetry.QUADRANT -> "Four ways"
                 Symmetry.RADIAL -> "Mandala, 8 ways"
+                Symmetry.MANDALA_12 -> "Mandala, 12 ways"
+                Symmetry.MANDALA_16 -> "Mandala, 16 ways"
             }, null, host.symmetry == s, art = SymmetryPreview(context, s, host.symmetry == s), artHeight = 84) {
                 host.symmetry = s
                 rebuild()
@@ -346,6 +348,8 @@ class ToolsPanel(
 
     private fun buildView() {
         grid(listOf(toolCard("fit"), toolCard("flip"), toolCard("focus")))
+        caption("Floating windows")
+        grid(listOf(toolCard("navigator"), toolCard("reference"), toolCard("lighting")))
     }
 
     // =========================================================
@@ -502,6 +506,11 @@ class GuidePreview(context: Context, private val type: GuideType, private val se
                 }
                 canvas.drawRect(r, p)
             }
+            GuideType.ELLIPSE_RULER -> {
+                val rr = min(r.width(), r.height()) / 2f
+                canvas.drawCircle(r.centerX(), r.centerY(), rr * .85f, p)
+                canvas.drawCircle(r.centerX(), r.centerY(), rr * .45f, p)
+            }
             GuideType.PERSPECTIVE_1 -> rays(canvas, r.centerX(), r.centerY() - step * 0.3f, r, 14)
             GuideType.PERSPECTIVE_2 -> {
                 val y = r.top + r.height() * 0.42f
@@ -556,9 +565,12 @@ class SymmetryPreview(context: Context, private val sym: Symmetry, private val s
             Symmetry.VERTICAL -> canvas.drawLine(cx, cy - s, cx, cy + s, axis)
             Symmetry.HORIZONTAL -> canvas.drawLine(cx - s * 1.4f, cy, cx + s * 1.4f, cy, axis)
             Symmetry.QUADRANT -> { canvas.drawLine(cx, cy - s, cx, cy + s, axis); canvas.drawLine(cx - s * 1.4f, cy, cx + s * 1.4f, cy, axis) }
-            Symmetry.RADIAL -> for (i in 0 until 4) {
-                val a = Math.toRadians(i * 45.0)
-                canvas.drawLine(cx - cos(a).toFloat() * s, cy - sin(a).toFloat() * s, cx + cos(a).toFloat() * s, cy + sin(a).toFloat() * s, axis)
+            Symmetry.RADIAL, Symmetry.MANDALA_12, Symmetry.MANDALA_16 -> {
+                val n = sym.axes / 2
+                for (i in 0 until n) {
+                    val a = Math.toRadians(i * (180.0 / n))
+                    canvas.drawLine(cx - cos(a).toFloat() * s, cy - sin(a).toFloat() * s, cx + cos(a).toFloat() * s, cy + sin(a).toFloat() * s, axis)
+                }
             }
             Symmetry.OFF -> {}
         }
@@ -573,7 +585,7 @@ class SymmetryPreview(context: Context, private val sym: Symmetry, private val s
             Symmetry.VERTICAL -> listOf({ _ -> }, { c -> c.scale(-1f, 1f, cx, cy) })
             Symmetry.HORIZONTAL -> listOf({ _ -> }, { c -> c.scale(1f, -1f, cx, cy) })
             Symmetry.QUADRANT -> listOf({ _ -> }, { c -> c.scale(-1f, 1f, cx, cy) }, { c -> c.scale(1f, -1f, cx, cy) }, { c -> c.scale(-1f, -1f, cx, cy) })
-            Symmetry.RADIAL -> (0 until 8).map { i -> { c: Canvas -> c.rotate(i * 45f, cx, cy) } }
+            Symmetry.RADIAL, Symmetry.MANDALA_12, Symmetry.MANDALA_16 -> (0 until sym.axes).map { i -> { c: Canvas -> c.rotate(i * (360f / sym.axes), cx, cy) } }
         }
         for (t in copies) {
             canvas.save()

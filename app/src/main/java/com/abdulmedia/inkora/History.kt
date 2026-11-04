@@ -94,6 +94,20 @@ class History {
     private val maxBytes = 700L * 1024 * 1024
     private val maxSteps = 120
 
+    /** what the next undo / redo will change, for the on-screen message */
+    val undoLabel get() = undoStack.lastOrNull()?.let { labelOf(it) }
+    val redoLabel get() = redoStack.lastOrNull()?.let { labelOf(it) }
+
+    private fun labelOf(c: Command) = when (c) {
+        is AddLayerCmd -> "new layer"
+        is DeleteLayerCmd -> "deleted layer"
+        is MoveLayerCmd -> "layer order"
+        is MergeDownCmd -> "merge"
+        is VectorEdit -> "shape edit"
+        is RasterizeCmd -> "rasterize"
+        else -> "drawing"
+    }
+
     val canUndo get() = undoStack.isNotEmpty()
     val canRedo get() = redoStack.isNotEmpty()
 

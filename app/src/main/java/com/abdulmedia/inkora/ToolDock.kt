@@ -54,6 +54,9 @@ object ToolCatalog {
     } + listOf(
         ToolDef("fit", "Fit to screen", Icon.FIT, "View", "Center the canvas"),
         ToolDef("flip", "Flip view", Icon.FLIP, "View", "Check your drawing mirrored"),
+        ToolDef("reference", "Reference image", Icon.REFERENCE, "View", "Floating reference window"),
+        ToolDef("navigator", "Navigator", Icon.NAVIGATOR, "View", "Floating canvas thumbnail"),
+        ToolDef("lighting", "3D Lighting orb", Icon.ORB, "View", "3D reference sphere for light and shade"),
         ToolDef("focus", "Focus mode", Icon.FOCUS, "View", "Hide the interface"),
         ToolDef("export", "Export PNG", Icon.EXPORT, "File", "Save to Pictures/Inkora"),
         ToolDef("share", "Share", Icon.SHARE, "File", "Send the artwork"),
@@ -109,6 +112,9 @@ class ToolDockView(
 
     private val column = LinearLayout(context)
     private val scroll = ScrollView(context)
+    /** used instead of [scroll] when the toolbar sits on the top or bottom edge */
+    private val hscroll = android.widget.HorizontalScrollView(context)
+    private val divider: View
     private val buttons = LinkedHashMap<String, IconView>()
 
     init {
@@ -123,10 +129,34 @@ class ToolDockView(
         scroll.overScrollMode = OVER_SCROLL_NEVER
         scroll.addView(column)
         addView(scroll, LayoutParams(-2, 0, 1f))
-        addView(Ui.divider(context), LayoutParams(28.dp, 1.dp).apply { topMargin = 4.dp; bottomMargin = 4.dp })
+        hscroll.isHorizontalScrollBarEnabled = false
+        hscroll.overScrollMode = OVER_SCROLL_NEVER
+        divider = Ui.divider(context)
+        addView(divider, LayoutParams(28.dp, 1.dp).apply { topMargin = 4.dp; bottomMargin = 4.dp })
         val edit = IconView(context, Icon.CUSTOMIZE).apply { tint = Ui.TEXT_DIM }
         edit.setOnClickListener { onCustomize() }
         addView(edit, LayoutParams(46.dp, 42.dp))
+    }
+
+    fun setDockOrientation(orient: Int) {
+        if (orientation == orient && column.parent != null) return
+        orientation = orient
+        column.orientation = orient
+        gravity = if (orient == HORIZONTAL) Gravity.CENTER_VERTICAL else Gravity.CENTER_HORIZONTAL
+        column.gravity = gravity
+        // a vertical ScrollView cannot scroll sideways: swap in a HorizontalScrollView
+        (column.parent as? android.view.ViewGroup)?.removeView(column)
+        val old = getChildAt(0)
+        if (old === scroll || old === hscroll) removeViewAt(0)
+        if (orient == HORIZONTAL) {
+            hscroll.addView(column)
+            addView(hscroll, 0, LayoutParams(0, -2, 1f))
+            divider.layoutParams = LayoutParams(1.dp, 28.dp).apply { leftMargin = 4.dp; rightMargin = 4.dp }
+        } else {
+            scroll.addView(column)
+            addView(scroll, 0, LayoutParams(-2, 0, 1f))
+            divider.layoutParams = LayoutParams(28.dp, 1.dp).apply { topMargin = 4.dp; bottomMargin = 4.dp }
+        }
     }
 
     fun setTools(ids: List<String>) {

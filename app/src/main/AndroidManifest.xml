@@ -11,6 +11,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="Inkora"
         android:largeHeap="true"
+        android:supportsRtl="true"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
 
         <activity

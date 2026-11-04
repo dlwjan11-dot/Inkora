@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.8.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.8.0"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.9.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.9.0"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Android-10%2B-5fd39a?style=flat-square&logo=android&logoColor=white" alt="Android 10+">
-  <img src="https://img.shields.io/badge/size-0.9_MB-6fb3ff?style=flat-square" alt="0.9 MB">
+  <img src="https://img.shields.io/badge/size-1_MB-6fb3ff?style=flat-square" alt="1 MB">
   <img src="https://img.shields.io/badge/made_for-S_Pen-ff6b8b?style=flat-square" alt="Made for S Pen">
   <img src="https://img.shields.io/badge/Kotlin-no_libraries-7b5cff?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin, no libraries">
   <img src="https://img.shields.io/badge/ads-none-aab0d6?style=flat-square" alt="No ads">
@@ -76,13 +76,13 @@ Move over an item and release the button, or just tap it. Holding the pen tip st
 
 ### Install
 
-1. Download **[Inkora-0.8.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk)** on your Android device.
+1. Download **[Inkora-0.9.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk)** on your Android device.
 2. Open it. If Android asks, allow installs from this source.
 3. If Play Protect warns you, tap **Install anyway** — Inkora isn't on Google Play yet.
 4. Open Inkora and draw.
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too, with your finger.
-SHA-256: `9606771943be99d56f9242ee7484055bce144093182dfe1a96d1f2fb0dce4687`
+SHA-256: `7480bd8a1838a162b06831f1d60c9951e97c95b0b68ac9f66447608feecb1f27`
 
 ### Build it yourself
 
@@ -125,7 +125,7 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Inkora-0.8.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk)** على جهازك.
+1. حمّل **[Inkora-0.9.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
 4. افتح Inkora وابدأ الرسم.
@@ -151,7 +151,7 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Inkora-0.8.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.8.0.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Inkora-0.9.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.9.0.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
 4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.

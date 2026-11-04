@@ -17,10 +17,12 @@ import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.atan2
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.sin
 import android.graphics.RectF
 
 enum class Tool { BRUSH, SMUDGE, ERASER }
@@ -90,7 +92,7 @@ class CanvasView(context: Context) : View(context) {
         private set
 
     // ---- view transform: document -> screen ----
-    private val viewMatrix = Matrix()
+    val viewMatrix = Matrix()
     private val inverse = Matrix()
     private var flipped = false
 
@@ -247,6 +249,8 @@ class CanvasView(context: Context) : View(context) {
     private var hovering = false
     private var hoverX = 0f
     private var hoverY = 0f
+    private var hoverTilt = 0f
+    private var hoverOrientation = 0f
 
     private val tmpPts = FloatArray(2)
 
@@ -310,9 +314,10 @@ class CanvasView(context: Context) : View(context) {
     fun undo() {
         if (busy()) return
         if (strokeActive) cancelStroke()
+        val what = history.undoLabel
         if (history.undo(doc)) {
             vectorEditor.reset()
-            listener?.onMessage("Undo")
+            listener?.onMessage("Undo: " + L10n.tr(what ?: "drawing"))
             listener?.onHistoryChanged()
             invalidate()
         }
@@ -321,9 +326,10 @@ class CanvasView(context: Context) : View(context) {
     fun redo() {
         if (busy()) return
         if (strokeActive) cancelStroke()
+        val what = history.redoLabel
         if (history.redo(doc)) {
             vectorEditor.reset()
-            listener?.onMessage("Redo")
+            listener?.onMessage("Redo: " + L10n.tr(what ?: "drawing"))
             listener?.onHistoryChanged()
             invalidate()
         }
@@ -400,13 +406,32 @@ class CanvasView(context: Context) : View(context) {
         if (editingGuide) drawVpHandles(canvas)
 
         if (hovering && !strokeActive) {
-            val r = max(2f, currentBrush.size * z / 2f)
+            val r = max(3f, currentBrush.size * z / 2f)
+            cursorPaint.style = Paint.Style.STROKE
             cursorPaint.strokeWidth = 3f
             cursorPaint.color = 0x66000000
             canvas.drawCircle(hoverX, hoverY, r, cursorPaint)
-            cursorPaint.strokeWidth = 1.2f
+            cursorPaint.strokeWidth = 1.5f
             cursorPaint.color = 0xDDFFFFFF.toInt()
             canvas.drawCircle(hoverX, hoverY, r, cursorPaint)
+
+            // Center dot
+            cursorPaint.style = Paint.Style.FILL
+            cursorPaint.color = if (tool == Tool.ERASER) 0xFFFF5555.toInt() else color
+            canvas.drawCircle(hoverX, hoverY, 2.5f, cursorPaint)
+
+            // Stylus tilt orientation vector
+            if (hoverTilt > 0.1f) {
+                val tiltLen = (hoverTilt * 24f).coerceIn(8f, 36f)
+                // orientation 0 = pen pointing up, clockwise positive
+                val ox = sin(hoverOrientation); val oy = -cos(hoverOrientation)
+                val tx = hoverX + ox * (r + tiltLen)
+                val ty = hoverY + oy * (r + tiltLen)
+                cursorPaint.style = Paint.Style.STROKE
+                cursorPaint.strokeWidth = 2f
+                cursorPaint.color = 0xAA4C8DFF.toInt()
+                canvas.drawLine(hoverX + ox * r, hoverY + oy * r, tx, ty, cursorPaint)
+            }
         }
 
         if (mode == Mode.PICK) drawLoupe(canvas)
@@ -477,10 +502,11 @@ class CanvasView(context: Context) : View(context) {
                 canvas.drawLine(cx, 0f, cx, doc.height.toFloat(), guidePaint)
                 canvas.drawLine(0f, cy, doc.width.toFloat(), cy, guidePaint)
             }
-            Symmetry.RADIAL -> {
+            Symmetry.RADIAL, Symmetry.MANDALA_12, Symmetry.MANDALA_16 -> {
+                val n = symmetry.axes
                 val r = hypot(cx, cy)
-                for (k in 0 until engine.radialCount) {
-                    val a = Math.PI * 2 * k / engine.radialCount
+                for (k in 0 until n) {
+                    val a = Math.PI * 2 * k / n
                     canvas.drawLine(cx, cy, cx + (Math.cos(a) * r).toFloat(), cy + (Math.sin(a) * r).toFloat(), guidePaint)
                 }
             }
@@ -603,7 +629,11 @@ class CanvasView(context: Context) : View(context) {
         if (!isStylusTool(e.getToolType(0))) return super.onHoverEvent(e)
         when (e.actionMasked) {
             MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE -> {
-                hovering = true; hoverX = e.x; hoverY = e.y
+                hovering = true
+                hoverX = e.x
+                hoverY = e.y
+                hoverTilt = e.getAxisValue(MotionEvent.AXIS_TILT)
+                hoverOrientation = e.getAxisValue(MotionEvent.AXIS_ORIENTATION)
                 // some pens only report the side button through buttonState
                 if (isPenButton(e.buttonState)) penPress() else penRelease()
                 penListener?.onPenHover(e.x, e.y)

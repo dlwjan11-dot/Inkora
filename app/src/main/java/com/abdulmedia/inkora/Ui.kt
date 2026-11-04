@@ -43,14 +43,14 @@ object Ui {
     }
 
     fun text(ctx: Context, s: String, sp: Float = 15f, color: Int = TEXT, bold: Boolean = false) = TextView(ctx).apply {
-        text = s
+        text = L10n.tr(s)
         textSize = sp
         setTextColor(color)
         if (bold) typeface = Typeface.DEFAULT_BOLD
     }
 
     fun button(ctx: Context, label: String, onClick: () -> Unit) = TextView(ctx).apply {
-        text = label
+        text = L10n.tr(label)
         textSize = 14f
         setTextColor(TEXT)
         gravity = Gravity.CENTER
@@ -109,7 +109,8 @@ enum class Icon { BRUSH, ERASER, LAYERS, ACTIONS, UNDO, REDO, SYMMETRY, EYEDROPP
     V_DIRECT, V_PEN, V_PENCIL, V_RECT, V_ELLIPSE, V_POLYGON, V_STAR, V_LINE, PIN, VECTOR,
     HOME, MENU, FILL, ADJUST, SPARKLE, EDIT, STAR, STAR_FILLED, CLOSE, CHECK, SETTINGS, SHARE, PHOTO, FLIP, FIT, FOCUS,
     RULER, SHAPE, BLUR, INVERT, CONTRAST, NOISE, POSTERIZE, BW, SHARPEN, HUE, BALANCE,
-    SEL_RECT, SEL_ELLIPSE, SEL_ALL, DESELECT, SEL_INVERT, FEATHER, ROTATE, CUSTOMIZE, DRAG, EXPORT, CLOCK, COPY }
+    SEL_RECT, SEL_ELLIPSE, SEL_ALL, DESELECT, SEL_INVERT, FEATHER, ROTATE, CUSTOMIZE, DRAG, EXPORT, CLOCK, COPY,
+    NAVIGATOR, ORB, REFERENCE, GLOBE, LIGHTBULB }
 
 /** Simple vector icons drawn in code (24x24 design grid). */
 /** Draws the app's vector icons (24x24 design grid) anywhere. */
@@ -587,6 +588,41 @@ object IconPainter {
                 path.reset(); path.moveTo(5f, 15.5f); path.lineTo(4f, 15.5f); path.lineTo(4f, 4f); path.lineTo(15.5f, 4f); path.lineTo(15.5f, 5f)
                 canvas.drawPath(path, stroke)
             }
+            Icon.NAVIGATOR -> {
+                // a small map of the canvas with the visible area marked
+                canvas.drawRoundRect(RectF(3f, 4.5f, 21f, 19.5f), 2f, 2f, stroke)
+                canvas.drawRoundRect(RectF(10f, 8f, 17.5f, 14f), 1f, 1f, fill)
+                stroke.strokeWidth = 1.2f
+                canvas.drawLine(5.5f, 17f, 9f, 13.5f, stroke)
+            }
+            Icon.ORB -> {
+                canvas.drawCircle(12f, 12f, 8.5f, stroke)
+                fill.alpha = alpha / 3
+                path.reset(); path.addCircle(12f, 12f, 8.5f, Path.Direction.CW)
+                canvas.save(); canvas.clipPath(path)
+                canvas.drawCircle(16f, 16f, 9f, fill)
+                canvas.restore()
+                fill.alpha = alpha
+                canvas.drawCircle(9f, 9f, 2.2f, fill)
+            }
+            Icon.REFERENCE -> {
+                // two stacked photos
+                canvas.drawRoundRect(RectF(7f, 3.5f, 21f, 15f), 2f, 2f, stroke)
+                canvas.drawRoundRect(RectF(3f, 8.5f, 17f, 20.5f), 2f, 2f, fill)
+            }
+            Icon.GLOBE -> {
+                canvas.drawCircle(12f, 12f, 8.5f, stroke)
+                canvas.drawOval(RectF(8f, 3.5f, 16f, 20.5f), stroke)
+                canvas.drawLine(3.5f, 12f, 20.5f, 12f, stroke)
+            }
+            Icon.LIGHTBULB -> {
+                path.reset()
+                path.moveTo(9f, 17f); path.cubicTo(9f, 14f, 6f, 13f, 6f, 9.5f)
+                path.cubicTo(6f, 6f, 8.7f, 3.5f, 12f, 3.5f); path.cubicTo(15.3f, 3.5f, 18f, 6f, 18f, 9.5f)
+                path.cubicTo(18f, 13f, 15f, 14f, 15f, 17f); path.close()
+                canvas.drawPath(path, stroke)
+                canvas.drawLine(9.5f, 20.5f, 14.5f, 20.5f, stroke)
+            }
             Icon.GRID -> {
                 canvas.drawRoundRect(RectF(3.5f, 3.5f, 20.5f, 20.5f), 2.5f, 2.5f, stroke)
                 canvas.drawLine(9.2f, 3.5f, 9.2f, 20.5f, stroke)
@@ -647,6 +683,32 @@ class IconView(context: Context, var icon: Icon) : View(context) {
             bg.color = Ui.ACCENT
             canvas.drawCircle(width - inset - 4f.dp, inset + 4f.dp, 3f.dp, bg)
         }
+    }
+}
+
+/** Live preview of the brush: its size (scaled down when big), color and opacity. */
+class BrushDotView(context: Context) : View(context) {
+    var sizePx = 10f
+        set(v) { field = v; invalidate() }
+    var color = 0xFF000000.toInt()
+        set(v) { field = v; invalidate() }
+    var opacity = 1f
+        set(v) { field = v; invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onDraw(canvas: Canvas) {
+        val maxR = minOf(width, height) / 2f - 2f.dp
+        // 1 px → tiny dot, 500 px → full circle (log scale, like the slider)
+        val t = (Math.log10(sizePx.coerceIn(1f, 500f).toDouble()) / Math.log10(500.0)).toFloat()
+        val r = 1.5f.dp + (maxR - 1.5f.dp) * t
+        p.style = Paint.Style.FILL
+        p.color = color
+        p.alpha = (255 * opacity.coerceIn(0.08f, 1f)).toInt()
+        canvas.drawCircle(width / 2f, height / 2f, r, p)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1f.dp
+        p.color = 0x99FFFFFF.toInt()
+        canvas.drawCircle(width / 2f, height / 2f, r, p)
     }
 }
 
@@ -734,7 +796,7 @@ class HudView(context: Context) : View(context) {
     private val hide = Runnable { message = null; circle = 0f; invalidate() }
 
     fun show(text: String, circleDiameterPx: Float = 0f, sticky: Boolean = false) {
-        message = text
+        message = L10n.tr(text)
         circle = circleDiameterPx
         removeCallbacks(hide)
         if (!sticky) postDelayed(hide, 1100)

@@ -57,6 +57,20 @@ class ColorPanel(
         disc.onCommit = { commitRecent() }
         addView(disc, LayoutParams(-1, -2).apply { topMargin = 10.dp })
 
+        val harmBtn = Ui.button(context, "Harmony: ${disc.disc.harmony.label}") {}
+        harmBtn.setOnClickListener {
+            val pm = android.widget.PopupMenu(context, harmBtn)
+            HarmonyMode.values().forEachIndexed { i, m -> pm.menu.add(0, i, i, m.label) }
+            pm.setOnMenuItemClickListener { item ->
+                disc.disc.harmony = HarmonyMode.values()[item.itemId]
+                harmBtn.text = "Harmony: ${disc.disc.harmony.label}"
+                disc.invalidate()
+                true
+            }
+            L10n.menu(pm.menu); pm.show()
+        }
+        addView(harmBtn, LayoutParams(-1, -2).apply { topMargin = 4.dp })
+
         hex.apply {
             setTextColor(Ui.TEXT)
             textSize = 15f
