@@ -298,6 +298,9 @@ class CanvasView(context: Context) : View(context) {
     private val gDown = HashMap<Int, PointF>()
     private val tapStartMatrix = Matrix()
     private var gLastScale = 1f
+    /** where the two fingers of the last pinch were (for a quick pinch out to 100%) */
+    private var gPinchX = 0f
+    private var gPinchY = 0f
     private var gPointers = 0
     /** a three-finger swipe or scrub, or rapid undo, already did something in this gesture */
     private var gFired = false
@@ -379,6 +382,24 @@ class CanvasView(context: Context) : View(context) {
         viewMatrix.postScale(if (flipped) -s else s, s)
         viewMatrix.postTranslate(width / 2f, height / 2f)
         invalidate()
+    }
+
+    /**
+     * 100% zoom: one canvas pixel = one screen pixel, upright, keeping the canvas point under
+     * ([fx], [fy]) where it is (the screen center by default).
+     */
+    fun actualSize(fx: Float = width / 2f, fy: Float = height / 2f) {
+        if (!isDocReady() || width == 0) return
+        val inv = Matrix()
+        viewMatrix.invert(inv)
+        val p = floatArrayOf(fx, fy)
+        inv.mapPoints(p)
+        viewMatrix.reset()
+        viewMatrix.postTranslate(-p[0], -p[1])
+        if (flipped) viewMatrix.postScale(-1f, 1f)
+        viewMatrix.postTranslate(fx, fy)
+        invalidate()
+        listener?.onMessage("Actual size · 100%")
     }
 
     fun flipHorizontal() {
@@ -1085,6 +1106,8 @@ class CanvasView(context: Context) : View(context) {
                     }
                 } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 400 && gLastScale < 0.75f) {
                     fitToScreen() // a quick pinch in fits the canvas
+                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 400 && gLastScale > 1.4f) {
+                    actualSize(gPinchX, gPinchY) // a quick pinch out: actual size (100%)
                 }
             }
             Mode.PICK -> {
@@ -1120,6 +1143,11 @@ class CanvasView(context: Context) : View(context) {
         }
         if (layer.vector != null) {
             listener?.onMessage("Vector layer: use the vector tools, or pick a drawing layer")
+            mode = Mode.IGNORE
+            return
+        }
+        if (layer.scene != null) {
+            listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer")
             mode = Mode.IGNORE
             return
         }
@@ -1510,6 +1538,7 @@ class CanvasView(context: Context) : View(context) {
         if (!gRotating && abs(rot) > 9f) gRotating = true
         if (!gRotating || !gOn(GesturePurpose.GENERAL, "ROTATE", true)) rot = 0f
         gLastScale = sc
+        gPinchX = mx; gPinchY = my
 
         // clamp total zoom between 3% and 6400%
         viewMatrix.set(gestureStart)
@@ -1691,8 +1720,7 @@ class CanvasView(context: Context) : View(context) {
         val copy = try { src.bitmap.copy(Bitmap.Config.ARGB_8888, true) } catch (e: OutOfMemoryError) { null }
         if (copy == null) { listener?.onMessage("Not enough memory for another layer right now"); return }
         val l = Layer(copy, src.name + " copy")
-        l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock
-        l.isClippingMask = src.isClippingMask; l.visible = src.visible
+        l.copySettingsFrom(src)
         l.vector = src.vector?.copy()
         val cmd = AddLayerCmd(l, index + 1, index)
         cmd.redo(doc)
@@ -1822,6 +1850,7 @@ class CanvasView(context: Context) : View(context) {
         val layer = doc.active
         if (!layer.visible) { listener?.onMessage("This layer is hidden"); return false }
         if (layer.vector != null) { listener?.onMessage("On a vector layer use the vector Select tool"); return false }
+        if (layer.scene != null) { listener?.onMessage("Move a 3D layer in its 3D editor (Layers › Edit 3D scene), or rasterize it"); return false }
         val sel = selection
         val region = (if (sel != null) Rect(sel.bounds) else Selections.contentBounds(layer.bitmap))
         if (region == null || !region.intersect(0, 0, doc.width, doc.height) || region.isEmpty) {

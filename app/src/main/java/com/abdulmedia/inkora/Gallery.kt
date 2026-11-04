@@ -56,7 +56,7 @@ object Gallery {
         val c = Canvas(b)
         c.drawColor(0xFFFFFFFF.toInt())
         c.scale(s, s)
-        doc.draw(c, true)
+        doc.draw(c, true, screen = false)
         return b
     }
 

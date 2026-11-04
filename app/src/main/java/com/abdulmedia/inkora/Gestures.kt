@@ -371,7 +371,7 @@ class GestureControlsView(
 
     /** gestures that are always on, said on the page they belong to */
     private fun alwaysOn(p: GesturePurpose): String = when (p) {
-        GesturePurpose.GENERAL -> "Always on: two fingers pinch to zoom and move the canvas, two-finger tap undoes, three-finger tap redoes, and a quick pinch in fits the canvas to the screen."
+        GesturePurpose.GENERAL -> "Always on: two fingers pinch to zoom and move the canvas, two-finger tap undoes, three-finger tap redoes, a quick pinch in fits the canvas to the screen, and a quick pinch out shows it at actual size (100%)."
         GesturePurpose.ERASE -> "Always on: drawing with the S Pen button held down erases."
         GesturePurpose.QUICKSHAPE -> "After a shape snaps, keep the pen down and move it to resize or turn the shape. A finger touching the screen meanwhile makes it perfect."
         else -> ""

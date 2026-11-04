@@ -111,7 +111,7 @@ object PsdIO {
             val g = doc.groupOf(l)
             if (g != null && (i == 0 || doc.layers[i - 1].groupId != g.id))
                 layers.add(L(null, "</Layer group>", 1f, LayerBlend.NORMAL, true, false, false, false, 3))
-            layers.add(L(l.bitmap, l.name, l.opacity, l.blend, l.visible, l.isClippingMask, l.alphaLock, false))
+            layers.add(L(l.bitmap, l.name, l.opacity, l.blend, l.visible && !l.shadow, l.isClippingMask, l.alphaLock, false))
             if (g != null && (i == doc.layers.size - 1 || doc.layers[i + 1].groupId != g.id))
                 layers.add(L(null, g.name, g.opacity, g.blend, g.visible, false, false, false,
                     if (g.collapsed) 2 else 1, pass = !g.isolated))
@@ -204,7 +204,7 @@ object PsdIO {
             val flat = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val fc = Canvas(flat)
             fc.drawColor(if (doc.backgroundVisible) doc.backgroundColor or 0xFF000000.toInt() else 0xFFFFFFFF.toInt())
-            doc.draw(fc, false, withBackground = false)
+            doc.draw(fc, false, withBackground = false, screen = false)
             d.writeShort(1)
             val ps = planes(flat, 0, 0, w, h)
             flat.recycle()

@@ -28,6 +28,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.Toast
 import kotlin.concurrent.thread
 import kotlin.math.hypot
@@ -115,6 +116,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             am.getMemoryInfo(mi)
             Document.setDeviceMemory(mi.totalMem)
         }
+        PaletteStore.load(prefs)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setBackgroundDrawable(ColorDrawable(0xFF2B2B30.toInt()))
         buildUi()
@@ -611,6 +613,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val v = root.findViewWithTag<View>("overlay") ?: return false
         // the Brush Studio saves its changes on the way out (it calls back here to be removed)
         if (v is BrushStudioView && !v.closing) { v.finish(); return true }
+        if (v is Scene3DEditor && !v.closing) { v.finish(); return true }
         root.removeView(v)
         return true
     }
@@ -705,7 +708,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     /** runs a tool from the toolbar or the Creative / Editing panel */
     private fun runTool(id: String, anchor: View? = null) {
         if (!cv.isDocReady()) return
-        if (id !in setOf("fit", "flip", "focus") && busy()) return
+        if (id !in setOf("fit", "flip", "focus", "actual_size") && busy()) return
         val isVector = cv.doc.active.vector != null
         when {
             id == "sel_free" || id == "sel_rect" || id == "sel_ellipse" -> {
@@ -730,6 +733,11 @@ class MainActivity : Activity(), CanvasView.Listener {
                 addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
             }, REQ_IMAGE)
             id == "vector" -> if (isVector) { cv.vectorEditor.tool = VTool.PEN; refreshAll() } else addVectorLayer()
+            id == "pose3d" -> open3D(cv.doc.active.takeIf { it.scene != null })
+            id == "shadow_photo" -> startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+            }, REQ_SHADOW_IMAGE)
+            id == "actual_size" -> cv.actualSize()
             id == "guides" -> showGuide(anchor)
             id == "assisted" -> {
                 val g = cv.doc.guide
@@ -1013,18 +1021,15 @@ class MainActivity : Activity(), CanvasView.Listener {
         colorWheel.open(x, y, cv.color)
     }
 
-    /** colors the user saved from the quick menu */
-    private fun palette(): List<Int> =
-        prefs.getString("palette", "")!!.split(',').mapNotNull { it.trim().toLongOrNull()?.toInt() }
+    /** the active palette's colors (the quick menu shows the first ones) */
+    private fun palette(): List<Int> = PaletteStore.current.colors.take(11)
 
     private fun savePaletteColor(c: Int) {
-        val list = palette().toMutableList()
-        list.remove(c or 0xFF000000.toInt())
-        list.add(0, c or 0xFF000000.toInt())
-        while (list.size > 11) list.removeAt(list.size - 1)
-        prefs.edit().putString("palette", list.joinToString(",") { (it.toLong() and 0xFFFFFFFFL).toString() }).apply()
-        hud.show("Color saved to your palette")
+        if (PaletteStore.addColor(c)) hud.show("Color saved: " + PaletteStore.current.name)
+        else hud.show("This palette is full")
     }
+
+    private var colorPanel: ColorPanel? = null
 
     private fun showSizeHud(sticky: Boolean) {
         val px = cv.currentBrush.size
@@ -1226,7 +1231,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (!cv.isDocReady()) return
         unpinView(kind)
         val content: View = when (kind) {
-            "layers" -> LayersPanel(this, cv, { cv.color }, onAddVector = { addVectorLayer() }, onPin = null) { onHistoryChanged() }
+            "layers" -> LayersPanel(this, cv, { cv.color }, onAddVector = { addVectorLayer() }, onPin = null, onEdit3D = { open3D(it) }) { onHistoryChanged() }
             "reference" -> ReferenceWindow(this, onImport = {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
@@ -1570,7 +1575,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun showLayers() {
-        val panel = LayersPanel(this, cv, { cv.color }, onAddVector = { popup?.dismiss(); addVectorLayer() }, onPin = { popup?.dismiss(); pinPanel("layers") }) { onHistoryChanged() }
+        val panel = LayersPanel(this, cv, { cv.color }, onAddVector = { popup?.dismiss(); addVectorLayer() }, onPin = { popup?.dismiss(); pinPanel("layers") },
+            onEdit3D = { popup?.dismiss(); open3D(it) }) { onHistoryChanged() }
         showPanel(layersBtn, panel, 360, 600)
     }
 
@@ -1581,12 +1587,18 @@ class MainActivity : Activity(), CanvasView.Listener {
         val panel = ColorPanel(this, cv.color, recentColors, onWheel = {
             popup?.dismiss()
             openColorWheel(root.width * 0.62f, root.height * 0.5f)
-        }) { c ->
+        }, artwork = { runCatching { Gallery.makeThumb(cv.doc) }.getOrNull() },
+            onPalettePhoto = {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
+                }, REQ_PALETTE_PHOTO)
+            }) { c ->
             cv.color = c
             colorBtn.color = c
             if (recolor) cv.vectorEditor.recolorLive(c)
         }
-        showPanel(colorBtn, panel, 340, null)
+        colorPanel = panel
+        showPanel(colorBtn, ScrollView(this).apply { addView(panel) }, 340, 820)
         if (recolor) popup?.setOnDismissListener { cv.vectorEditor.endStyle(); refreshAll() }
     }
 
@@ -1828,6 +1840,18 @@ class MainActivity : Activity(), CanvasView.Listener {
             REQ_SAVE -> saveProject(uri)
             REQ_OPEN -> openProject(uri)
             REQ_IMAGE -> insertImage(uri)
+            REQ_SHADOW_IMAGE -> insertImage(uri, shadow = true)
+            REQ_MODEL -> readModel(uri)
+            REQ_PALETTE_PHOTO -> {
+                val bmp = runCatching { ProjectIO.decodeImage(this, uri, 600, 600) }.getOrNull()
+                if (bmp == null) toast("Could not open that image")
+                else {
+                    PaletteStore.create("From photo", PaletteStore.extract(bmp))
+                    bmp.recycle()
+                    colorPanel?.paletteAdded()
+                    toast("New palette made from the photo")
+                }
+            }
             REQ_PHOTO_NEW -> photoAsArtwork(uri)
             REQ_SVG -> writeSvg(uri)
             REQ_BRUSH_EXPORT -> writeBrushFile(uri)
@@ -1987,7 +2011,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         toast("Photo opened as a new artwork")
     }
 
-    private fun insertImage(uri: Uri) {
+    private fun insertImage(uri: Uri, shadow: Boolean = false) {
         val doc = cv.doc
         if (doc.layers.size >= doc.maxLayers()) {
             toast("Layer limit reached for this canvas size")
@@ -1999,7 +2023,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             return
         }
         val layer = doc.createLayer()
-        layer.name = "Photo"
+        layer.name = if (shadow) "Shadow photo" else "Photo"
+        layer.shadow = shadow
+        if (shadow) layer.opacity = 0.6f
         val s = min(1f, min(doc.width / img.width.toFloat(), doc.height / img.height.toFloat()))
         val w = img.width * s
         val h = img.height * s
@@ -2010,7 +2036,115 @@ class MainActivity : Activity(), CanvasView.Listener {
         val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
         cmd.redo(doc)
         cv.pushCommand(cmd)
-        toast("Photo added as a new layer")
+        toast(if (shadow) "Shadow photo added: trace it, it stays out of the time-lapse and exports" else "Photo added as a new layer")
+    }
+
+    // =========================================================
+    // 3D & poses
+    // =========================================================
+
+    private var scene3d: Scene3DEditor? = null
+    /** the 3D layer being edited (null = a new one) */
+    private var scene3dLayer: Layer? = null
+
+    private fun open3D(layer: Layer?) {
+        if (!cv.isDocReady()) return
+        popup?.dismiss()
+        val doc = cv.doc
+        if (layer == null && doc.layers.size >= doc.maxLayers()) { toast("Layer limit reached for this canvas size"); return }
+        scene3dLayer = layer
+        val start = layer?.scene ?: Scene3D()
+        val ed = Scene3DEditor(this, start, layer?.shadow ?: true, scene3dHost)
+        scene3d = ed
+        showOverlay(ed)
+    }
+
+    private val scene3dHost = object : Scene3DHost {
+        override fun backdrop(maxSide: Int): Bitmap? = runCatching {
+            val doc = cv.doc
+            val s = min(1f, maxSide / maxOf(doc.width, doc.height).toFloat())
+            val b = Bitmap.createBitmap((doc.width * s).toInt().coerceAtLeast(1), (doc.height * s).toInt().coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+            val c = Canvas(b)
+            c.scale(s, s)
+            // the artwork without the 3D layer being edited
+            val l = scene3dLayer
+            val vis = l?.visible
+            if (l != null) l.visible = false
+            doc.draw(c, true)
+            if (l != null && vis != null) l.visible = vis
+            b
+        }.getOrNull()
+        override val docWidth get() = cv.doc.width
+        override val docHeight get() = cv.doc.height
+        override val brushColor get() = cv.color
+        override fun pickModelFile() {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+            }, REQ_MODEL)
+        }
+        override fun onScene3DClosed(scene: Scene3D?, shadow: Boolean) {
+            root.findViewWithTag<View>("overlay")?.let { root.removeView(it) }
+            scene3d = null
+            if (scene != null) place3D(scene, shadow, scene3dLayer)
+            scene3dLayer = null
+        }
+    }
+
+    private fun readModel(uri: Uri) {
+        val name = runCatching {
+            contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        }.getOrNull() ?: "Model"
+        toast("Reading the model…")
+        thread(name = "inkora-model") {
+            val result = runCatching {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalArgumentException("Could not open that file")
+                if (bytes.size > 60_000_000) throw IllegalArgumentException("This file is too big")
+                MeshIO.read(bytes, name)
+            }
+            main.post {
+                result.onSuccess { m -> scene3d?.addModel(m, name.substringBeforeLast('.')) }
+                result.onFailure { e -> toast(e.message ?: "Could not read this model (use .obj or .stl)") }
+            }
+        }
+    }
+
+    /** draws [scene] into its layer (a new one or [target]) in the background */
+    private fun place3D(scene: Scene3D, shadow: Boolean, target: Layer?) {
+        val doc = cv.doc
+        hud.show("Drawing the 3D scene…", sticky = true)
+        val w = doc.width; val h = doc.height
+        thread(name = "inkora-3d") {
+            val px = runCatching {
+                IntArray(w * h).also { Renderer3D(scene, w, h).render(it, if (w.toLong() * h <= 9_000_000L) 2 else 1) }
+            }.getOrNull()
+            main.post {
+                hud.hideSoon()
+                if (px == null) { toast("Not enough memory for this right now"); return@post }
+                if (target != null && target in doc.layers) {
+                    val before = target.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+                    val after = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                    after.setPixels(px, 0, w, 0, 0, w, h)
+                    val cmd = Scene3DCmd(target, before, target.scene, target.shadow, after.copy(Bitmap.Config.ARGB_8888, false), scene, shadow)
+                    cmd.redo(doc)
+                    after.recycle()
+                    cv.pushCommand(cmd)
+                } else {
+                    val layer = doc.createLayer()
+                    layer.name = "3D " + (scene.objects.firstOrNull()?.name?.let { L10n.tr(it) } ?: "scene")
+                    layer.bitmap.setPixels(px, 0, w, 0, 0, w, h)
+                    layer.scene = scene
+                    layer.shadow = shadow
+                    val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
+                    cmd.redo(doc)
+                    cv.pushCommand(cmd)
+                }
+                doc.revision++
+                refreshAll()
+                hud.show(if (shadow) "3D layer placed · shadow layer: it stays out of the time-lapse and exports" else "3D layer placed")
+            }
+        }
     }
 
     private fun toast(s: String) = Toast.makeText(this, L10n.tr(s), Toast.LENGTH_SHORT).show()
@@ -2996,5 +3130,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         private const val REQ_BRUSH_EXPORT = 110
         private const val REQ_BRUSH_IMAGE = 111
         private const val REQ_EXPORT_FILE = 112
+        private const val REQ_SHADOW_IMAGE = 113
+        private const val REQ_MODEL = 114
+        private const val REQ_PALETTE_PHOTO = 115
     }
 }

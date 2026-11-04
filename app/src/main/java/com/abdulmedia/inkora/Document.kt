@@ -39,6 +39,19 @@ class Layer(var bitmap: Bitmap, var name: String) {
     var vector: VectorData? = null
     /** the group this layer belongs to ([Document.groups]), or null. A group's layers sit together. */
     var groupId: Int? = null
+    /**
+     * A "shadow" layer: you see it while you draw (a photo to trace, a pose), but it stays out of
+     * the time-lapse, exports and gallery thumbnails.
+     */
+    var shadow = false
+    /** non-null = a 3D layer (figures, poses, objects); [bitmap] is then a rendered copy of the scene */
+    var scene: Scene3D? = null
+
+    /** copies the layer settings (not the pixels) of [src] */
+    fun copySettingsFrom(src: Layer) {
+        opacity = src.opacity; blend = src.blend; alphaLock = src.alphaLock; isClippingMask = src.isClippingMask
+        visible = src.visible; shadow = src.shadow; scene = src.scene?.copy()
+    }
 
     companion object {
         private var nextId = 1
@@ -149,8 +162,11 @@ class Document(val width: Int, val height: Int) {
     fun draw(
         canvas: Canvas, filter: Boolean, overlay: ActiveOverlay? = null, withBackground: Boolean = true,
         /** more overlays for other layers (a transform of several layers at once) */
-        extra: Map<Layer, ActiveOverlay>? = null
+        extra: Map<Layer, ActiveOverlay>? = null,
+        /** false = a picture that leaves the app (export, time-lapse, thumbnail): shadow layers stay out */
+        screen: Boolean = true
     ) {
+        drawShadows = screen
         val outer = canvas.saveLayer(bounds, null)
         if (withBackground && backgroundVisible) {
             bgPaint.color = backgroundColor
@@ -161,7 +177,13 @@ class Document(val width: Int, val height: Int) {
         dstInPaint.isFilterBitmap = filter
         drawLayers(canvas, 0, layers.size - 1, { i -> if (overlay != null && i == activeIndex) overlay else extra?.get(layers[i]) }, true)
         canvas.restoreToCount(outer)
+        drawShadows = true
     }
+
+    private var drawShadows = true
+
+    /** true when the artwork has layers that only show on screen */
+    val hasShadowLayers get() = layers.any { it.shadow }
 
     /**
      * Draws layers [from]..[to] (with their groups when [withGroups]). Only layers [include]
@@ -197,6 +219,7 @@ class Document(val width: Int, val height: Int) {
     private fun drawLayer(canvas: Canvas, i: Int, ov: ActiveOverlay?) {
         val layer = layers[i]
         if (!layer.visible) return
+        if (layer.shadow && !drawShadows) return
         layerPaint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
         layerPaint.blendMode = layer.blend.mode
         if (layer.isClippingMask) {
@@ -253,7 +276,7 @@ class Document(val width: Int, val height: Int) {
         val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
         if (forceOpaque) c.drawColor(if (backgroundVisible) backgroundColor else 0xFFFFFFFF.toInt())
-        draw(c, true, null, withBackground)
+        draw(c, true, null, withBackground, screen = false)
         return out
     }
 

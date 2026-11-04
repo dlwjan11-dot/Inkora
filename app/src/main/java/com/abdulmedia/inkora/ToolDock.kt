@@ -44,6 +44,8 @@ object ToolCatalog {
         ToolDef("text", "Text", Icon.TEXT, "Create", "Any language, 9 fonts"),
         ToolDef("photo", "Insert photo", Icon.PHOTO, "Create", "As a new layer"),
         ToolDef("vector", "Vector layer", Icon.VECTOR, "Create", "Pen, shapes, logos"),
+        ToolDef("pose3d", "3D & poses", Icon.CUBE, "Create", "Posable figures, objects and 3D models"),
+        ToolDef("shadow_photo", "Shadow photo", Icon.PHOTO, "Create", "Trace a photo, kept out of exports"),
         ToolDef("guides", "Grid & perspective", Icon.GRID, "Guides", "All grid types"),
         ToolDef("assisted", "Assisted drawing", Icon.RULER, "Guides", "Strokes snap to the grid"),
         ToolDef("quickshape", "QuickShape", Icon.SHAPE, "Guides", "Hold to make perfect shapes"),
@@ -54,6 +56,7 @@ object ToolCatalog {
     } + listOf(
         ToolDef("fit", "Fit to screen", Icon.FIT, "View", "Center the canvas"),
         ToolDef("flip", "Flip view", Icon.FLIP, "View", "Check your drawing mirrored"),
+        ToolDef("actual_size", "Actual size", Icon.FIT, "View", "100% zoom · or a quick pinch out"),
         ToolDef("reference", "Reference image", Icon.REFERENCE, "View", "Floating reference window"),
         ToolDef("navigator", "Navigator", Icon.NAVIGATOR, "View", "Floating canvas thumbnail"),
         ToolDef("lighting", "3D Lighting orb", Icon.ORB, "View", "3D reference sphere for light and shade"),

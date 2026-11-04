@@ -28,6 +28,8 @@ class LayersPanel(
     private val currentColor: () -> Int,
     private val onAddVector: () -> Unit = {},
     private val onPin: (() -> Unit)? = null,
+    /** opens the 3D editor for a 3D layer */
+    private val onEdit3D: ((Layer) -> Unit)? = null,
     private val onChanged: () -> Unit
 ) : LinearLayout(context) {
 
@@ -156,6 +158,8 @@ class LayersPanel(
         texts.addView(Ui.text(context, displayName, 14f))
         val sub = buildString {
             if (layer.isClippingMask) append("Clipping Mask · ")
+            if (layer.shadow) append("Shadow · ")
+            if (layer.scene != null) append("3D · ${layer.scene!!.objects.size} objects · ")
             if (layer.vector != null) append("VECTOR · ${layer.vector!!.shapes.size} shapes · ")
             append(layer.blend.label)
             if (layer.opacity < 0.999f) append(" · ${(layer.opacity * 100).roundToInt()}%")
@@ -572,6 +576,12 @@ class LayersPanel(
             (if (layer.alphaLock) "Alpha Lock: ON" else "Alpha Lock: off") to {
                 layer.alphaLock = !layer.alphaLock; changed()
             },
+            (if (layer.shadow) "Shadow layer: ON" else "Shadow layer: off") to {
+                layer.shadow = !layer.shadow; changed()
+                cv.listener?.onMessage(if (layer.shadow) "Shadow layer: you see it, but it stays out of the time-lapse and exports"
+                    else "This layer shows in the time-lapse and exports again")
+                Unit
+            },
             "Fill with color" to { fillLayer(layer) },
             "Duplicate" to { duplicate(layer, index) },
             "Merge Down" to { mergeDown(index) },
@@ -586,6 +596,11 @@ class LayersPanel(
         if (layer.vector != null) {
             actions.removeAll { it.first.startsWith("Alpha Lock") || it.first == "Fill with color" }
             actions.add(actions.size - 1, "Rasterize" to { rasterize(layer) })
+        }
+        if (layer.scene != null) {
+            actions.removeAll { it.first.startsWith("Alpha Lock") || it.first == "Fill with color" }
+            actions.add(1, "Edit 3D scene" to { onEdit3D?.invoke(layer); Unit })
+            actions.add(actions.size - 1, "Rasterize" to { layer.scene = null; changed() })
         }
         buttonGrid(box, actions)
         return box
@@ -634,7 +649,7 @@ class LayersPanel(
         val copy = try { src.bitmap.copy(Bitmap.Config.ARGB_8888, true) } catch (e: OutOfMemoryError) { null }
         if (copy == null) { cv.listener?.onMessage("Not enough memory for another layer right now"); return }
         val l = Layer(copy, src.name + " copy")
-        l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock; l.isClippingMask = src.isClippingMask; l.visible = src.visible
+        l.copySettingsFrom(src)
         l.vector = src.vector?.copy()
         l.groupId = src.groupId
         val cmd = AddLayerCmd(l, index + 1, index)
@@ -702,7 +717,7 @@ class LayersPanel(
     /** a copy of [src] (pixels, settings, vector shapes), not in any group yet */
     private fun copyOf(src: Layer): Layer {
         val l = Layer(src.bitmap.copy(Bitmap.Config.ARGB_8888, true), src.name)
-        l.opacity = src.opacity; l.blend = src.blend; l.alphaLock = src.alphaLock; l.isClippingMask = src.isClippingMask; l.visible = src.visible
+        l.copySettingsFrom(src)
         l.vector = src.vector?.copy()
         return l
     }

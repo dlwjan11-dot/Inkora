@@ -291,7 +291,7 @@ class ToolsPanel(
     // =========================================================
 
     private fun buildCreate() {
-        grid(listOf(toolCard("text"), toolCard("photo"), toolCard("vector"), toolCard("fill"), toolCard("eyedropper")))
+        grid(listOf(toolCard("text"), toolCard("photo"), toolCard("vector"), toolCard("pose3d"), toolCard("shadow_photo"), toolCard("fill"), toolCard("eyedropper")))
         content.addView(Ui.text(context, "Tip: drag the color circle (top right) onto an area to fill it with ColorDrop.", 12f, Ui.TEXT_DIM)
             .apply { setPadding(4.dp, 12.dp, 4.dp, 0) })
     }
@@ -347,7 +347,7 @@ class ToolsPanel(
     }
 
     private fun buildView() {
-        grid(listOf(toolCard("fit"), toolCard("flip"), toolCard("focus")))
+        grid(listOf(toolCard("fit"), toolCard("actual_size"), toolCard("flip"), toolCard("focus")), 4)
         caption("Floating windows")
         grid(listOf(toolCard("navigator"), toolCard("reference"), toolCard("lighting")))
     }

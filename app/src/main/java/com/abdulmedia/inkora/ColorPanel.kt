@@ -27,6 +27,10 @@ class ColorPanel(
     initial: Int,
     private val recent: MutableList<Int>,
     private val onWheel: (() -> Unit)? = null,
+    /** a small picture of the artwork, for "Palette from artwork" */
+    private val artwork: (() -> android.graphics.Bitmap?)? = null,
+    /** "Palette from photo": the host opens the photo picker */
+    private val onPalettePhoto: (() -> Unit)? = null,
     private val onColor: (Int) -> Unit
 ) : LinearLayout(context) {
 
@@ -36,6 +40,9 @@ class ColorPanel(
     private val previewOld = ColorSwatchView(context)
     private val hex = EditText(context)
     private val recentRow = LinearLayout(context)
+    private val sliders = ArrayList<HsvSlider>()
+    private val paletteGrid = GridLayout(context).apply { columnCount = 10 }
+    private val paletteBtn = Ui.button(context, "") {}
 
     init {
         orientation = VERTICAL
@@ -71,6 +78,16 @@ class ColorPanel(
         }
         addView(harmBtn, LayoutParams(-1, -2).apply { topMargin = 4.dp })
 
+        // Hue / Saturation / Brightness sliders
+        for ((ch, label) in listOf(0 to "Hue", 1 to "Saturation", 2 to "Brightness")) {
+            addView(Ui.text(context, label, 12f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = if (ch == 0) 10.dp else 2.dp })
+            val sl = HsvSlider(context, hsv, ch)
+            sl.onChange = { disc.setColor(Color.HSVToColor(hsv)); emit() }
+            sl.onCommit = { commitRecent() }
+            sliders.add(sl)
+            addView(sl, LayoutParams(-1, -2))
+        }
+
         hex.apply {
             setTextColor(Ui.TEXT)
             textSize = 15f
@@ -89,21 +106,97 @@ class ColorPanel(
         hexRow.addView(hex, LayoutParams(0, -2, 1f))
         addView(hexRow, LayoutParams(-1, -2).apply { topMargin = 12.dp })
 
-        addView(Ui.text(context, "Palette", 13f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 12.dp })
-        val grid = GridLayout(context).apply { columnCount = 10 }
-        for (c in PALETTE) {
-            val sw = ColorSwatchView(context)
-            sw.color = c
-            sw.setOnClickListener { setColor(c, true) }
-            grid.addView(sw, GridLayout.LayoutParams().apply { width = 30.dp; height = 30.dp })
-        }
-        addView(grid, LayoutParams(-2, -2).apply { topMargin = 4.dp })
+        // your palettes
+        val palHead = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        palHead.addView(Ui.text(context, "Palette", 13f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { rightMargin = 8.dp })
+        paletteBtn.textSize = 13f
+        paletteBtn.setOnClickListener { paletteMenu() }
+        palHead.addView(paletteBtn, LayoutParams(0, -2, 1f))
+        palHead.addView(Ui.button(context, "+ Add color") {
+            if (!PaletteStore.addColor(Color.HSVToColor(hsv))) Ui.toast(context, "This palette is full")
+            refreshPalette()
+        }.apply { textSize = 12.5f }, LayoutParams(-2, -2).apply { leftMargin = 6.dp })
+        addView(palHead, LayoutParams(-1, -2).apply { topMargin = 12.dp })
+        addView(paletteGrid, LayoutParams(-2, -2).apply { topMargin = 4.dp })
+        addView(Ui.text(context, "Tap a color to use it · long-press to remove it", 11f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 2.dp })
+        refreshPalette()
 
         addView(Ui.text(context, "Recent", 13f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 10.dp })
         recentRow.orientation = HORIZONTAL
         addView(recentRow, LayoutParams(-1, 30.dp).apply { topMargin = 4.dp })
         refreshRecent()
         sync()
+    }
+
+    private fun refreshPalette() {
+        val p = PaletteStore.current
+        paletteBtn.text = "${L10n.tr(p.name)}  ▾"
+        paletteGrid.removeAllViews()
+        p.colors.forEachIndexed { i, c ->
+            val sw = ColorSwatchView(context)
+            sw.color = c
+            sw.setOnClickListener { setColor(c, true) }
+            sw.setOnLongClickListener {
+                val pm = android.widget.PopupMenu(context, sw)
+                pm.menu.add(0, 1, 0, "Remove color")
+                pm.menu.add(0, 2, 1, "Replace with current color")
+                pm.setOnMenuItemClickListener { item ->
+                    if (item.itemId == 1) PaletteStore.removeAt(i)
+                    else { p.colors[i] = Color.HSVToColor(hsv); PaletteStore.save() }
+                    refreshPalette(); true
+                }
+                L10n.menu(pm.menu); pm.show()
+                true
+            }
+            paletteGrid.addView(sw, GridLayout.LayoutParams().apply { width = 30.dp; height = 30.dp })
+        }
+        if (p.colors.isEmpty()) paletteGrid.addView(Ui.text(context, "Empty: tap + Add color to fill it", 12f, Ui.TEXT_DIM))
+    }
+
+    private fun paletteMenu() {
+        val pm = android.widget.PopupMenu(context, paletteBtn)
+        PaletteStore.palettes.forEachIndexed { i, p -> pm.menu.add(0, i, i, (if (i == PaletteStore.active) "✓ " else "") + L10n.tr(p.name)) }
+        val base = 1000
+        pm.menu.add(1, base, 900, "New palette…")
+        pm.menu.add(1, base + 1, 901, "New palette from artwork")
+        if (onPalettePhoto != null) pm.menu.add(1, base + 2, 902, "New palette from photo…")
+        pm.menu.add(1, base + 3, 903, "Rename palette…")
+        pm.menu.add(1, base + 4, 904, "Delete palette")
+        pm.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                base -> askName("New palette", "") { PaletteStore.create(it); refreshPalette() }
+                base + 1 -> {
+                    val b = artwork?.invoke()
+                    if (b == null) Ui.toast(context, "Nothing drawn yet")
+                    else { PaletteStore.create("From artwork", PaletteStore.extract(b)); b.recycle(); refreshPalette() }
+                }
+                base + 2 -> onPalettePhoto?.invoke()
+                base + 3 -> askName("Rename palette", PaletteStore.current.name) { PaletteStore.current.name = it; PaletteStore.save(); refreshPalette() }
+                base + 4 -> {
+                    val name = PaletteStore.current.name
+                    android.app.AlertDialog.Builder(context)
+                        .setMessage(L10n.tr("Delete palette") + ": " + L10n.tr(name) + "?")
+                        .setPositiveButton(L10n.tr("Delete")) { _, _ -> PaletteStore.deleteCurrent(); refreshPalette() }
+                        .setNegativeButton(L10n.tr("Cancel"), null).show()
+                }
+                else -> { PaletteStore.select(item.itemId); refreshPalette() }
+            }
+            true
+        }
+        L10n.menu(pm.menu); pm.show()
+    }
+
+    /** a palette made outside (from a photo) was added */
+    fun paletteAdded() = refreshPalette()
+
+    private fun askName(title: String, start: String, done: (String) -> Unit) {
+        val input = EditText(context).apply { setText(start); setSingleLine(); setSelection(text.length) }
+        android.app.AlertDialog.Builder(context)
+            .setTitle(L10n.tr(title))
+            .setView(input)
+            .setPositiveButton(L10n.tr("OK")) { _, _ -> done(input.text.toString().trim()) }
+            .setNegativeButton(L10n.tr("Cancel"), null)
+            .show()
     }
 
     private fun refreshRecent() {
@@ -132,6 +225,7 @@ class ColorPanel(
         val c = Color.HSVToColor(hsv)
         previewNew.color = c
         disc.invalidate()
+        sliders.forEach { it.invalidate() }
         if (!hex.hasFocus()) hex.setText(String.format(Locale.US, "%06X", c and 0xFFFFFF))
     }
 

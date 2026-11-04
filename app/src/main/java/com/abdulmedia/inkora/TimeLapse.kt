@@ -54,7 +54,7 @@ object TimeLapse {
         val c = Canvas(frame)
         c.drawColor(0xFFFFFFFF.toInt())
         c.scale(fw / doc.width.toFloat(), fh / doc.height.toFloat())
-        doc.draw(c, true)
+        doc.draw(c, true, screen = false)
         val app = ctx.applicationContext
         writer.execute {
             runCatching {

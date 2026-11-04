@@ -30,6 +30,17 @@ class PixelEdit(
     override fun redo(doc: Document) = paste(layer.bitmap, after, rect.left, rect.top)
 }
 
+/** A 3D layer drawn again: its pixels, its scene and whether it is a shadow layer. */
+class Scene3DCmd(
+    private val layer: Layer,
+    private val beforeBmp: Bitmap, private val beforeScene: Scene3D?, private val beforeShadow: Boolean,
+    private val afterBmp: Bitmap, private val afterScene: Scene3D?, private val afterShadow: Boolean
+) : Command {
+    override val bytes: Long = beforeBmp.byteCount.toLong() + afterBmp.byteCount
+    override fun undo(doc: Document) { paste(layer.bitmap, beforeBmp, 0, 0); layer.scene = beforeScene; layer.shadow = beforeShadow }
+    override fun redo(doc: Document) { paste(layer.bitmap, afterBmp, 0, 0); layer.scene = afterScene; layer.shadow = afterShadow }
+}
+
 class AddLayerCmd(private val layer: Layer, private val index: Int, private val prevActive: Int) : Command {
     override val bytes: Long = layer.bitmap.byteCount.toLong()
     override fun undo(doc: Document) {

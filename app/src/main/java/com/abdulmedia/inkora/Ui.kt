@@ -74,6 +74,8 @@ object Ui {
         })
     }
 
+    fun toast(ctx: Context, s: String) = android.widget.Toast.makeText(ctx, L10n.tr(s), android.widget.Toast.LENGTH_SHORT).show()
+
     /** small uppercase section label */
     fun caption(ctx: Context, s: String) = text(ctx, s.uppercase(), 10.5f, TEXT_DIM, true).apply { letterSpacing = 0.08f }
 
@@ -111,7 +113,7 @@ enum class Icon { BRUSH, ERASER, LAYERS, ACTIONS, UNDO, REDO, SYMMETRY, EYEDROPP
     RULER, SHAPE, BLUR, INVERT, CONTRAST, NOISE, POSTERIZE, BW, SHARPEN, HUE, BALANCE,
     SEL_RECT, SEL_ELLIPSE, SEL_ALL, DESELECT, SEL_INVERT, FEATHER, ROTATE, CUSTOMIZE, DRAG, EXPORT, CLOCK, COPY,
     NAVIGATOR, ORB, REFERENCE, GLOBE, LIGHTBULB,
-    WHEEL, HAND, KEYBOARD, VIDEO, HELP, MODIFY, INK, PENCIL, NIB, PALETTE, DROP, SPRAY, TEXTURE, PIXEL, FOLDER, CLEAR, WRENCH, CURSOR }
+    WHEEL, HAND, KEYBOARD, VIDEO, HELP, MODIFY, INK, PENCIL, NIB, PALETTE, DROP, SPRAY, TEXTURE, PIXEL, FOLDER, CLEAR, WRENCH, CURSOR, CUBE }
 
 /** Simple vector icons drawn in code (24x24 design grid). */
 /** Draws the app's vector icons (24x24 design grid) anywhere. */
@@ -715,6 +717,16 @@ object IconPainter {
                 path.cubicTo(2.7f, 15.3f, 2.7f, 17f, 3.8f, 18.1f); path.lineTo(5.9f, 20.2f); path.cubicTo(7f, 21.3f, 8.7f, 21.3f, 9.8f, 20.2f)
                 path.lineTo(16f, 14f); path.cubicTo(18.8f, 14.5f, 21f, 12f, 20.4f, 9.5f); path.lineTo(17.5f, 12.4f)
                 path.lineTo(14.8f, 11.8f); path.lineTo(14.2f, 9.1f); path.close()
+                canvas.drawPath(path, stroke)
+            }
+            Icon.CUBE -> {
+                path.reset()
+                path.moveTo(12f, 3f); path.lineTo(20f, 7.5f); path.lineTo(20f, 16.5f); path.lineTo(12f, 21f)
+                path.lineTo(4f, 16.5f); path.lineTo(4f, 7.5f); path.close()
+                canvas.drawPath(path, stroke)
+                path.reset()
+                path.moveTo(4f, 7.5f); path.lineTo(12f, 12f); path.lineTo(20f, 7.5f)
+                path.moveTo(12f, 12f); path.lineTo(12f, 21f)
                 canvas.drawPath(path, stroke)
             }
             Icon.CURSOR -> {

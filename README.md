@@ -32,6 +32,14 @@
 
 I'm a designer and artist. I looked for a long time for a drawing app on Android that feels like Procreate, and never found a good one, so I made Inkora. Before placing a single button I went through the art apps out there and took the best of each one. Everything in Inkora is where it is for a reason: the pen menu opens under your pen, the sliders sit by your other hand, and everything else stays out of the way of your drawing.
 
+### New in 0.13: 3D & poses, shadow layers, your own palettes
+
+- **3D & poses** (Creative › Create): a posable figure with 14 ready poses (walking, running, sitting, kneeling, fighting, lying down…). Tap a body part to bend, twist or move it sideways, and mirror a pose to the other side. Add cubes, spheres, cylinders, cones, stairs, arches and walls, or import your own `.obj` / `.stl` models. Turn the camera with one finger, zoom and move with two, set the lens, the light and the look (shaded, toon or lines), then place the scene as a 3D layer. Open it again later from Layers › Edit 3D scene.
+- **Shadow layers**: a layer you see while you draw, but that stays out of the time-lapse, exports and thumbnails. Use **Shadow photo** to trace a picture without it showing in your time-lapse, or switch any layer to Shadow in its options. 3D layers are shadow layers unless you turn it off.
+- **Your own palettes**: make, name, switch and delete palettes in the color panel, add the current color with one tap, long-press a color to remove it, or build a palette from your artwork or a photo. The active palette shows in the pen's quick menu.
+- **Hue, Saturation and Brightness sliders** in the color panel.
+- **Actual size**: a quick pinch out shows the canvas at 100% (also in Creative › View).
+
 ### New in 0.12: layer groups and picking several layers
 
 - **Pick several layers**: swipe a layer to the right in the Layers panel. Then group, merge or delete them together, or use Transform to move, scale and rotate them all at once.
@@ -147,6 +155,13 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 ### من فنان، للفنانين
 أنا مصمم وفنان. بحثت طويلاً عن تطبيق رسم على أندرويد يشبه Procreate ولم أجد واحداً جيداً، فصنعت Inkora. جرّبت تطبيقات الرسم الموجودة وأخذت أفضل ما في كل واحد منها، وكل شيء في Inkora في مكانه لسبب.
 
+### الجديد في 0.13
+- **ثلاثي الأبعاد والوضعيات**: مجسّم إنسان بـ 14 وضعية جاهزة، تضغط على أي جزء من الجسم وتثنيه أو تلفّه. مع مكعبات وكرات وأسطوانات ودرج وأقواس وحيطان، واستيراد نماذج ‎.obj و‎.stl. تحرّك الكاميرا والعدسة والإضاءة، وتختار الشكل (مظلّل، كرتوني أو خطوط)، وبعدها تحطّه كطبقة.
+- **طبقة الظل**: طبقة بتشوفها وانت عم ترسم، بس ما بتطلع بالتايم لابس ولا بالتصدير. «صورة ظل» حتى تشفّ صورة بدون ما تبيّن.
+- **لوحات ألوان خاصة فيك**: تعمل وتسمّي وتبدّل وتمسح، أو تعمل لوحة من رسمتك أو من صورة.
+- **أشرطة Hue والتشبع والإضاءة** بلوحة الألوان.
+- **الحجم الحقيقي**: قرصة سريعة للخارج بتعرض الرسمة على 100%.
+
 ### الجديد في 0.12
 - **اختيار عدة طبقات**: اسحب الطبقة لليمين في لوحة الطبقات، ثم اجمعها أو ادمجها أو احذفها معًا، أو حرّكها وكبّرها ودوّرها كلها معًا بأداة التحويل.
 - **مجموعات الطبقات**: لكل مجموعة إظهار وشفافية ونمط دمج، وتُطوى بلمسة. وتُحفظ في ملفات ‎.inkora وملفات فوتوشوب.
@@ -198,6 +213,13 @@ What's next: [ROADMAP.md](ROADMAP.md) (comics panels and speech bubbles, liquify
 
 ### لە هونەرمەندێکەوە، بۆ هونەرمەندان
 من دیزاینەر و هونەرمەندم. ماوەیەکی زۆر بەدوای ئەپێکی وێنەکێشاندا گەڕام لەسەر ئەندرۆید کە وەک Procreate بێت و هیچ یەکێکی باشم نەدۆزییەوە، بۆیە Inkoraم دروست کرد. ئەپەکانی وێنەکێشانم تاقی کردەوە و باشترینی هەر یەکێکیانم وەرگرت، و هەموو شتێک لە Inkora بە هۆیەکەوە لە شوێنی خۆیدایە.
+
+### نوێ لە 0.13
+- **سێ ڕەهەندی و پۆزەکان**: پەیکەرێک بە 14 پۆزی ئامادە، کرتە لە هەر بەشێکی لەش بکە و بیچەمێنەوە. کیوب، گۆ، لوولەک، پەیژە، تاق و دیوار، و هێنانی مۆدێلی ‎.obj و ‎.stl. کامێرا، لێنز، ڕووناکی و شێوە (سێبەردار، کارتۆنی یان هێڵ)، پاشان وەک چینێک دایبنێ.
+- **چینی سێبەر**: چینێک کە لە کاتی وێنەکێشان دەیبینیت، بەڵام لە تایم لاپس و هەناردە نایەت. «وێنەی سێبەر» بۆ کۆپیکردنی وێنەیەک.
+- **پالێتی خۆت**: دروستکردن، ناونان، گۆڕین و سڕینەوە، یان پالێت لە تابلۆکەت یان لە وێنەیەک.
+- **هێڵکاری Hue، تێری و ڕووناکی** لە پانێڵی ڕەنگ.
+- **قەبارەی ڕاستەقینە**: گوشینێکی خێرا بۆ دەرەوە تابلۆکە بە 100% پیشان دەدات.
 
 ### نوێ لە 0.12
 - **هەڵبژاردنی چەند چینێک**: چینێک بەرەو ڕاست ڕابکێشە لە پانێڵی چینەکان، پاشان پێکەوە گرووپیان بکە، یەکیان بخە یان بیانسڕەوە، یان بە ئامرازی گۆڕین هەموویان پێکەوە بجووڵێنە.
