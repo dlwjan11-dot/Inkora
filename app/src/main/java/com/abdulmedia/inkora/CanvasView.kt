@@ -301,6 +301,12 @@ class CanvasView(context: Context) : View(context) {
     /** where the two fingers of the last pinch were (for a quick pinch out to 100%) */
     private var gPinchX = 0f
     private var gPinchY = 0f
+    /**
+     * Total zoom of the whole two-finger gesture. Unlike [gLastScale] it survives one finger
+     * lifting before the other (fingers rarely leave the screen at the same moment).
+     */
+    private var gPinchTotal = 1f
+    private var gPinchBase = 1f
     private var gPointers = 0
     /** a three-finger swipe or scrub, or rapid undo, already did something in this gesture */
     private var gFired = false
@@ -1104,9 +1110,9 @@ class CanvasView(context: Context) : View(context) {
                         3 -> if (!noUndo) redo()
                         4 -> purposeOf(GestureTrigger.FOUR_TAP)?.let { runPurpose(it, e.x, e.y) }
                     }
-                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 400 && gLastScale < 0.75f) {
+                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 450 && gPinchTotal < 0.75f) {
                     fitToScreen() // a quick pinch in fits the canvas
-                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 400 && gLastScale > 1.4f) {
+                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 450 && gPinchTotal > 1.35f) {
                     actualSize(gPinchX, gPinchY) // a quick pinch out: actual size (100%)
                 }
             }
@@ -1437,6 +1443,10 @@ class CanvasView(context: Context) : View(context) {
         val pts = ArrayList<PointF>()
         for (i in 0 until e.pointerCount) if (i != excludeIdx) pts.add(PointF(e.getX(i), e.getY(i)))
         if (!keepTapInfo) {
+            gPinchTotal = 1f
+            gPinchBase = 1f
+        } else gPinchBase = gPinchTotal
+        if (!keepTapInfo) {
             gMaxPointers = 0
             gStartTime = e.eventTime
             gMoved = 0f
@@ -1538,6 +1548,7 @@ class CanvasView(context: Context) : View(context) {
         if (!gRotating && abs(rot) > 9f) gRotating = true
         if (!gRotating || !gOn(GesturePurpose.GENERAL, "ROTATE", true)) rot = 0f
         gLastScale = sc
+        gPinchTotal = gPinchBase * sc
         gPinchX = mx; gPinchY = my
 
         // clamp total zoom between 3% and 6400%
