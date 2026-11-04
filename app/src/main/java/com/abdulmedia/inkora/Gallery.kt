@@ -1,0 +1,143 @@
+package com.abdulmedia.inkora
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import org.json.JSONObject
+import java.io.File
+import java.util.UUID
+import kotlin.math.min
+
+/**
+ * The artwork gallery: every artwork is <id>.inkora + <id>.png (thumbnail) + <id>.json (title, size, date)
+ * inside the app's private storage.
+ */
+object Gallery {
+
+    class Entry(
+        val id: String, val title: String, val width: Int, val height: Int,
+        val modified: Long, val created: Long, val origin: String, val thumb: File
+    ) {
+        val imported get() = origin == "imported"
+    }
+
+    fun dir(ctx: Context) = File(ctx.filesDir, "gallery").apply { mkdirs() }
+    private fun projectFile(ctx: Context, id: String) = File(dir(ctx), "$id.inkora")
+    private fun thumbFile(ctx: Context, id: String) = File(dir(ctx), "$id.png")
+    private fun metaFile(ctx: Context, id: String) = File(dir(ctx), "$id.json")
+
+    fun newId(): String = UUID.randomUUID().toString()
+
+    fun list(ctx: Context): List<Entry> {
+        val files = dir(ctx).listFiles { f -> f.name.endsWith(".json") } ?: return emptyList()
+        return files.mapNotNull { f ->
+            runCatching {
+                val id = f.name.removeSuffix(".json")
+                if (!projectFile(ctx, id).exists()) return@runCatching null
+                val o = JSONObject(f.readText())
+                val modified = o.optLong("modified", f.lastModified())
+                Entry(id, o.optString("title", "Untitled"), o.optInt("width"), o.optInt("height"),
+                    modified, o.optLong("created", modified), o.optString("origin", "drawn"), thumbFile(ctx, id))
+            }.getOrNull()
+        }.sortedByDescending { it.modified }
+    }
+
+    fun exists(ctx: Context, id: String) = projectFile(ctx, id).exists()
+
+    /** Small preview, made on the main thread (fast: scaled drawing). */
+    fun makeThumb(doc: Document): Bitmap {
+        val s = min(480f / doc.width, 480f / doc.height)
+        val w = (doc.width * s).toInt().coerceAtLeast(1)
+        val h = (doc.height * s).toInt().coerceAtLeast(1)
+        val b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        c.drawColor(0xFFFFFFFF.toInt())
+        c.scale(s, s)
+        doc.draw(c, true)
+        return b
+    }
+
+    /** Writes an artwork. Call on a background thread with a snapshot. */
+    fun save(ctx: Context, id: String, title: String, snap: ProjectIO.Snapshot, thumb: Bitmap, origin: String = "drawn") {
+        val tmp = File(dir(ctx), "$id.tmp")
+        tmp.outputStream().use { ProjectIO.write(snap, it) }
+        val dst = projectFile(ctx, id)
+        if (!tmp.renameTo(dst)) {
+            tmp.copyTo(dst, overwrite = true)
+            tmp.delete()
+        }
+        thumbFile(ctx, id).outputStream().use { thumb.compress(Bitmap.CompressFormat.PNG, 90, it) }
+        writeMeta(ctx, id, title, snap.width, snap.height, origin)
+    }
+
+    private fun writeMeta(ctx: Context, id: String, title: String, w: Int, h: Int, origin: String) {
+        val f = metaFile(ctx, id)
+        val old = runCatching { JSONObject(f.readText()) }.getOrNull()
+        val now = System.currentTimeMillis()
+        f.writeText(JSONObject().apply {
+            put("title", title)
+            put("width", w)
+            put("height", h)
+            put("modified", now)
+            put("created", old?.optLong("created", now) ?: now)
+            put("origin", old?.optString("origin", origin) ?: origin)
+        }.toString())
+    }
+
+    fun load(ctx: Context, id: String): Document? {
+        val f = projectFile(ctx, id)
+        if (!f.exists()) return null
+        val doc = runCatching { f.inputStream().use { ProjectIO.read(it) } }.getOrNull() ?: return null
+        doc.galleryId = id
+        val meta = runCatching { JSONObject(metaFile(ctx, id).readText()) }.getOrNull()
+        doc.title = meta?.optString("title", "Untitled") ?: "Untitled"
+        doc.origin = meta?.optString("origin", "drawn") ?: "drawn"
+        return doc
+    }
+
+    fun rename(ctx: Context, id: String, title: String) {
+        val f = metaFile(ctx, id)
+        val o = runCatching { JSONObject(f.readText()) }.getOrDefault(JSONObject())
+        o.put("title", title)
+        f.writeText(o.toString())
+    }
+
+    fun duplicate(ctx: Context, id: String): String? {
+        val src = projectFile(ctx, id)
+        if (!src.exists()) return null
+        val nid = newId()
+        src.copyTo(projectFile(ctx, nid))
+        thumbFile(ctx, id).takeIf { it.exists() }?.copyTo(thumbFile(ctx, nid))
+        val o = runCatching { JSONObject(metaFile(ctx, id).readText()) }.getOrDefault(JSONObject())
+        o.put("title", o.optString("title", "Untitled") + " copy")
+        o.put("modified", System.currentTimeMillis())
+        o.put("created", System.currentTimeMillis())
+        metaFile(ctx, nid).writeText(o.toString())
+        return nid
+    }
+
+    fun delete(ctx: Context, id: String) {
+        projectFile(ctx, id).delete()
+        thumbFile(ctx, id).delete()
+        metaFile(ctx, id).delete()
+        TimeLapse.clear(ctx, id)
+    }
+
+    /** Older versions kept a single autosave: move it into the gallery once. */
+    fun migrateAutosave(ctx: Context): String? {
+        val old = ProjectIO.autosaveFile(ctx)
+        if (!old.exists()) return null
+        val id = newId()
+        old.copyTo(projectFile(ctx, id), overwrite = true)
+        val doc = runCatching { load(ctx, id) }.getOrNull()
+        if (doc == null) {
+            projectFile(ctx, id).delete()
+            old.delete()
+            return null
+        }
+        thumbFile(ctx, id).outputStream().use { makeThumb(doc).compress(Bitmap.CompressFormat.PNG, 90, it) }
+        writeMeta(ctx, id, "My first artwork", doc.width, doc.height, "drawn")
+        old.delete()
+        return id
+    }
+}
