@@ -5,16 +5,16 @@ plugins {
 
 android {
     namespace = "com.abdulmedia.inkora"
-    compileSdk = 35
+    compileSdk = 36
     // the NDK and CMake installed from Android Studio's SDK Manager
     ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = "com.abdulmedia.inkora"
         minSdk = 29
-        targetSdk = 35
-        versionCode = 30
-        versionName = "0.18.0"
+        targetSdk = 36
+        versionCode = 31
+        versionName = "0.18.1"
 
         // the living brushes' engine (MyPaint) is native code, built for tablets/phones (arm64)
         // and the Android Studio emulator (x86_64)
