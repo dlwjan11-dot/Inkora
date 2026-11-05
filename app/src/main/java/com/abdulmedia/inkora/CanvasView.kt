@@ -28,7 +28,7 @@ import android.graphics.RectF
 enum class Tool { BRUSH, SMUDGE, ERASER }
 
 /** What touches on the canvas do right now. */
-enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR }
+enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR, LIQUIFY }
 
 @SuppressLint("ViewConstructor")
 class CanvasView(context: Context) : View(context) {
@@ -108,6 +108,12 @@ class CanvasView(context: Context) : View(context) {
     var interaction = Interaction.PAINT
         set(v) { field = v; invalidate() }
     var selectShape = SelectShape.FREEHAND
+    /** new selection, add to it or take away from it */
+    var selectCombine = SelectCombine.NEW
+    /** how different a color may be for the magic wand and color range (0..1) */
+    var wandTolerance = 0.18f
+    /** width of the selection brush, in screen pixels (it follows the zoom) */
+    var selectBrushPx = 40f
     var selection: Selection? = null
         set(v) {
             field = v
@@ -160,7 +166,7 @@ class CanvasView(context: Context) : View(context) {
     private val loupePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // ---- input state ----
-    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ }
+    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG }
 
     // ---- vector layers ----
     val vectorEditor: VectorEditor by lazy {
@@ -431,7 +437,7 @@ class CanvasView(context: Context) : View(context) {
     }
 
     private fun busy(): Boolean {
-        if (transform != null || adjustOrig != null) {
+        if (transform != null || adjustOrig != null || liquify != null) {
             listener?.onMessage("Finish or cancel the current edit first")
             return true
         }
@@ -569,10 +575,12 @@ class CanvasView(context: Context) : View(context) {
         }
 
         if (mode == Mode.PICK) drawLoupe(canvas)
+        drawLiquifyBrush(canvas)
     }
 
     private fun drawSelection(canvas: Canvas, z: Float) {
         val path: android.graphics.Path? = when {
+            selDrawing && selectShape == SelectShape.BRUSH -> Selections.brushPath(selPts, selectBrushPx / zoom())
             selDrawing -> Selections.shapePath(selectShape, selPts, selX0, selY0, selX1, selY1)
             selection != null && transform == null -> selection!!.outline
             else -> null
@@ -638,6 +646,14 @@ class CanvasView(context: Context) : View(context) {
             }
             Symmetry.RADIAL, Symmetry.MANDALA_12, Symmetry.MANDALA_16 -> {
                 val n = symmetry.axes
+                val r = hypot(cx, cy)
+                for (k in 0 until n) {
+                    val a = Math.PI * 2 * k / n
+                    canvas.drawLine(cx, cy, cx + (Math.cos(a) * r).toFloat(), cy + (Math.sin(a) * r).toFloat(), guidePaint)
+                }
+            }
+            Symmetry.KALEIDOSCOPE -> {
+                val n = Symmetry.segments.coerceIn(2, 32)
                 val r = hypot(cx, cy)
                 for (k in 0 until n) {
                     val a = Math.PI * 2 * k / n
@@ -900,6 +916,7 @@ class CanvasView(context: Context) : View(context) {
                 vectorEditor.onDown(e.x, e.y)
                 return
             }
+            Interaction.LIQUIFY -> { startLiquify(e); return }
             Interaction.PAINT -> {}
         }
         val tt = e.getToolType(0)
@@ -989,6 +1006,7 @@ class CanvasView(context: Context) : View(context) {
                     startStroke(e, idx, true)
                 } else startGesture(e, -1, keepTapInfo = true)
             }
+            Mode.LIQUIFY_DRAG -> startGesture(e, -1)
             Mode.SELECT_DRAW -> {
                 // second finger right away = zoom / pan instead of selecting
                 if (e.eventTime - downTime < 300) {
@@ -1070,6 +1088,7 @@ class CanvasView(context: Context) : View(context) {
                 invalidate()
             }
             Mode.SELECT_DRAW -> moveSelect(e)
+            Mode.LIQUIFY_DRAG -> moveLiquify(e)
             Mode.VECTOR_DRAG -> vectorEditor.onMove(e.x, e.y)
             Mode.TRANSFORM_DRAG -> updateTransformDrag(e)
             Mode.TRANSFORM_PINCH -> updateTransformPinch(e)
@@ -1169,7 +1188,8 @@ class CanvasView(context: Context) : View(context) {
             smudging -> smudgeBrush
             else -> paintBrush
         }
-        engine.color = if (strokeErasing) Color.BLACK else color
+        // on a layer mask any paint means "show": it is painted white
+        engine.color = if (strokeErasing) Color.BLACK else if (layer.isLayerMask) Color.WHITE else color
         strokeGrain = if (smudging) null else grainPaintFor(engine.brush)
         if (smudging) {
             // smudge works directly on the layer; keep a copy for undo
@@ -1594,8 +1614,9 @@ class CanvasView(context: Context) : View(context) {
             return false
         }
         if (layer.vector != null) return vectorEditor.dropColor(sx, sy, fillColor)
-        val ref = doc.flatten(withBackground = true)
-        val result = FloodFill.compute(ref, x, y, fillColor, fillThreshold)
+        val ref = doc.fillReference()
+        if (layer.scene != null) { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); ref.recycle(); return false }
+        val result = FloodFill.compute(ref, x, y, if (layer.isLayerMask) Color.WHITE else fillColor, fillThreshold)
         ref.recycle()
         if (result == null) return false
         val r = result.rect
@@ -1639,14 +1660,103 @@ class CanvasView(context: Context) : View(context) {
     private fun finishSelect() {
         if (!selDrawing) return
         selDrawing = false
-        val tiny = hypot(selX1 - selX0, selY1 - selY0) * zoom() < 8f * density && selPts.size < 6
-        if (tiny) {
-            // a tap clears the selection
-            selection = null
+        if (selectShape.isTap) {
+            // magic wand / color range: one tap on the artwork
+            val ref = doc.flatten(withBackground = true)
+            val fresh = Selections.byColor(ref, selX1.toInt(), selY1.toInt(), wandTolerance, selectShape == SelectShape.WAND)
+            ref.recycle()
+            if (fresh == null && selectCombine == SelectCombine.NEW) listener?.onMessage("Nothing to select there")
+            selection = Selections.combine(selection, fresh, selectCombine, doc.width, doc.height)
             return
         }
-        val path = Selections.shapePath(selectShape, selPts, selX0, selY0, selX1, selY1)
-        selection = Selections.fromPath(doc.width, doc.height, path)
+        val tiny = hypot(selX1 - selX0, selY1 - selY0) * zoom() < 8f * density && selPts.size < 6
+        if (tiny && selectShape != SelectShape.BRUSH) {
+            // a tap clears the selection (in New mode)
+            if (selectCombine == SelectCombine.NEW) selection = null
+            return
+        }
+        val path = if (selectShape == SelectShape.BRUSH) Selections.brushPath(selPts, selectBrushPx / zoom())
+            else Selections.shapePath(selectShape, selPts, selX0, selY0, selX1, selY1)
+        val fresh = Selections.fromPath(doc.width, doc.height, path)
+        // the brush adds to what is there unless you chose Subtract
+        val mode = if (selectShape == SelectShape.BRUSH && selectCombine == SelectCombine.NEW && selection != null) SelectCombine.ADD else selectCombine
+        selection = Selections.combine(selection, fresh, mode, doc.width, doc.height)
+    }
+
+    // ---------------- Liquify ----------------
+
+    var liquify: LiquifySession? = null
+        private set
+    /** liquify brush size on screen (it follows the zoom) */
+    var liquifyBrushPx = 140f
+    private var liqX = 0f
+    private var liqY = 0f
+    private var liqShowX = -1f
+    private var liqShowY = -1f
+
+    fun beginLiquify(): Boolean {
+        if (busy()) return false
+        val layer = doc.active
+        if (!layer.visible) { listener?.onMessage("This layer is hidden"); return false }
+        if (layer.vector != null) { listener?.onMessage("Liquify works on drawing layers (rasterize this vector layer first)"); return false }
+        if (layer.scene != null) { listener?.onMessage("Liquify works on drawing layers (rasterize this 3D layer first)"); return false }
+        liquify = try { LiquifySession(layer) } catch (e: OutOfMemoryError) { null }
+        if (liquify == null) { listener?.onMessage("Not enough memory for this right now"); return false }
+        interaction = Interaction.LIQUIFY
+        return true
+    }
+
+    fun endLiquify(apply: Boolean) {
+        val s = liquify ?: return
+        if (apply && s.changed) pushPixelEdit(s.layer, Rect(0, 0, doc.width, doc.height), s.original)
+        else s.restore()
+        liquify = null
+        liqShowX = -1f
+        interaction = Interaction.PAINT
+        doc.revision++
+        invalidate()
+    }
+
+    private fun startLiquify(e: MotionEvent) {
+        val s = liquify ?: run { mode = Mode.IGNORE; return }
+        mode = Mode.LIQUIFY_DRAG
+        downTime = e.eventTime
+        val p = toDoc(e.x, e.y)
+        liqX = p.x; liqY = p.y
+        liqShowX = e.x; liqShowY = e.y
+        if (s.mode != LiquifyMode.PUSH) s.dab(p.x, p.y, liquifyBrushPx / zoom() / 2, 0f, 0f)
+        invalidate()
+    }
+
+    private fun moveLiquify(e: MotionEvent) {
+        val s = liquify ?: return
+        val r = liquifyBrushPx / zoom() / 2
+        val step = max(2f, r * 0.12f)
+        fun to(sx: Float, sy: Float) {
+            val p = toDoc(sx, sy)
+            var dx = p.x - liqX; var dy = p.y - liqY
+            val d = hypot(dx, dy)
+            if (d < step && s.mode == LiquifyMode.PUSH) return
+            // even dabs along the way, so a fast drag bends smoothly
+            val n = max(1, (d / step).toInt())
+            dx /= n; dy /= n
+            for (k in 1..n) s.dab(liqX + dx * k, liqY + dy * k, r, dx, dy)
+            liqX = p.x; liqY = p.y
+        }
+        for (h in 0 until e.historySize) to(e.getHistoricalX(0, h), e.getHistoricalY(0, h))
+        to(e.x, e.y)
+        liqShowX = e.x; liqShowY = e.y
+        invalidate()
+    }
+
+    private fun drawLiquifyBrush(canvas: Canvas) {
+        if (liquify == null || liqShowX < 0) return
+        handlePaint.style = Paint.Style.STROKE
+        handlePaint.strokeWidth = 1.5f * density
+        handlePaint.color = 0xCCFFFFFF.toInt()
+        canvas.drawCircle(liqShowX, liqShowY, liquifyBrushPx / 2, handlePaint)
+        handlePaint.color = 0x88000000.toInt()
+        canvas.drawCircle(liqShowX, liqShowY, liquifyBrushPx / 2 + 1.5f * density, handlePaint)
     }
 
     fun selectAll() { selection = Selections.all(doc.width, doc.height) }

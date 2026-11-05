@@ -22,7 +22,14 @@ enum class Symmetry(val label: String, val axes: Int) {
     QUADRANT("Quadrant", 2),
     RADIAL("Radial (8)", 8),
     MANDALA_12("Mandala (12)", 12),
-    MANDALA_16("Mandala (16)", 16)
+    MANDALA_16("Mandala (16)", 16),
+    /** turned copies that are also mirrored, like a kaleidoscope; [segments] of them */
+    KALEIDOSCOPE("Kaleidoscope", 0);
+
+    companion object {
+        /** how many slices the kaleidoscope has (each slice holds a stroke and its mirror) */
+        var segments = 6
+    }
 }
 
 /** A recorded input sample (document coordinates). */
@@ -381,6 +388,18 @@ class StrokeEngine {
                     val a = (Math.PI * 2 * k / n).toFloat()
                     val ca = cos(a); val sa = sin(a)
                     dab(c, tip, centerX + ox * ca - oy * sa, centerY + ox * sa + oy * ca, d, angle + 360f * k / n, dual)
+                }
+            }
+            Symmetry.KALEIDOSCOPE -> {
+                val n = Symmetry.segments.coerceIn(2, 32)
+                val ox = cx - centerX
+                val oy = cy - centerY
+                for (k in 0 until n) {
+                    val a = (Math.PI * 2 * k / n).toFloat()
+                    val ca = cos(a); val sa = sin(a)
+                    dab(c, tip, centerX + ox * ca - oy * sa, centerY + ox * sa + oy * ca, d, angle + 360f * k / n, dual)
+                    // the mirror image (across the slice's edge), turned the same way
+                    dab(c, tip, centerX + ox * ca + oy * sa, centerY + ox * sa - oy * ca, d, -angle + 360f * k / n, dual)
                 }
             }
         }

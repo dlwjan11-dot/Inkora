@@ -141,7 +141,7 @@ class LayersPanel(
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val indent = (if (inGroup) 18.dp else 0) + (if (layer.isClippingMask) 22.dp else 8.dp)
+            val indent = (if (inGroup) 18.dp else 0) + (if (layer.isClippingMask || layer.isLayerMask) 22.dp else 8.dp)
             setPadding(indent, 6.dp, 4.dp, 6.dp)
             background = Ui.rounded(when {
                 isActive -> Ui.PANEL_ROW_ACTIVE
@@ -154,10 +154,16 @@ class LayersPanel(
         row.addView(img, LayoutParams(64.dp, 44.dp))
 
         val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(10.dp, 0, 0, 0) }
-        val displayName = if (layer.isClippingMask) "↳ ${layer.name}" else layer.name
+        val displayName = when {
+            layer.isLayerMask -> "◐ ${L10n.tr(layer.name)}"
+            layer.isClippingMask -> "↳ ${layer.name}"
+            else -> layer.name
+        }
         texts.addView(Ui.text(context, displayName, 14f))
         val sub = buildString {
             if (layer.isClippingMask) append("Clipping Mask · ")
+            if (layer.isLayerMask) append("Layer mask · ")
+            if (layer.reference) append("Reference · ")
             if (layer.shadow) append("Shadow · ")
             if (layer.scene != null) append("3D · ${layer.scene!!.objects.size} objects · ")
             if (layer.vector != null) append("VECTOR · ${layer.vector!!.shapes.size} shapes · ")
@@ -582,7 +588,14 @@ class LayersPanel(
                     else "This layer shows in the time-lapse and exports again")
                 Unit
             },
+            (if (layer.reference) "Reference: ON" else "Reference: off") to {
+                layer.reference = !layer.reference; changed()
+                cv.listener?.onMessage(if (layer.reference) "Reference: Fill and ColorDrop now follow the lines on this layer, on any layer you color"
+                    else "Fill looks at the whole artwork again")
+                Unit
+            },
             "Fill with color" to { fillLayer(layer) },
+            "Add layer mask" to { addMask(layer, index) },
             "Duplicate" to { duplicate(layer, index) },
             "Merge Down" to { mergeDown(index) },
             "Clear" to { clear(layer) },
@@ -596,6 +609,14 @@ class LayersPanel(
         if (layer.vector != null) {
             actions.removeAll { it.first.startsWith("Alpha Lock") || it.first == "Fill with color" }
             actions.add(actions.size - 1, "Rasterize" to { rasterize(layer) })
+        }
+        if (doc.hasMask(index) || layer.isLayerMask) actions.removeAll { it.first == "Add layer mask" }
+        if (layer.isLayerMask) {
+            actions.removeAll { it.first.startsWith("Clipping Mask") || it.first.startsWith("Alpha Lock") || it.first.startsWith("Shadow layer") ||
+                it.first.startsWith("Reference") || it.first == "Fill with color" || it.first == "Merge Down" || it.first == "Duplicate" }
+            actions.add(1, "Apply mask" to { applyMask(index) })
+            actions.add(2, "Invert mask" to { invertMask(layer) })
+            actions.add(3, "Show all" to { fillWhite(layer) })
         }
         if (layer.scene != null) {
             actions.removeAll { it.first.startsWith("Alpha Lock") || it.first == "Fill with color" }
@@ -655,6 +676,60 @@ class LayersPanel(
         val cmd = AddLayerCmd(l, index + 1, index)
         cmd.redo(doc)
         cv.pushCommand(cmd)
+        changed()
+    }
+
+    // ---------- layer masks ----------
+
+    private fun addMask(layer: Layer, index: Int) {
+        if (doc.layers.size >= doc.maxLayers()) { cv.listener?.onMessage("Layer limit reached for this canvas size"); return }
+        val bmp = try { doc.newLayerBitmap() } catch (e: OutOfMemoryError) { null }
+        if (bmp == null) { cv.listener?.onMessage("Not enough memory for another layer right now"); return }
+        bmp.eraseColor(0xFFFFFFFF.toInt())
+        val m = Layer(bmp, "Mask")
+        m.isLayerMask = true
+        m.groupId = layer.groupId
+        val cmd = AddLayerCmd(m, index + 1, index)
+        cmd.redo(doc)
+        cv.pushCommand(cmd)
+        expanded = false
+        cv.listener?.onMessage("Layer mask: erase to hide parts of the layer, paint to bring them back")
+        changed()
+    }
+
+    /** the mask at [index] is cut into the layer below it and removed */
+    private fun applyMask(index: Int) {
+        if (index <= 0) return
+        val mask = doc.layers[index]
+        val base = doc.layers[index - 1]
+        if (base.vector != null) { cv.listener?.onMessage("Can't merge into a vector layer (rasterize it first)"); return }
+        val before = base.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        if (mask.visible) Canvas(base.bitmap).drawBitmap(mask.bitmap, 0f, 0f, Paint().apply { blendMode = BlendMode.DST_IN })
+        val after = base.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        doc.layers.remove(mask)
+        doc.activeIndex = index - 1
+        cv.pushCommand(MergeDownCmd(mask, index, base, before, after))
+        expanded = false
+        changed()
+    }
+
+    /** what was hidden shows, what showed is hidden */
+    private fun invertMask(mask: Layer) {
+        val before = mask.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val inv = doc.newLayerBitmap()
+        inv.eraseColor(0xFFFFFFFF.toInt())
+        Canvas(inv).drawBitmap(mask.bitmap, 0f, 0f, Paint().apply { blendMode = BlendMode.DST_OUT })
+        mask.bitmap.eraseColor(0)
+        Canvas(mask.bitmap).drawBitmap(inv, 0f, 0f, null)
+        inv.recycle()
+        cv.pushPixelEdit(mask, Rect(0, 0, doc.width, doc.height), before)
+        changed()
+    }
+
+    private fun fillWhite(mask: Layer) {
+        val before = mask.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        mask.bitmap.eraseColor(0xFFFFFFFF.toInt())
+        cv.pushPixelEdit(mask, Rect(0, 0, doc.width, doc.height), before)
         changed()
     }
 

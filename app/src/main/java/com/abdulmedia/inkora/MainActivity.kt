@@ -117,6 +117,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             Document.setDeviceMemory(mi.totalMem)
         }
         PaletteStore.load(prefs)
+        Symmetry.segments = prefs.getInt("kaleidoSegments", 6)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setBackgroundDrawable(ColorDrawable(0xFF2B2B30.toInt()))
         buildUi()
@@ -711,8 +712,12 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (id !in setOf("fit", "flip", "focus", "actual_size") && busy()) return
         val isVector = cv.doc.active.vector != null
         when {
-            id == "sel_free" || id == "sel_rect" || id == "sel_ellipse" -> {
-                val shape = when (id) { "sel_rect" -> SelectShape.RECTANGLE; "sel_ellipse" -> SelectShape.ELLIPSE; else -> SelectShape.FREEHAND }
+            id in setOf("sel_free", "sel_rect", "sel_ellipse", "sel_wand", "sel_color", "sel_brush") -> {
+                val shape = when (id) {
+                    "sel_rect" -> SelectShape.RECTANGLE; "sel_ellipse" -> SelectShape.ELLIPSE
+                    "sel_wand" -> SelectShape.WAND; "sel_color" -> SelectShape.COLOR; "sel_brush" -> SelectShape.BRUSH
+                    else -> SelectShape.FREEHAND
+                }
                 if (cv.interaction == Interaction.SELECT && cv.selectShape == shape) {
                     cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll()
                 } else enterSelect(shape)
@@ -738,6 +743,8 @@ class MainActivity : Activity(), CanvasView.Listener {
                 addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
             }, REQ_SHADOW_IMAGE)
             id == "actual_size" -> cv.actualSize()
+            id == "liquify" -> if (cv.liquify != null) leaveLiquify(true) else enterLiquify()
+            id == "canvas" -> showCanvasSize()
             id == "guides" -> showGuide(anchor)
             id == "assisted" -> {
                 val g = cv.doc.guide
@@ -776,7 +783,11 @@ class MainActivity : Activity(), CanvasView.Listener {
             "sel_free" -> sel && cv.selectShape == SelectShape.FREEHAND
             "sel_rect" -> sel && cv.selectShape == SelectShape.RECTANGLE
             "sel_ellipse" -> sel && cv.selectShape == SelectShape.ELLIPSE
+            "sel_wand" -> sel && cv.selectShape == SelectShape.WAND
+            "sel_color" -> sel && cv.selectShape == SelectShape.COLOR
+            "sel_brush" -> sel && cv.selectShape == SelectShape.BRUSH
             "transform" -> cv.interaction == Interaction.TRANSFORM
+            "liquify" -> cv.liquify != null
             "fill" -> cv.fillMode
             "guides" -> cv.doc.guide.type != GuideType.OFF
             "assisted" -> cv.doc.guide.assisted && cv.doc.guide.type != GuideType.OFF
@@ -2196,7 +2207,12 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.interaction = Interaction.SELECT
         showSelectBar()
         refreshAll()
-        hud.show("Draw around what you want to select")
+        hud.show(when (cv.selectShape) {
+            SelectShape.WAND -> "Magic wand: tap an area to select it"
+            SelectShape.COLOR -> "Color range: tap a color to select it everywhere"
+            SelectShape.BRUSH -> "Selection brush: paint what you want to select"
+            else -> "Draw around what you want to select"
+        })
     }
 
     private fun showSelectBar() {
@@ -2205,9 +2221,24 @@ class MainActivity : Activity(), CanvasView.Listener {
         SelectShape.values().forEach { s ->
             shapes.addBar(barButton(s.label, cv.selectShape == s) { cv.selectShape = s; showSelectBar() })
         }
-        shapes.addBar(barButton("Select all") { cv.selectAll() })
-        shapes.addBar(barButton("Invert") { cv.invertSelection() })
         col.addView(shapes)
+        // new / add / subtract, and the wand's tolerance or the selection brush's size
+        val modes = barRow()
+        SelectCombine.values().forEach { m ->
+            modes.addBar(barButton(m.label, cv.selectCombine == m) { cv.selectCombine = m; showSelectBar() })
+        }
+        if (cv.selectShape.isTap) {
+            modes.addBar(barButton("−") { cv.wandTolerance = (cv.wandTolerance - 0.04f).coerceAtLeast(0f); showSelectBar() })
+            modes.addBar(barButton("Tolerance ${(cv.wandTolerance * 100).roundToInt()}%") {})
+            modes.addBar(barButton("+") { cv.wandTolerance = (cv.wandTolerance + 0.04f).coerceAtMost(1f); showSelectBar() })
+        } else if (cv.selectShape == SelectShape.BRUSH) {
+            modes.addBar(barButton("−") { cv.selectBrushPx = (cv.selectBrushPx / 1.3f).coerceAtLeast(6f); showSelectBar() })
+            modes.addBar(barButton("Brush size ${cv.selectBrushPx.roundToInt()} px") {})
+            modes.addBar(barButton("+") { cv.selectBrushPx = (cv.selectBrushPx * 1.3f).coerceAtMost(400f); showSelectBar() })
+        }
+        modes.addBar(barButton("Select all") { cv.selectAll() })
+        modes.addBar(barButton("Invert") { cv.invertSelection() })
+        col.addView(modes, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 6.dp })
         val actions = barRow()
         actions.addBar(barButton("Transform") { if (cv.selection != null) enterTransform() else hud.show("Select something first") })
         actions.addBar(barButton("Copy & Paste") { cv.copySelectionToNewLayer() })
@@ -2227,6 +2258,149 @@ class MainActivity : Activity(), CanvasView.Listener {
         })
         col.addView(actions, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 6.dp })
         showBottomBar(col)
+    }
+
+    // ---------- Canvas size, crop, rotate ----------
+
+    private fun showCanvasSize() {
+        popup?.dismiss()
+        if (cv.liquify != null || cv.transform != null || adjustKind != null) { hud.show("Finish or cancel the current edit first"); return }
+        val doc = cv.doc
+        val items = mutableListOf(
+            "Canvas size (crop or add space)…" to { canvasSizeDialog(false) },
+            "Resize image…" to { canvasSizeDialog(true) }
+        )
+        cv.selection?.let { sel -> items.add("Crop to selection" to { runCanvasOp("Cropped") { CanvasOps.crop(doc, android.graphics.RectF(sel.bounds)) } }) }
+        items.add("Rotate 90° right" to { runCanvasOp("Turned") { CanvasOps.rotate90(doc, true) } })
+        items.add("Rotate 90° left" to { runCanvasOp("Turned") { CanvasOps.rotate90(doc, false) } })
+        items.add("Flip canvas horizontally" to { runCanvasOp("Flipped") { CanvasOps.flip(doc, true) } })
+        items.add("Flip canvas vertically" to { runCanvasOp("Flipped") { CanvasOps.flip(doc, false) } })
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Canvas") + " · ${doc.width} × ${doc.height}")
+            .setItems(items.map { L10n.tr(it.first) }.toTypedArray()) { _, which -> items[which].second() }
+            .setNegativeButton(L10n.tr("Cancel"), null)
+            .show()
+    }
+
+    /** [resample] = resize the image; otherwise change the canvas around it (crop / add space) */
+    private fun canvasSizeDialog(resample: Boolean) {
+        val doc = cv.doc
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24.dp, 8.dp, 24.dp, 0) }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val w = EditText(this).apply { setText(doc.width.toString()); inputType = InputType.TYPE_CLASS_NUMBER; setSelectAllOnFocus(true) }
+        val h = EditText(this).apply { setText(doc.height.toString()); inputType = InputType.TYPE_CLASS_NUMBER; setSelectAllOnFocus(true) }
+        row.addView(w, LinearLayout.LayoutParams(0, -2, 1f))
+        row.addView(android.widget.TextView(this).apply { text = " × " })
+        row.addView(h, LinearLayout.LayoutParams(0, -2, 1f))
+        box.addView(row)
+        val keep = android.widget.CheckBox(this).apply { text = L10n.tr("Keep proportions"); isChecked = resample }
+        box.addView(keep)
+        // width and height follow each other while proportions are kept
+        var syncing = false
+        fun watch(src: EditText, dst: EditText, ratio: () -> Float) = src.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (syncing || !keep.isChecked || !src.hasFocus()) return
+                val v = s.toString().toIntOrNull() ?: return
+                syncing = true
+                dst.setText((v * ratio()).roundToInt().coerceAtLeast(1).toString())
+                syncing = false
+            }
+        })
+        watch(w, h) { doc.height / doc.width.toFloat() }
+        watch(h, w) { doc.width / doc.height.toFloat() }
+        // where the artwork sits in a new canvas size: a 3 × 3 grid of anchors
+        var ax = 0.5f; var ay = 0.5f
+        if (!resample) {
+            box.addView(android.widget.TextView(this).apply { text = L10n.tr("Artwork position"); setPadding(0, 12.dp, 0, 4.dp) })
+            val grid = android.widget.GridLayout(this).apply { columnCount = 3 }
+            val cells = ArrayList<android.widget.TextView>()
+            for (j in 0..2) for (i in 0..2) {
+                val cell = android.widget.TextView(this).apply {
+                    gravity = Gravity.CENTER
+                    textSize = 18f
+                    text = if (i == 1 && j == 1) "●" else "○"
+                    setPadding(14.dp, 6.dp, 14.dp, 6.dp)
+                }
+                cell.setOnClickListener {
+                    ax = i / 2f; ay = j / 2f
+                    cells.forEach { it.text = "○" }
+                    cell.text = "●"
+                }
+                cells.add(cell)
+                grid.addView(cell)
+            }
+            box.addView(grid)
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr(if (resample) "Resize image" else "Canvas size"))
+            .setView(box)
+            .setPositiveButton(L10n.tr("OK")) { _, _ ->
+                val ww = w.text.toString().toIntOrNull() ?: 0
+                val hh = h.text.toString().toIntOrNull() ?: 0
+                if (ww < 16 || hh < 16) { toast("Too small"); return@setPositiveButton }
+                if (ww.toLong() * hh > CanvasOps.MAX_PIXELS) { toast("Too big: at most 25 megapixels"); return@setPositiveButton }
+                if (ww == doc.width && hh == doc.height) return@setPositiveButton
+                runCanvasOp(if (resample) "Resized" else "Canvas size changed") {
+                    if (resample) CanvasOps.resize(doc, ww, hh) else CanvasOps.canvasSize(doc, ww, hh, ax, ay)
+                }
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null)
+            .show()
+    }
+
+    /** builds the changed document in the background, then shows it (undo history starts again) */
+    private fun runCanvasOp(done: String, make: () -> Document) {
+        hud.show("Working…", sticky = true)
+        thread(name = "inkora-canvas") {
+            val d = try { make() } catch (e: OutOfMemoryError) { null } catch (e: Exception) { null }
+            main.post {
+                hud.hideSoon()
+                if (d == null) { toast("Not enough memory for this right now"); return@post }
+                openDocument(d)
+                d.revision++
+                hud.show(L10n.tr(done) + " · ${d.width} × ${d.height}")
+            }
+        }
+    }
+
+    // ---------- Liquify ----------
+
+    private fun enterLiquify() {
+        popup?.dismiss()
+        if (!cv.beginLiquify()) return
+        showLiquifyBar()
+        refreshAll()
+        hud.show("Liquify: drag on the layer · two fingers move the view")
+    }
+
+    private fun showLiquifyBar() {
+        val s = cv.liquify ?: return
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        val modes = barRow()
+        LiquifyMode.values().forEach { m ->
+            modes.addBar(barButton(m.label, s.mode == m) { s.mode = m; showLiquifyBar() })
+        }
+        col.addView(modes)
+        val row = barRow()
+        row.addBar(barButton("−") { cv.liquifyBrushPx = (cv.liquifyBrushPx / 1.25f).coerceAtLeast(20f); showLiquifyBar() })
+        row.addBar(barButton("Size ${cv.liquifyBrushPx.roundToInt()} px") {})
+        row.addBar(barButton("+") { cv.liquifyBrushPx = (cv.liquifyBrushPx * 1.25f).coerceAtMost(900f); showLiquifyBar() })
+        row.addBar(barButton("−") { s.strength = (s.strength - 0.1f).coerceAtLeast(0.1f); showLiquifyBar() })
+        row.addBar(barButton("Strength ${(s.strength * 100).roundToInt()}%") {})
+        row.addBar(barButton("+") { s.strength = (s.strength + 0.1f).coerceAtMost(1f); showLiquifyBar() })
+        row.addBar(barButton("Reset") { s.reset(); cv.invalidate() })
+        row.addBar(barButton("Cancel") { leaveLiquify(false) })
+        row.addBar(barButton("Done", true) { leaveLiquify(true) })
+        col.addView(row, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 6.dp })
+        showBottomBar(col)
+    }
+
+    private fun leaveLiquify(apply: Boolean) {
+        cv.endLiquify(apply)
+        hideBottomBar()
+        refreshAll()
     }
 
     // ---------- Transform ----------
@@ -2365,7 +2539,10 @@ class MainActivity : Activity(), CanvasView.Listener {
         override fun openGuideSettings() = showGuide(null)
         override var symmetry: Symmetry
             get() = cv.symmetry
-            set(v) { cv.symmetry = v; dock.refresh() }
+            set(v) {
+                cv.symmetry = v; cv.invalidate(); dock.refresh()
+                prefs.edit().putInt("kaleidoSegments", Symmetry.segments).apply()
+            }
         override val quickShape get() = cv.quickShapeEnabled
         override val hasSelection get() = cv.selection != null
         override val isVectorLayer get() = cv.doc.active.vector != null

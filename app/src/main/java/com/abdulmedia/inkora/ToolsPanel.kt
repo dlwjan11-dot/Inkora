@@ -337,11 +337,24 @@ class ToolsPanel(
                 Symmetry.RADIAL -> "Mandala, 8 ways"
                 Symmetry.MANDALA_12 -> "Mandala, 12 ways"
                 Symmetry.MANDALA_16 -> "Mandala, 16 ways"
+                Symmetry.KALEIDOSCOPE -> "Turned and mirrored, ${Symmetry.segments} slices"
             }, null, host.symmetry == s, art = SymmetryPreview(context, s, host.symmetry == s), artHeight = 84) {
                 host.symmetry = s
                 rebuild()
             }
         })
+        if (host.symmetry == Symmetry.KALEIDOSCOPE) {
+            caption("Kaleidoscope slices")
+            val row = LinearLayout(context).apply { orientation = HORIZONTAL }
+            for (n in listOf(3, 4, 5, 6, 8, 10, 12, 16)) {
+                row.addView(Ui.pill(context, "$n", primary = Symmetry.segments == n) {
+                    Symmetry.segments = n
+                    host.symmetry = Symmetry.KALEIDOSCOPE // saves and redraws the guide
+                    rebuild()
+                }, LayoutParams(0, -2, 1f).apply { rightMargin = 4.dp })
+            }
+            content.addView(row, LayoutParams(-1, -2))
+        }
         content.addView(switchRow(Icon.SYMMETRY, "Symmetry in your toolbar", "One tap to turn it on or off", host.inDock("symmetry"), null) {
             host.toggleDock("symmetry")
         }, LayoutParams(-1, -2).apply { topMargin = 12.dp })
@@ -359,7 +372,10 @@ class ToolsPanel(
 
     private fun buildSelect() {
         caption("Selection mode")
-        grid(listOf(toolCard("sel_free"), toolCard("sel_rect"), toolCard("sel_ellipse")))
+        grid(listOf(toolCard("sel_free"), toolCard("sel_rect"), toolCard("sel_ellipse"),
+            toolCard("sel_wand"), toolCard("sel_color"), toolCard("sel_brush")))
+        content.addView(Ui.text(context, "New, Add and Subtract are in the selection bar at the bottom.", 12f, Ui.TEXT_DIM)
+            .apply { setPadding(4.dp, 6.dp, 4.dp, 0) })
         caption("Actions")
         grid(listOf(toolCard("sel_all", false), toolCard("sel_invert", false), toolCard("deselect", false), toolCard("copy_paste", false)), 4)
         if (host.hasSelection) {
@@ -373,7 +389,7 @@ class ToolsPanel(
     }
 
     private fun buildTransform() {
-        grid(listOf(toolCard("transform"), toolCard("copy_paste", false), toolCard("flip", false)))
+        grid(listOf(toolCard("transform"), toolCard("liquify"), toolCard("canvas", false), toolCard("copy_paste", false), toolCard("flip", false)))
         content.addView(Ui.text(context,
             "In Transform: drag to move · corners to scale · the green dot to rotate · two fingers to pinch. " +
                 "Flip, rotate 90° and fit are in the bar at the bottom.", 12f, Ui.TEXT_DIM).apply { setPadding(4.dp, 12.dp, 4.dp, 0) })
@@ -521,6 +537,25 @@ class GuidePreview(context: Context, private val type: GuideType, private val se
                 val y = r.top + r.height() * 0.25f
                 rays(canvas, r.left + 2f.dp, y, r, 7); rays(canvas, r.right - 2f.dp, y, r, 7); rays(canvas, r.centerX(), r.bottom - 1f.dp, r, 7)
             }
+            GuideType.RULER -> {
+                p.strokeWidth = 2f.dp
+                canvas.drawLine(r.left + 6f.dp, r.bottom - 8f.dp, r.right - 6f.dp, r.top + 8f.dp, p)
+                p.strokeWidth = 1.1f.dp
+                for (i in 0..8) {
+                    val t = i / 8f
+                    val x = r.left + 6f.dp + (r.width() - 12f.dp) * t; val y = r.bottom - 8f.dp - (r.height() - 16f.dp) * t
+                    canvas.drawLine(x, y, x + 4f.dp, y + 4f.dp, p)
+                }
+            }
+            GuideType.ELLIPSE_GUIDE -> {
+                canvas.save()
+                canvas.rotate(-20f, r.centerX(), r.centerY())
+                canvas.drawOval(RectF(r.centerX() - r.width() * 0.42f, r.centerY() - r.height() * 0.28f,
+                    r.centerX() + r.width() * 0.42f, r.centerY() + r.height() * 0.28f), p)
+                canvas.drawOval(RectF(r.centerX() - r.width() * 0.25f, r.centerY() - r.height() * 0.17f,
+                    r.centerX() + r.width() * 0.25f, r.centerY() + r.height() * 0.17f), p)
+                canvas.restore()
+            }
             GuideType.FISHEYE -> {
                 val cx = r.centerX(); val cy = r.centerY()
                 val R = min(r.width(), r.height()) * 0.62f
@@ -590,6 +625,13 @@ class SymmetryPreview(context: Context, private val sym: Symmetry, private val s
                     canvas.drawLine(cx - cos(a).toFloat() * s, cy - sin(a).toFloat() * s, cx + cos(a).toFloat() * s, cy + sin(a).toFloat() * s, axis)
                 }
             }
+            Symmetry.KALEIDOSCOPE -> {
+                val n = Symmetry.segments.coerceIn(2, 32)
+                for (i in 0 until n) {
+                    val a = Math.toRadians(i * (360.0 / n))
+                    canvas.drawLine(cx, cy, cx + cos(a).toFloat() * s, cy + sin(a).toFloat() * s, axis)
+                }
+            }
             Symmetry.OFF -> {}
         }
         // a little curl in the top-left quarter
@@ -604,6 +646,10 @@ class SymmetryPreview(context: Context, private val sym: Symmetry, private val s
             Symmetry.HORIZONTAL -> listOf({ _ -> }, { c -> c.scale(1f, -1f, cx, cy) })
             Symmetry.QUADRANT -> listOf({ _ -> }, { c -> c.scale(-1f, 1f, cx, cy) }, { c -> c.scale(1f, -1f, cx, cy) }, { c -> c.scale(-1f, -1f, cx, cy) })
             Symmetry.RADIAL, Symmetry.MANDALA_12, Symmetry.MANDALA_16 -> (0 until sym.axes).map { i -> { c: Canvas -> c.rotate(i * (360f / sym.axes), cx, cy) } }
+            Symmetry.KALEIDOSCOPE -> (0 until Symmetry.segments.coerceIn(2, 32)).flatMap { i ->
+                val deg = i * (360f / Symmetry.segments)
+                listOf({ c: Canvas -> c.rotate(deg, cx, cy) }, { c: Canvas -> c.rotate(deg, cx, cy); c.scale(1f, -1f, cx, cy) })
+            }
         }
         for (t in copies) {
             canvas.save()

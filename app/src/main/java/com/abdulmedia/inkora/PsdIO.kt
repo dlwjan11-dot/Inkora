@@ -2,6 +2,7 @@ package com.abdulmedia.inkora
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Paint
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -111,7 +112,13 @@ object PsdIO {
             val g = doc.groupOf(l)
             if (g != null && (i == 0 || doc.layers[i - 1].groupId != g.id))
                 layers.add(L(null, "</Layer group>", 1f, LayerBlend.NORMAL, true, false, false, false, 3))
-            layers.add(L(l.bitmap, l.name, l.opacity, l.blend, l.visible && !l.shadow, l.isClippingMask, l.alphaLock, false))
+            if (!l.isLayerMask || !(i > 0 && doc.hasMask(i - 1))) {
+                // a layer with a mask goes out with the mask applied (the mask itself is not a Photoshop layer here)
+                val masked = if (doc.hasMask(i)) l.bitmap.copy(Bitmap.Config.ARGB_8888, true).also {
+                    Canvas(it).drawBitmap(doc.layers[i + 1].bitmap, 0f, 0f, Paint().apply { blendMode = android.graphics.BlendMode.DST_IN })
+                } else null
+                layers.add(L(masked ?: l.bitmap, l.name, l.opacity, l.blend, l.visible && !l.shadow, l.isClippingMask, l.alphaLock, masked != null))
+            }
             if (g != null && (i == doc.layers.size - 1 || doc.layers[i + 1].groupId != g.id))
                 layers.add(L(null, g.name, g.opacity, g.blend, g.visible, false, false, false,
                     if (g.collapsed) 2 else 1, pass = !g.isolated))

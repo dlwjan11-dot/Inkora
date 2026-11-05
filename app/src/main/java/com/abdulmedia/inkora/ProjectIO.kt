@@ -48,6 +48,8 @@ object ProjectIO {
                 blend = runCatching { LayerBlend.valueOf(l.blend) }.getOrDefault(LayerBlend.NORMAL)
                 groupId = l.group
                 shadow = l.shadow
+                reference = l.reference
+                isLayerMask = l.mask
                 scene = l.scene?.let { runCatching { Scene3D.fromJson(JSONObject(it)) }.getOrNull() }
             })
             d.activeIndex = active
@@ -89,7 +91,9 @@ object ProjectIO {
         val clipping: Boolean = false,
         val group: Int? = null,
         val shadow: Boolean = false,
-        val scene: String? = null
+        val scene: String? = null,
+        val reference: Boolean = false,
+        val mask: Boolean = false
     )
 
     fun snapshot(doc: Document): Snapshot {
@@ -100,7 +104,7 @@ object ProjectIO {
             doc.layers.map {
                 LayerSnap(it.name, it.visible, it.opacity, it.blend.name, it.alphaLock, it.bitmap.copy(Bitmap.Config.ARGB_8888, false),
                     it.vector?.let { v -> VGeom.toJson(v).toString() }, it.isClippingMask, it.groupId,
-                    it.shadow, it.scene?.toJson()?.toString())
+                    it.shadow, it.scene?.toJson()?.toString(), it.reference, it.isLayerMask)
             },
             guideToJson(doc.guide),
             doc.groups.values.filter { it.id in used }.map { it.copy() }
@@ -130,6 +134,8 @@ object ProjectIO {
                     put("clipping", l.clipping)
                     l.group?.let { put("group", it) }
                     if (l.shadow) put("shadow", true)
+                    if (l.reference) put("reference", true)
+                    if (l.mask) put("mask", true)
                     if (l.scene != null) put("scene", JSONObject(l.scene))
                     put("file", file)
                     if (l.vector != null) put("vector", JSONArray(l.vector))
@@ -203,6 +209,8 @@ object ProjectIO {
             layer.alphaLock = o.optBoolean("alphaLock", false)
             layer.isClippingMask = o.optBoolean("clipping", false)
             layer.shadow = o.optBoolean("shadow", false)
+            layer.reference = o.optBoolean("reference", false)
+            layer.isLayerMask = o.optBoolean("mask", false)
             o.optJSONObject("scene")?.let { so -> layer.scene = runCatching { Scene3D.fromJson(so) }.getOrNull() }
             if (o.has("group")) layer.groupId = groupIds[o.optInt("group")]
             o.optJSONArray("vector")?.let { va ->

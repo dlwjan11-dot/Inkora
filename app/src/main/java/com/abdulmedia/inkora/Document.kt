@@ -46,11 +46,19 @@ class Layer(var bitmap: Bitmap, var name: String) {
     var shadow = false
     /** non-null = a 3D layer (figures, poses, objects); [bitmap] is then a rendered copy of the scene */
     var scene: Scene3D? = null
+    /** a reference layer: Fill and ColorDrop find their edges in the reference layers (your line art) */
+    var reference = false
+    /**
+     * A layer mask for the layer right below it: where the mask has paint the layer shows, where it
+     * is erased the layer is hidden. Paint brings parts back, the eraser hides them.
+     */
+    var isLayerMask = false
 
     /** copies the layer settings (not the pixels) of [src] */
     fun copySettingsFrom(src: Layer) {
         opacity = src.opacity; blend = src.blend; alphaLock = src.alphaLock; isClippingMask = src.isClippingMask
         visible = src.visible; shadow = src.shadow; scene = src.scene?.copy()
+        reference = src.reference; isLayerMask = src.isLayerMask
     }
 
     companion object {
@@ -211,9 +219,54 @@ class Document(val width: Int, val height: Int) {
                 i = end + 1
                 continue
             }
-            if (include(i)) drawLayer(canvas, i, overlayAt(i))
+            val layer = layers[i]
+            if (layer.isLayerMask) { i++; continue } // drawn together with the layer it masks
+            if (include(i)) {
+                val mask = maskOf(i)
+                if (mask != null) drawMasked(canvas, i, overlayAt(i), mask, overlayAt(i + 1))
+                else drawLayer(canvas, i, overlayAt(i))
+            }
             i++
         }
+    }
+
+    /** the visible layer mask of layer [i], if it has one */
+    fun maskOf(i: Int): Layer? {
+        val m = layers.getOrNull(i + 1) ?: return null
+        if (!m.isLayerMask || m.groupId != layers[i].groupId || layers[i].isLayerMask) return null
+        return if (m.visible) m else null
+    }
+
+    /** true when layer [i] has a mask right above it (shown or hidden) */
+    fun hasMask(i: Int): Boolean {
+        val m = layers.getOrNull(i + 1) ?: return false
+        return m.isLayerMask && m.groupId == layers[i].groupId && !layers[i].isLayerMask
+    }
+
+    private fun drawMasked(canvas: Canvas, i: Int, ov: ActiveOverlay?, mask: Layer, maskOv: ActiveOverlay?) {
+        val layer = layers[i]
+        if (!layer.visible) return
+        if (layer.shadow && !drawShadows) return
+        layerPaint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
+        layerPaint.blendMode = layer.blend.mode
+        val s = canvas.saveLayer(bounds, layerPaint)
+        canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
+        ov?.draw(canvas)
+        // the mask (with a stroke being painted on it) cuts the layer
+        val m = canvas.saveLayer(bounds, dstInPaint)
+        canvas.drawBitmap(mask.bitmap, 0f, 0f, plainPaint)
+        maskOv?.draw(canvas)
+        canvas.restoreToCount(m)
+        canvas.restoreToCount(s)
+    }
+
+    /**
+     * The picture Fill and ColorDrop look at: the reference layers when there are any (so you can
+     * color on another layer under your line art), otherwise the whole artwork.
+     */
+    fun fillReference(): Bitmap {
+        val refs = layers.filter { it.reference && it.visible }
+        return if (refs.isEmpty()) flatten(withBackground = true) else compose(refs)
     }
 
     private fun drawLayer(canvas: Canvas, i: Int, ov: ActiveOverlay?) {
@@ -225,7 +278,7 @@ class Document(val width: Int, val height: Int) {
         if (layer.isClippingMask) {
             // clipped to the first non-clipping layer below it, inside the same group
             var baseIndex = i - 1
-            while (baseIndex >= 0 && layers[baseIndex].isClippingMask && layers[baseIndex].groupId == layer.groupId) baseIndex--
+            while (baseIndex >= 0 && (layers[baseIndex].isClippingMask || layers[baseIndex].isLayerMask) && layers[baseIndex].groupId == layer.groupId) baseIndex--
             val baseLayer = if (baseIndex >= 0 && layers[baseIndex].groupId == layer.groupId) layers[baseIndex] else null
             if (baseLayer != null) {
                 // base layer hidden: whatever is clipped to it is hidden too

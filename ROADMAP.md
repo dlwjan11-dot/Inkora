@@ -80,22 +80,22 @@
 ## 🧭 أدوات موجودة بـ Infinite Painter وناقصتنا (من توثيقهم الرسمي)
 **Creative Tools**
 - تعبئة بتدرجات: Linear، Radial، **Sweep**، وتعبئة بباترن
-- Guides: **مسطرة (Lines)**، **Ellipse guide**، **Hatching guide**، **Lazy guide**، Pen guide
+- Guides: ~~**مسطرة (Lines)**، **Ellipse guide**~~ (0.14)، **Hatching guide**، **Lazy guide**، Pen guide
 - أشكال بالفرشاة (مش فيكتور): خط، مستطيل، دائرة، Path، **قوس (Arc)** — وأشكال بالمنظور
-- Symmetry: **Kaleidoscopic**
-- شبكات: **Curvilinear perspective**
+- ~~Symmetry: **Kaleidoscopic**~~ (0.14)
+- ~~شبكات: **Curvilinear perspective**~~ (0.14 Fisheye)
 - View: **قفل العرض (Lock view)** و **Navigator** (خريطة صغيرة للوحة)
 - **Clone tool** (نسخ جزء من الرسمة بالفرشاة)
 
 **Editing Tools**
-- تحديد: **العصا السحرية (Wand)**، **تحديد بالفرشاة**، **Color Range**، Polyline
+- ~~تحديد: **العصا السحرية (Wand)**، **تحديد بالفرشاة**، **Color Range**~~ (0.14)، Polyline
 - تحويل: **Distort** و **Warp** (تشويه وتطويع)
 - **Curves** (منحنى الدرجات)، فلاتر: Motion blur، فنية، هيكلية
-- **Liquify**: Move، Pinch، Bloat، Swirl، Restore
+- ~~**Liquify**: Move، Pinch، Bloat، Swirl، Restore~~ (0.14)
 - **Pattern tools**: Symmetry، Path، Quilt، Tile
-- Canvas: **قص (Crop)**، **تغيير الحجم**، Straighten
+- ~~Canvas: **قص (Crop)**، **تغيير الحجم**~~ (0.14)، Straighten
 
 **طبقات وألوان**
-- **مجموعات طبقات (Groups)**، **Layer Mask**، **Clipping Mask**
+- ~~**مجموعات طبقات (Groups)**، **Layer Mask**، **Clipping Mask**~~ (0.12–0.14)
 - ~~**باليتات ألوان متعددة**~~ (0.13) + **Lighting orb**
 - **صور مرجعية (Reference)** عائمة

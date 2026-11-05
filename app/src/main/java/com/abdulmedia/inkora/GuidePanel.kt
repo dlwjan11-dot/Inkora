@@ -105,7 +105,7 @@ class GuidePanel(
         // ---- vanishing points ----
         if (g.type.isPerspective) {
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            row.addView(chip("Move vanishing points", false) { onEditPoints() }, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(chip(if (g.type == GuideType.RULER || g.type == GuideType.ELLIPSE_GUIDE) "Move points" else "Move vanishing points", false) { onEditPoints() }, LinearLayout.LayoutParams(0, -2, 1f))
             row.addView(chip("Reset", false) { g.resetVps(); changed() },
                 LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 6.dp })
             box.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 12.dp })
@@ -120,6 +120,8 @@ class GuidePanel(
         GuideType.PERSPECTIVE_1 -> "Strokes snap toward the vanishing point, or horizontal / vertical."
         GuideType.PERSPECTIVE_2 -> "Strokes snap toward either vanishing point, or vertical."
         GuideType.PERSPECTIVE_3 -> "Strokes snap toward one of the three vanishing points."
+        GuideType.RULER -> "Strokes near the ruler run along its edge; further away they run parallel to it. Drag its two ends to place it."
+        GuideType.ELLIPSE_GUIDE -> "Strokes follow the ellipse, or a bigger or smaller copy of it. Point 1 is the center, point 2 the long axis, point 3 the width."
         GuideType.FISHEYE -> "Strokes follow the curved horizontals and verticals, or go straight toward the center. Point 1 is the center, point 2 sets the size and tilt of the fisheye."
         GuideType.ELLIPSE_RULER -> "Strokes follow circles around the center of the canvas."
         GuideType.OFF -> ""

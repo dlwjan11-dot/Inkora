@@ -9,7 +9,21 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 
-enum class SelectShape(val label: String) { FREEHAND("Freehand"), RECTANGLE("Rectangle"), ELLIPSE("Ellipse") }
+enum class SelectShape(val label: String) {
+    FREEHAND("Freehand"), RECTANGLE("Rectangle"), ELLIPSE("Ellipse"),
+    /** tap an area: the touching pixels of a similar color */
+    WAND("Magic wand"),
+    /** tap a color: every pixel of a similar color on the canvas */
+    COLOR("Color range"),
+    /** paint the selection with a round brush */
+    BRUSH("Selection brush");
+
+    /** shapes that act on one tap instead of a drawn outline */
+    val isTap get() = this == WAND || this == COLOR
+}
+
+/** How a new selection meets the one you already have. */
+enum class SelectCombine(val label: String) { NEW("New"), ADD("Add"), SUBTRACT("Subtract") }
 
 /**
  * A selection: an alpha mask the size of the canvas (255 = selected) plus its outline
@@ -50,8 +64,135 @@ object Selections {
             }
             SelectShape.RECTANGLE -> p.addRect(minOf(x0, x1), minOf(y0, y1), maxOf(x0, x1), maxOf(y0, y1), Path.Direction.CW)
             SelectShape.ELLIPSE -> p.addOval(minOf(x0, x1), minOf(y0, y1), maxOf(x0, x1), maxOf(y0, y1), Path.Direction.CW)
+            SelectShape.WAND, SelectShape.COLOR, SelectShape.BRUSH -> {}
         }
         return p
+    }
+
+    /** a selection from a mask (ALPHA_8 or ARGB, canvas-sized); null when nothing is selected */
+    fun fromMask(mask: Bitmap): Selection? {
+        val m = if (mask.config == Bitmap.Config.ALPHA_8) mask else
+            Bitmap.createBitmap(mask.width, mask.height, Bitmap.Config.ALPHA_8).also { Canvas(it).drawBitmap(mask, 0f, 0f, null) }
+        val traced = trace(m) ?: return null
+        return Selection(m, traced.first, traced.second)
+    }
+
+    /**
+     * The outline of a mask for the marching ants: the edges between selected and unselected cells
+     * on a grid of about 1000 cells across, joined into runs. Also gives the bounds.
+     */
+    fun trace(mask: Bitmap): Pair<Path, Rect>? {
+        val w = mask.width; val h = mask.height
+        val a = ByteArray(w * h)
+        val buf = java.nio.ByteBuffer.wrap(a)
+        if (mask.config == Bitmap.Config.ALPHA_8 && mask.rowBytes == w) mask.copyPixelsToBuffer(buf)
+        else {
+            val px = IntArray(w * h); mask.getPixels(px, 0, w, 0, 0, w, h)
+            for (i in px.indices) a[i] = (px[i] ushr 24).toByte()
+        }
+        val step = maxOf(1, maxOf(w, h) / 1000)
+        val gw = (w + step - 1) / step; val gh = (h + step - 1) / step
+        val inside = BooleanArray(gw * gh)
+        var any = false
+        var x0 = gw; var y0 = gh; var x1 = -1; var y1 = -1
+        for (gy in 0 until gh) {
+            val sy = minOf(h - 1, gy * step + step / 2)
+            for (gx in 0 until gw) {
+                val sx = minOf(w - 1, gx * step + step / 2)
+                if ((a[sy * w + sx].toInt() and 255) >= 128) {
+                    inside[gy * gw + gx] = true; any = true
+                    if (gx < x0) x0 = gx; if (gx > x1) x1 = gx; if (gy < y0) y0 = gy; if (gy > y1) y1 = gy
+                }
+            }
+        }
+        if (!any) return null
+        fun at(gx: Int, gy: Int) = gx in 0 until gw && gy in 0 until gh && inside[gy * gw + gx]
+        val p = Path()
+        val s = step.toFloat()
+        // horizontal edges
+        for (gy in y0..y1 + 1) {
+            var gx = x0
+            while (gx <= x1) {
+                if (at(gx, gy) != at(gx, gy - 1)) {
+                    val st = gx
+                    while (gx <= x1 && at(gx, gy) != at(gx, gy - 1)) gx++
+                    p.moveTo(st * s, gy * s); p.lineTo(gx * s, gy * s)
+                } else gx++
+            }
+        }
+        // vertical edges
+        for (gx in x0..x1 + 1) {
+            var gy = y0
+            while (gy <= y1) {
+                if (at(gx, gy) != at(gx - 1, gy)) {
+                    val st = gy
+                    while (gy <= y1 && at(gx, gy) != at(gx - 1, gy)) gy++
+                    p.moveTo(gx * s, st * s); p.lineTo(gx * s, gy * s)
+                } else gy++
+            }
+        }
+        val r = Rect(x0 * step - 2, y0 * step - 2, (x1 + 1) * step + 2, (y1 + 1) * step + 2)
+        r.intersect(0, 0, w, h)
+        return p to r
+    }
+
+    /** [old] and [fresh] together, as [mode] says */
+    fun combine(old: Selection?, fresh: Selection?, mode: SelectCombine, w: Int, h: Int): Selection? {
+        if (mode == SelectCombine.NEW) return fresh
+        if (old == null) return if (mode == SelectCombine.ADD) fresh else null
+        if (fresh == null) return old
+        val mask = Bitmap.createBitmap(w, h, Bitmap.Config.ALPHA_8)
+        val c = Canvas(mask)
+        c.drawBitmap(old.mask, 0f, 0f, null)
+        c.drawBitmap(fresh.mask, 0f, 0f, if (mode == SelectCombine.ADD) null else dstOut)
+        return fromMask(mask)
+    }
+
+    /**
+     * Magic wand ([contiguous] = true) or color range: the pixels of [ref] whose color is within
+     * [tolerance] (0..1) of the color at (x, y).
+     */
+    fun byColor(ref: Bitmap, x: Int, y: Int, tolerance: Float, contiguous: Boolean): Selection? {
+        val w = ref.width; val h = ref.height
+        if (x !in 0 until w || y !in 0 until h) return null
+        val mask = Bitmap.createBitmap(w, h, Bitmap.Config.ALPHA_8)
+        if (contiguous) {
+            val r = FloodFill.compute(ref, x, y, 0xFF000000.toInt(), tolerance) ?: return null
+            Canvas(mask).drawBitmap(r.bitmap, r.rect.left.toFloat(), r.rect.top.toFloat(), null)
+            r.bitmap.recycle()
+        } else {
+            val px = IntArray(w * h)
+            ref.getPixels(px, 0, w, 0, 0, w, h)
+            val t = px[y * w + x]
+            val tol = (tolerance.coerceIn(0f, 1f) * 255).toInt()
+            val tA = t ushr 24; val tR = (t shr 16) and 255; val tG = (t shr 8) and 255; val tB = t and 255
+            val a = ByteArray(w * h)
+            for (i in px.indices) {
+                val c = px[i]
+                if (kotlin.math.abs((c ushr 24) - tA) <= tol && kotlin.math.abs(((c shr 16) and 255) - tR) <= tol &&
+                    kotlin.math.abs(((c shr 8) and 255) - tG) <= tol && kotlin.math.abs((c and 255) - tB) <= tol) a[i] = -1
+            }
+            if (mask.rowBytes == w) mask.copyPixelsFromBuffer(java.nio.ByteBuffer.wrap(a))
+            else {
+                val argb = IntArray(w * h) { if (a[it].toInt() != 0) -0x1000000 else 0 }
+                val tmp = Bitmap.createBitmap(argb, w, h, Bitmap.Config.ARGB_8888)
+                Canvas(mask).drawBitmap(tmp, 0f, 0f, null); tmp.recycle()
+            }
+        }
+        return fromMask(mask)
+    }
+
+    /** the area a selection-brush stroke covers */
+    fun brushPath(pts: List<FloatArray>, width: Float): Path {
+        val line = Path()
+        if (pts.isEmpty()) return line
+        line.moveTo(pts[0][0], pts[0][1])
+        for (i in 1 until pts.size) line.lineTo(pts[i][0], pts[i][1])
+        if (pts.size == 1) line.lineTo(pts[0][0] + 0.1f, pts[0][1])
+        val p = Paint().apply { style = Paint.Style.STROKE; strokeWidth = width; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+        val out = Path()
+        p.getFillPath(line, out)
+        return out
     }
 
     fun invert(s: Selection, w: Int, h: Int): Selection {

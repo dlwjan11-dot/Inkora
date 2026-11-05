@@ -27,7 +27,14 @@ enum class GuideType(val label: String, val usesSize: Boolean, val vanishingPoin
     PERSPECTIVE_2("2-Point Perspective", true, intArrayOf(1, 2)),
     PERSPECTIVE_3("3-Point Perspective", true, intArrayOf(1, 2, 3)),
     /** curvilinear (fisheye) perspective: point 1 = center, point 2 = edge of the fisheye circle on the horizon */
-    FISHEYE("Fisheye Perspective", true, intArrayOf(0, 4));
+    FISHEYE("Fisheye Perspective", true, intArrayOf(0, 4)),
+    /** a straight ruler you move with its two ends; strokes run along it */
+    RULER("Ruler", false, intArrayOf(5, 6)),
+    /** an ellipse you place and tilt (center, end of the long axis, side point); strokes follow it */
+    ELLIPSE_GUIDE("Ellipse Guide", false, intArrayOf(7, 8, 9));
+
+    /** guides whose points you drag on the canvas */
+    val hasPoints get() = vanishingPoints.isNotEmpty()
 
     val isPerspective get() = vanishingPoints.isNotEmpty()
 }
@@ -35,7 +42,11 @@ enum class GuideType(val label: String, val usesSize: Boolean, val vanishingPoin
 /** Guide settings, saved inside the project. Vanishing points are stored as fractions of the canvas. */
 class GuideSettings {
     var type = GuideType.OFF
-        set(v) { field = v; version++ }
+        set(v) {
+            field = v; version++
+            // a ruler or an ellipse guide is only useful when strokes follow it
+            if (v == GuideType.RULER || v == GuideType.ELLIPSE_GUIDE) assisted = true
+        }
     var size = 100f
         set(v) { field = v; version++ }
     var thicknessDp = 1.2f
@@ -64,7 +75,8 @@ class GuideSettings {
     fun vpY(i: Int, h: Int) = vps[i * 2 + 1] * h
 
     companion object {
-        val DEFAULT_VPS = floatArrayOf(0.5f, 0.45f, 0.06f, 0.42f, 0.94f, 0.42f, 0.5f, 0.96f, 0.1f, 0.45f)
+        val DEFAULT_VPS = floatArrayOf(0.5f, 0.45f, 0.06f, 0.42f, 0.94f, 0.42f, 0.5f, 0.96f, 0.1f, 0.45f,
+            0.22f, 0.72f, 0.78f, 0.32f, 0.5f, 0.52f, 0.74f, 0.52f, 0.5f, 0.64f)
         const val MIN_SIZE = 8f
         const val MAX_SIZE = 600f
     }
@@ -82,6 +94,30 @@ sealed class Constraint {
             val t = (x - ox) * dx + (y - oy) * dy
             out[0] = ox + dx * t
             out[1] = oy + dy * t
+        }
+    }
+
+    /** an ellipse with half axes [a], [b]; the long one points along (ux, uy) */
+    class Ellipse(val cx: Float, val cy: Float, val a: Float, val b: Float, val ux: Float, val uy: Float) : Constraint() {
+        override fun project(x: Float, y: Float, out: FloatArray) {
+            val dx = x - cx; val dy = y - cy
+            val u = dx * ux + dy * uy
+            val v = -dx * uy + dy * ux
+            val t = atan2(v / b, u / a)
+            val pu = a * cos(t); val pv = b * sin(t)
+            out[0] = cx + pu * ux - pv * uy
+            out[1] = cy + pu * uy + pv * ux
+        }
+
+        /** direction of the ellipse at the point nearest (x, y) */
+        fun tangent(x: Float, y: Float): Pair<Float, Float> {
+            val dx = x - cx; val dy = y - cy
+            val t = atan2((-dx * uy + dy * ux) / b, (dx * ux + dy * uy) / a)
+            val tu = -a * sin(t); val tv = b * cos(t)
+            var tx = tu * ux - tv * uy; var ty = tu * uy + tv * ux
+            val l = hypot(tx, ty).takeIf { it > 1e-6f } ?: 1f
+            tx /= l; ty /= l
+            return tx to ty
         }
     }
 
@@ -176,6 +212,38 @@ object Guides {
                 horizon(lines, ax, ay, bx, by, w, h)
             }
             GuideType.FISHEYE -> fisheye(lines, circles, g, w, h, s)
+            GuideType.RULER -> {
+                val ax = g.vpX(5, w); val ay = g.vpY(5, h); val bx = g.vpX(6, w); val by = g.vpY(6, h)
+                horizon(lines, ax, ay, bx, by, w, h)
+                // a little ruler body along the edge
+                var dx = bx - ax; var dy = by - ay
+                val l = hypot(dx, dy).takeIf { it > 1f } ?: 1f
+                dx /= l; dy /= l
+                val off = min(w, h) * 0.02f
+                clipAdd(lines, ax + dy * off, ay - dx * off, bx + dy * off, by - dx * off, w, h)
+                val ticks = (l / (off * 1.5f)).toInt().coerceIn(2, 200)
+                for (k in 0..ticks) {
+                    val t = k / ticks.toFloat()
+                    val px = ax + (bx - ax) * t; val py = ay + (by - ay) * t
+                    val tl = if (k % 5 == 0) off else off * 0.5f
+                    clipAdd(lines, px, py, px + dy * tl, py - dx * tl, w, h)
+                }
+            }
+            GuideType.ELLIPSE_GUIDE -> {
+                val e = ellipse(g, w, h)
+                val n = 120
+                var px = 0f; var py = 0f
+                for (k in 0..n) {
+                    val t = (2 * PI * k / n).toFloat()
+                    val qx = e.cx + e.a * cos(t) * e.ux - e.b * sin(t) * e.uy
+                    val qy = e.cy + e.a * cos(t) * e.uy + e.b * sin(t) * e.ux
+                    if (k > 0) clipAdd(lines, px, py, qx, qy, w, h)
+                    px = qx; py = qy
+                }
+                // axes
+                clipAdd(lines, e.cx - e.ux * e.a, e.cy - e.uy * e.a, e.cx + e.ux * e.a, e.cy + e.uy * e.a, w, h)
+                clipAdd(lines, e.cx + e.uy * e.b, e.cy - e.ux * e.b, e.cx - e.uy * e.b, e.cy + e.ux * e.b, w, h)
+            }
         }
         return GuideGeometry(lines.toArray(), points.toArray(), circles.toArray())
     }
@@ -198,6 +266,20 @@ object Guides {
             val px = ox + nx * c; val py = oy + ny * c
             clipAdd(out, px - dx * big, py - dy * big, px + dx * big, py + dy * big, w, h)
         }
+    }
+
+    /** the ellipse guide: center, half axes and the long axis' direction */
+    class Ell(val cx: Float, val cy: Float, val a: Float, val b: Float, val ux: Float, val uy: Float)
+
+    fun ellipse(g: GuideSettings, w: Int, h: Int): Ell {
+        val cx = g.vpX(7, w); val cy = g.vpY(7, h)
+        var ux = g.vpX(8, w) - cx; var uy = g.vpY(8, h) - cy
+        val a = hypot(ux, uy)
+        if (a < 1f) { ux = 1f; uy = 0f } else { ux /= a; uy /= a }
+        // the side point's distance from the long axis sets the short half axis
+        val sx = g.vpX(9, w) - cx; val sy = g.vpY(9, h) - cy
+        val b = abs(-uy * sx + ux * sy)
+        return Ell(cx, cy, max(a, 4f), max(b, 2f), ux, uy)
     }
 
     /** center, radius and axes (e1 = along the horizon, e2 = across) of the fisheye guide */
@@ -399,6 +481,29 @@ object Guides {
                 // depth: straight toward the center
                 toward(f.cx, f.cy)
             }
+            GuideType.RULER -> {
+                val ax = g.vpX(5, w); val ay = g.vpY(5, h); val bx = g.vpX(6, w); val by = g.vpY(6, h)
+                var dx = bx - ax; var dy = by - ay
+                val l = hypot(dx, dy)
+                if (l > 1f) {
+                    dx /= l; dy /= l
+                    // close to the ruler: right on its edge; further away: parallel to it
+                    val dist = abs(-(sx - ax) * dy + (sy - ay) * dx)
+                    if (dist < hypot(w.toFloat(), h.toFloat()) * 0.03f) cands.add(Constraint.Line(ax, ay, dx, dy))
+                    else cands.add(Constraint.Line(sx, sy, dx, dy))
+                }
+            }
+            GuideType.ELLIPSE_GUIDE -> {
+                // the ellipse, made bigger or smaller so it passes where the stroke starts
+                val e = ellipse(g, w, h)
+                val dx = sx - e.cx; val dy = sy - e.cy
+                val u = dx * e.ux + dy * e.uy
+                val v = -dx * e.uy + dy * e.ux
+                val k = sqrt((u / e.a) * (u / e.a) + (v / e.b) * (v / e.b))
+                // near the drawn ellipse: snap right onto it
+                val kk = if (abs(k - 1f) < 0.12f) 1f else max(k, 0.02f)
+                cands.add(Constraint.Ellipse(e.cx, e.cy, e.a * kk, e.b * kk, e.ux, e.uy))
+            }
             GuideType.ELLIPSE_RULER -> {
                 // strokes follow circles around the canvas center
                 val cx = w / 2f; val cy = h / 2f
@@ -418,6 +523,7 @@ object Guides {
                     val rx = (sx - c.cx) / c.r; val ry = (sy - c.cy) / c.r
                     -ry to rx // tangent
                 }
+                is Constraint.Ellipse -> c.tangent(sx, sy)
             }
             val err = abs(ux * dy - uy * dx) // |sin| of the angle between them (direction sign ignored)
             if (err < bestErr) { bestErr = err; best = c }
