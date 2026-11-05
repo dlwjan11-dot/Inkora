@@ -79,6 +79,11 @@ int ink_stroke(InkCanvas *c, InkBrush *b, uint8_t *pixels, int stride, const flo
     mypaint_surface_begin_atomic(ms);
     for (int i = 0; i < n; i++) {
         const float *e = ev + i * 6;
+        if (i == 0 && ink_surface_take_fresh(c->s)) {
+            /* the stroke starts here: a long pause with no pressure puts the brush exactly at
+               the first pen position (its smoothing would otherwise drag it from the corner) */
+            mypaint_brush_stroke_to(b->b, ms, e[0], e[1], 0.f, e[3], e[4], 10.0, view_zoom, view_rotation, 0.f, TRUE);
+        }
         mypaint_brush_stroke_to(b->b, ms, e[0], e[1], e[2], e[3], e[4], e[5] > 0 ? e[5] : 0.001,
                                 view_zoom, view_rotation, 0.f, TRUE);
     }

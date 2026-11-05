@@ -114,6 +114,11 @@ JNIEXPORT jboolean JNICALL FN(nStroke)(JNIEnv *env, jobject thiz, jlong sh, jlon
     mypaint_surface_begin_atomic(ms);
     for (int i = 0; i < n; i++) {
         const jfloat *e = ev + i * 6;
+        if (i == 0 && ink_surface_take_fresh(s)) {
+            /* the stroke starts here: a long pause with no pressure puts the brush exactly at
+               the first pen position (its smoothing would otherwise drag it from the corner) */
+            mypaint_brush_stroke_to(BRUSH(bh), ms, e[0], e[1], 0.f, e[3], e[4], 10.0, viewzoom, viewrotation, 0.f, TRUE);
+        }
         mypaint_brush_stroke_to(BRUSH(bh), ms, e[0], e[1], e[2], e[3], e[4], e[5] > 0 ? e[5] : 0.001,
                                 viewzoom, viewrotation, 0.f, TRUE);
     }

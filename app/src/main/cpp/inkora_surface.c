@@ -13,6 +13,7 @@ struct InkoraSurface {
     uint16_t *spare;   /* for tiles outside the canvas: painting there is thrown away */
     int ts, tw, th, width, height;
     uint8_t *src;      /* the layer's pixels while attached */
+    int fresh;         /* no pen position given since the last reset */
     int stride;
 };
 
@@ -72,7 +73,14 @@ InkoraSurface *ink_surface_new(int width, int height) {
 
 MyPaintSurface *ink_surface_interface(InkoraSurface *self) { return (MyPaintSurface *)self; }
 
+int ink_surface_take_fresh(InkoraSurface *s) {
+    int f = s->fresh;
+    s->fresh = 0;
+    return f;
+}
+
 void ink_surface_reset(InkoraSurface *s) {
+    s->fresh = 1;
     for (int i = 0; i < s->tw * s->th; i++) {
         free(s->tiles[i].px); free(s->tiles[i].orig);
         s->tiles[i].px = NULL; s->tiles[i].orig = NULL;

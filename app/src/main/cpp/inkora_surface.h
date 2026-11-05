@@ -27,4 +27,7 @@ void ink_surface_original(InkoraSurface *self, uint8_t *out, int out_stride, int
 
 /* forgets the tiles: the next stroke starts from the layer again */
 void ink_surface_reset(InkoraSurface *self);
+
+/* 1 the first time it is asked after a reset (the stroke's first pen position), then 0 */
+int ink_surface_take_fresh(InkoraSurface *self);
 #endif
