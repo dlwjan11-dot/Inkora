@@ -41,6 +41,7 @@ I'm a designer and artist. I looked for a long time for a drawing app on Android
 | Platform | File | Install |
 |---|---|---|
 | Android 10+ tablets and phones | [`Inkora-0.12.0.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.12.0.apk) (latest built APK) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
+| iPad and iPhone | the `ios/` folder (Xcode project, version 1.0) | Open `ios/Inkora.xcodeproj` on a Mac, pick your team, press **Run ▶**; see `ios/README.md` |
 | Android Studio | this repository (source is at **0.18.0**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too, with your finger. Inkora is not on Google Play yet.

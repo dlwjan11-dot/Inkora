@@ -1,0 +1,51 @@
+{
+ "version": 3,
+ "comment": "Inkora original brush",
+ "group": "",
+ "parent_brush_name": "",
+ "settings": {
+  "radius_logarithmic": {
+   "base_value": 2.772588722239781,
+   "inputs": {}
+  },
+  "opaque": {
+   "base_value": 0.22,
+   "inputs": {}
+  },
+  "opaque_multiply": {
+   "base_value": 0,
+   "inputs": {
+    "pressure": [
+     [
+      0,
+      0
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "hardness": {
+   "base_value": 0.5,
+   "inputs": {}
+  },
+  "dabs_per_actual_radius": {
+   "base_value": 12,
+   "inputs": {}
+  },
+  "offset_by_random": {
+   "base_value": 0.8,
+   "inputs": {}
+  },
+  "radius_by_random": {
+   "base_value": 0.4,
+   "inputs": {}
+  },
+  "opaque_linearize": {
+   "base_value": 0.0,
+   "inputs": {}
+  }
+ }
+}
