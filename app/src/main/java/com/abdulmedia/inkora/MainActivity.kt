@@ -360,10 +360,23 @@ class MainActivity : Activity(), CanvasView.Listener {
         editingBtn = barTab(Icon.WAND, "Editing") { if (!busy()) showToolsMenu(false) }
         bar.addView(editingBtn, LinearLayout.LayoutParams(-2, 40.dp).apply { leftMargin = 2.dp })
 
-        // state indicators (kept off the bar; the dock and the panels show them)
-        adjustBtn = IconView(this, Icon.WAND)
-        selectBtn = IconView(this, Icon.SELECT)
-        transformBtn = IconView(this, Icon.TRANSFORM)
+        // one tap to the editing tools painters use most: adjustments, selection, transform
+        adjustBtn = IconView(this, Icon.ADJUST).apply { contentDescription = "Adjustments" }
+        adjustBtn.setOnClickListener { if (adjustKind == null && !busy()) showToolsMenu(false, "adjust") }
+        selectBtn = IconView(this, Icon.SELECT).apply { contentDescription = "Selection" }
+        selectBtn.setOnClickListener {
+            if (cv.interaction == Interaction.SELECT) { cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll() }
+            else if (!busy()) enterSelect()
+        }
+        transformBtn = IconView(this, Icon.TRANSFORM).apply { contentDescription = "Transform" }
+        transformBtn.setOnClickListener {
+            if (cv.interaction == Interaction.TRANSFORM) leaveTransform(true)
+            else if (!busy()) runTool("transform", transformBtn)
+        }
+        bar.addView(adjustBtn, LinearLayout.LayoutParams(44.dp, 48.dp).apply { leftMargin = 2.dp })
+        bar.addView(selectBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
+        bar.addView(transformBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
+        bar.addView(barDivider())
         symmetryBtn = IconView(this, Icon.SYMMETRY)
         guideBtn = IconView(this, Icon.GRID)
 
@@ -1076,6 +1089,10 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun refreshAll() {
         val painting = cv.interaction == Interaction.PAINT
+        // a floating color window follows the color in hand
+        ((pinned["color"]?.getChildAt(1) as? ScrollView)?.getChildAt(0) as? ColorPanel)?.let { cp ->
+            if (cv.isDocReady()) cp.setColor(cv.color, false)
+        }
         brushBtn.active = painting && cv.tool == Tool.BRUSH
         smudgeBtn.active = painting && cv.tool == Tool.SMUDGE
         eraserBtn.active = painting && cv.tool == Tool.ERASER
@@ -1255,6 +1272,14 @@ class MainActivity : Activity(), CanvasView.Listener {
             })
             "navigator" -> NavigatorWindow(this, cv)
             "lighting" -> LightingOrbView(this)
+            "color" -> ScrollView(this).apply {
+                addView(ColorPanel(this@MainActivity, cv.color, recentColors, onWheel = null,
+                    artwork = { runCatching { Gallery.makeThumb(cv.doc) }.getOrNull() }) { c ->
+                    cv.color = c
+                    colorBtn.color = c
+                    if (cv.tool == Tool.ERASER) selectTool(Tool.BRUSH)
+                }.also { colorPanel = it })
+            }
             else -> { pinnedBrushTool = cv.tool; brushPanelFor(cv.tool, pinned = true) }
         }
         val title = when (kind) {
@@ -1262,6 +1287,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "reference" -> "Reference"
             "navigator" -> "Navigator"
             "lighting" -> "Lighting Orb"
+            "color" -> "Color"
             else -> "Brushes"
         }
         val fp = FloatingPanel(this, title, content,
@@ -1270,6 +1296,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val w = when (kind) {
             "reference", "navigator", "lighting" -> 240.dp
             "brushes" -> min(470.dp, root.width - 16.dp)
+            "color" -> 340.dp
             else -> 320.dp
         }
         val h = if (kind == "reference" || kind == "navigator" || kind == "lighting") FrameLayout.LayoutParams.WRAP_CONTENT else min(560.dp, root.height - 120.dp).coerceAtLeast(300.dp)
@@ -1286,6 +1313,41 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (gallery != null) fp.visibility = View.GONE
     }
 
+    /** the grab strip of the color popover: pull it to keep the colors open as a floating window */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun colorGrabber(): View {
+        val v = object : View(this) {
+            private val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { color = 0x88FFFFFF.toInt() }
+            override fun onDraw(c: Canvas) {
+                val w = 44.dp.toFloat(); val h = 5.dp.toFloat()
+                c.drawRoundRect(width / 2f - w / 2, height / 2f - h / 2, width / 2f + w / 2, height / 2f + h / 2, h / 2, h / 2, p)
+            }
+        }
+        v.background = Ui.rounded(Ui.PANEL, 18f)
+        v.contentDescription = "Drag to make the color panel a floating window"
+        var x0 = 0f; var y0 = 0f
+        v.setOnTouchListener { _, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { x0 = e.rawX; y0 = e.rawY }
+                MotionEvent.ACTION_MOVE -> if (hypot(e.rawX - x0, e.rawY - y0) > 28.dp) {
+                    // pulled away: becomes a floating window where the finger is
+                    popup?.dismiss()
+                    val loc = IntArray(2); root.getLocationOnScreen(loc)
+                    val px = (e.rawX - loc[0] - 170.dp).toInt().coerceIn(0, (root.width - 340.dp).coerceAtLeast(0))
+                    val py = (e.rawY - loc[1] - 14.dp).toInt().coerceIn(56.dp, (root.height - 200.dp).coerceAtLeast(56.dp))
+                    prefs.edit().putInt("pin_color_x", px).putInt("pin_color_y", py).apply()
+                    pinPanel("color")
+                    return@setOnTouchListener false
+                }
+                MotionEvent.ACTION_UP -> if (hypot(e.rawX - x0, e.rawY - y0) < 10.dp) {
+                    popup?.dismiss(); pinPanel("color")
+                }
+            }
+            true
+        }
+        return v
+    }
+
     private fun unpinView(kind: String) {
         pinned.remove(kind)?.let { root.removeView(it) }
     }
@@ -1297,7 +1359,7 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun restorePins() {
         root.post {
-            for (k in listOf("layers", "brushes", "navigator", "reference", "lighting"))
+            for (k in listOf("layers", "brushes", "navigator", "reference", "lighting", "color"))
                 if (prefs.getBoolean("pinned_$k", false)) pinPanel(k, quiet = true)
         }
     }
@@ -1609,7 +1671,11 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (recolor) cv.vectorEditor.recolorLive(c)
         }
         colorPanel = panel
-        showPanel(colorBtn, ScrollView(this).apply { addView(panel) }, 340, 820)
+        // a grab strip on top: drag it and the color panel becomes a floating window
+        val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        holder.addView(colorGrabber(), LinearLayout.LayoutParams(-1, 26.dp))
+        holder.addView(ScrollView(this).apply { addView(panel) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        showPanel(colorBtn, holder, 340, 846)
         if (recolor) popup?.setOnDismissListener { cv.vectorEditor.endStyle(); refreshAll() }
     }
 

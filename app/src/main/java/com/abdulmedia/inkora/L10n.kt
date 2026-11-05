@@ -1160,6 +1160,8 @@ object L10n {
         "Move points", "حرّك النقاط", "خاڵەکان بجووڵێنە",
         "Strokes near the ruler run along its edge; further away they run parallel to it. Drag its two ends to place it.", "الخطوط القريبة من المسطرة تمشي على حافتها، والبعيدة تمشي موازية لها. اسحب طرفيها لتضعها.", "هێڵە نزیکەکان بە لێواری ڕاستەکەدا دەڕۆن، دوورەکان تەریبی دەبن. دوو سەرەکەی ڕابکێشە بۆ دانانی.",
         "Strokes follow the ellipse, or a bigger or smaller copy of it. Point 1 is the center, point 2 the long axis, point 3 the width.", "الخطوط تتبع الإهليلج أو نسخة أكبر أو أصغر منه. النقطة 1 المركز، 2 المحور الطويل، 3 العرض.", "هێڵەکان شوێن هێلکەییەکە یان کۆپییەکی گەورەتر یان بچووکتری دەکەون. خاڵی 1 ناوەند، 2 تەوەرە درێژەکە، 3 پانی.",
+        "Selection", "التحديد", "هەڵبژاردن",
+        "Drag to make the color panel a floating window", "اسحب لتصير لوحة الألوان نافذة عائمة", "ڕابکێشە بۆ ئەوەی پانێڵی ڕەنگ ببێتە پەنجەرەیەکی سەربەست",
         "Color saved", "تم حفظ اللون", "ڕەنگ پاشەکەوت کرا"
     )
 }
