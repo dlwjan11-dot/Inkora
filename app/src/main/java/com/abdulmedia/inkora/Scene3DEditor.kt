@@ -58,7 +58,7 @@ class Scene3DEditor(
     private val hint = Ui.text(context, "", 12.5f, Ui.TEXT_DIM)
 
     init {
-        setBackgroundColor(0xFF19191D.toInt())
+        setBackgroundColor(0xFF18191E.toInt())
         isClickable = true
         val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
 
@@ -77,7 +77,7 @@ class Scene3DEditor(
         left.addView(preview, LinearLayout.LayoutParams(-1, 0, 1f))
         row.addView(left, LinearLayout.LayoutParams(0, -1, 1f))
 
-        val scroll = ScrollView(context).apply { setBackgroundColor(0xFF1E1E23.toInt()) }
+        val scroll = ScrollView(context).apply { setBackgroundColor(0xFF1F2026.toInt()) }
         scroll.addView(panel)
         row.addView(scroll, LinearLayout.LayoutParams(min(380.dp, (resources.displayMetrics.widthPixels * 0.42f).toInt()), -1))
         addView(row, LayoutParams(-1, -1))
@@ -370,7 +370,7 @@ class Scene3DEditor(
         }
 
         override fun onDraw(canvas: Canvas) {
-            canvas.drawColor(0xFF2B2B30.toInt())
+            canvas.drawColor(0xFF2A2B31.toInt())
             if (rect.width() < 2) return
             paint.alpha = 255
             backdrop?.let { canvas.drawBitmap(it, null, rect, paint) } ?: run {

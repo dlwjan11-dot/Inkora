@@ -281,7 +281,7 @@ class BrushPanel(
             }
             val engine = StrokeEngine()
             engine.brush = brush
-            engine.color = 0xFFF2F2F5.toInt()
+            engine.color = 0xFFE8E9ED.toInt()
             val mask = if (brush.dualTip() != null) Bitmap.createBitmap(w, h, Bitmap.Config.ALPHA_8) else null
             engine.maskTarget = mask
             val pts = ArrayList<InputPoint>()

@@ -73,7 +73,7 @@ class BrushStudioView(
     private val pad = DrawingPad(context, brush) { host.padColor }
 
     init {
-        setBackgroundColor(0xFF19191D.toInt())
+        setBackgroundColor(0xFF18191E.toInt())
         isClickable = true
         val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
 
@@ -203,7 +203,7 @@ class BrushStudioView(
         if (title != null) body.addView(Ui.text(context, title, 13f, Ui.TEXT_DIM, true).apply { setPadding(6.dp, 10.dp, 0, 6.dp) })
         val c = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(0xFF26262C.toInt(), 16f)
+            background = Ui.rounded(0xFF27282F.toInt(), 16f)
             setPadding(14.dp, 6.dp, 14.dp, 6.dp)
         }
         card = c
@@ -300,7 +300,7 @@ class BrushStudioView(
         val img = ImageView(context).apply {
             setImageBitmap(tipPreview(brush.tip()))
             scaleType = ImageView.ScaleType.FIT_CENTER
-            background = Ui.rounded(0xFF111114.toInt(), 14f)
+            background = Ui.rounded(0xFF101115.toInt(), 14f)
             setPadding(10.dp, 10.dp, 10.dp, 10.dp)
         }
         (card ?: body).addView(img, LinearLayout.LayoutParams(-1, 150.dp).apply { bottomMargin = 10.dp })
@@ -330,7 +330,7 @@ class BrushStudioView(
             (card ?: body).addView(ImageView(context).apply {
                 setImageBitmap(tipPreview(g))
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                background = Ui.rounded(0xFF111114.toInt(), 14f)
+                background = Ui.rounded(0xFF101115.toInt(), 14f)
                 clipToOutline = true
             }, LinearLayout.LayoutParams(-1, 110.dp).apply { bottomMargin = 10.dp })
         }
@@ -471,7 +471,7 @@ class BrushStudioView(
     /** an alpha image shown light on dark */
     private fun tipPreview(alpha: Bitmap): Bitmap {
         val out = Bitmap.createBitmap(alpha.width, alpha.height, Bitmap.Config.ARGB_8888)
-        Canvas(out).drawBitmap(alpha, 0f, 0f, Paint().apply { color = 0xFFF2F2F5.toInt() })
+        Canvas(out).drawBitmap(alpha, 0f, 0f, Paint().apply { color = 0xFFE8E9ED.toInt() })
         return out
     }
 
@@ -534,7 +534,7 @@ class DrawingPad(context: Context, private val brush: Brush, private val colorOf
         val c = colorOf()
         // white paint wouldn't show on the paper
         val lum = (0.299 * ((c shr 16) and 0xFF) + 0.587 * ((c shr 8) and 0xFF) + 0.114 * (c and 0xFF)) / 255
-        return if (lum > 0.9) 0xFF1E1E24.toInt() else c or 0xFF000000.toInt()
+        return if (lum > 0.9) 0xFF1F2026.toInt() else c or 0xFF000000.toInt()
     }
 
     fun clear() {

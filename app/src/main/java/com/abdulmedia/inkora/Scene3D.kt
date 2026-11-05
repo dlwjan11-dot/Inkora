@@ -800,7 +800,7 @@ class Renderer3D(private val scene: Scene3D, val width: Int, val height: Int) {
             for ((k, p) in parts.withIndex()) {
                 val joint = ids[k]
                 var color = o.color
-                if (oi == highlightObject && (highlightJoint < 0 || joint == highlightJoint)) color = mix(color, 0xFF4C8DFF.toInt(), 0.45f)
+                if (oi == highlightObject && (highlightJoint < 0 || joint == highlightJoint)) color = mix(color, 0xFF6E9FF5.toInt(), 0.45f)
                 objs.add(p to (color to ((oi + 1) * 256 + (joint + 1).coerceIn(0, 255))))
             }
         }

@@ -269,7 +269,7 @@ class GestureControlsView(
     private val heading = Ui.text(context, "", 20f, bold = true)
 
     init {
-        setBackgroundColor(0xFF1B1B1F.toInt())
+        setBackgroundColor(0xFF1A1B20.toInt())
         isClickable = true // nothing reaches the canvas underneath
         val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
 
@@ -327,11 +327,11 @@ class GestureControlsView(
         body.removeAllViews()
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(0xFF26262C.toInt(), 22f)
+            background = Ui.rounded(0xFF27282F.toInt(), 22f)
         }
         val opts = GestureSettings.OPTIONS[page].orEmpty()
         opts.forEachIndexed { i, o ->
-            if (i > 0) card.addView(View(context).apply { setBackgroundColor(0xFF1B1B1F.toInt()) }, LinearLayout.LayoutParams(-1, 1.dp))
+            if (i > 0) card.addView(View(context).apply { setBackgroundColor(0xFF1A1B20.toInt()) }, LinearLayout.LayoutParams(-1, 1.dp))
             val on = settings.isOn(page, o.key)
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL

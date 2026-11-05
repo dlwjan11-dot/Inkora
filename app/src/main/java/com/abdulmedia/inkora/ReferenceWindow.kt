@@ -63,7 +63,7 @@ class ReferenceWindow(
         private var lastY = 0f
 
         init {
-            background = Ui.rounded(0xFF141418.toInt(), 12f)
+            background = Ui.rounded(0xFF14151A.toInt(), 12f)
             textPaint.textSize = 12f * resources.displayMetrics.density
         }
 

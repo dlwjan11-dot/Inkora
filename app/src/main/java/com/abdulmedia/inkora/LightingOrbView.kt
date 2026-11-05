@@ -50,7 +50,7 @@ class LightingOrbView(context: Context) : LinearLayout(context) {
         }
 
         init {
-            background = Ui.rounded(0xFF141418.toInt(), 12f)
+            background = Ui.rounded(0xFF14151A.toInt(), 12f)
         }
 
         fun setLight(lx: Float, ly: Float) {
@@ -69,7 +69,7 @@ class LightingOrbView(context: Context) : LinearLayout(context) {
 
             val shader = RadialGradient(
                 highlightX, highlightY, r * 1.3f,
-                intArrayOf(0xFFFFFFFF.toInt(), 0xFF888890.toInt(), 0xFF222228.toInt(), 0xFF0D0D10.toInt()),
+                intArrayOf(0xFFFFFFFF.toInt(), 0xFF888890.toInt(), 0xFF22232A.toInt(), 0xFF0D0D10.toInt()),
                 floatArrayOf(0f, 0.45f, 0.82f, 1f),
                 Shader.TileMode.CLAMP
             )

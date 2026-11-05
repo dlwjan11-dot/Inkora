@@ -51,7 +51,7 @@ class GuideSettings {
         set(v) { field = v; version++ }
     var thicknessDp = 1.2f
     var opacity = 0.55f
-    var color = 0xFF4C8DFF.toInt()
+    var color = 0xFF6E9FF5.toInt()
     var assisted = false
 
     /** x0,y0 … x4,y4 : VP0 = 1-point, VP1+VP2 = 2-point, VP1+VP2+VP3 = 3-point, VP0+VP4 = fisheye (center, edge) */

@@ -122,7 +122,7 @@ class TipsOverlay(context: Context, private val onDone: (View) -> Unit) : FrameL
                     icons.forEachIndexed { i, ic ->
                         val a = Math.toRadians(270.0 + (i - 2) * 26.0)
                         val x = cx + cos(a).toFloat() * 70f.dp; val y = cy + sin(a).toFloat() * 70f.dp
-                        p.color = if (i == 0) Ui.PANEL_ROW_ACTIVE else 0xFF2A2A31.toInt()
+                        p.color = if (i == 0) Ui.PANEL_ROW_ACTIVE else 0xFF2B2C33.toInt()
                         canvas.drawCircle(x, y, 13f.dp, p)
                         IconPainter.draw(canvas, ic, x, y, 14f.dp, if (i == 0) Ui.ACCENT else Ui.TEXT)
                     }
@@ -145,7 +145,7 @@ class TipsOverlay(context: Context, private val onDone: (View) -> Unit) : FrameL
                         IconPainter.draw(canvas, ic, left + w / 2, cy - 58f.dp + i * 29f.dp, 20f.dp, if (i == 2) Ui.ACCENT else Ui.TEXT)
                     }
                     // a card with a star
-                    p.color = 0xFF25252C.toInt()
+                    p.color = 0xFF27282F.toInt()
                     val cardR = RectF(cx - 130f.dp, cy - 50f.dp, cx + 20f.dp, cy + 50f.dp)
                     canvas.drawRoundRect(cardR, 14f.dp, 14f.dp, p)
                     IconPainter.draw(canvas, Icon.FILL, cardR.centerX(), cardR.centerY(), 40f.dp, Ui.TEXT)

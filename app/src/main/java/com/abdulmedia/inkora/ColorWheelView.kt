@@ -225,7 +225,7 @@ class ColorWheelView(context: Context) : View(context) {
             val (x, y) = hubButton(i)
             paint.color = if (i == 2) Ui.ACCENT else 0xFFE4E4EA.toInt()
             canvas.drawCircle(x, y, 16f.dp, paint)
-            text.color = if (i == 2) Color.WHITE else 0xFF222228.toInt()
+            text.color = if (i == 2) Color.WHITE else 0xFF22232A.toInt()
             text.textSize = if (i == 1) 9.5f.dp else 15f.dp
             canvas.drawText(labels[i], x, y + (if (i == 1) 3.5f else 5f).dp, text)
         }

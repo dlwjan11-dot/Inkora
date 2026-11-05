@@ -292,7 +292,7 @@ class QuickMenuView(context: Context) : View(context) {
         canvas.drawColor(0x26000000)
         // base plate
         canvas.drawCircle(cx, cy, rBase, shadow)
-        line.color = 0x1FFFFFFF; line.strokeWidth = 1f.dp
+        line.color = 0x16FFFFFF; line.strokeWidth = 1f.dp
         canvas.drawCircle(cx, cy, rBase, line)
         // a quiet ring separating the colors from the tools
         paint.color = 0xFF0F0F12.toInt()
@@ -367,7 +367,7 @@ class QuickMenuView(context: Context) : View(context) {
         paint.color = when {
             hot -> Ui.ACCENT
             b.item.active -> Ui.PANEL_ROW_ACTIVE
-            else -> 0xFF2A2A31.toInt()
+            else -> 0xFF2B2C33.toInt()
         }
         canvas.drawCircle(b.x, b.y, r, paint)
         if (b.item.active && !hot) {

@@ -215,7 +215,7 @@ class ToolsPanel(
             setOnClickListener { onClick() }
         }
         val top = FrameLayout(context).apply {
-            background = Ui.rounded(if (active) 0x224C8DFF else 0xFF1C1C21.toInt(), 10f)
+            background = Ui.rounded(if (active) 0x226E9FF5 else 0xFF1C1D22.toInt(), 10f)
         }
         if (art != null) top.addView(art, FrameLayout.LayoutParams(-1, -1))
         else if (icon != null) top.addView(IconView(context, icon).apply {
@@ -403,7 +403,7 @@ class ToolsPanel(
         if (host.hasSelection) content.addView(Ui.text(context, "Only the selected area will change.", 12f, Ui.ACCENT).apply { setPadding(4.dp, 0, 0, 8.dp) })
         val previews = ArrayList<Pair<AdjustKind, ImageView>>()
         grid(kinds.map { k ->
-            val img = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true; outlineProvider = android.view.ViewOutlineProvider.BACKGROUND; background = Ui.rounded(0xFF1C1C21.toInt(), 10f) }
+            val img = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true; outlineProvider = android.view.ViewOutlineProvider.BACKGROUND; background = Ui.rounded(0xFF1C1D22.toInt(), 10f) }
             previews.add(k to img)
             val art = FrameLayout(context)
             art.addView(img, FrameLayout.LayoutParams(-1, -1))

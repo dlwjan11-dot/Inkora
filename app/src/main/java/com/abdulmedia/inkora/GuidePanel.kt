@@ -129,7 +129,7 @@ class GuidePanel(
 
     companion object {
         val GUIDE_COLORS = intArrayOf(
-            0xFF4C8DFF.toInt(), 0xFF00C2A8.toInt(), 0xFFFF5A7A.toInt(),
+            0xFF6E9FF5.toInt(), 0xFF00C2A8.toInt(), 0xFFFF5A7A.toInt(),
             0xFFFFB020.toInt(), 0xFF000000.toInt(), 0xFFFFFFFF.toInt()
         )
     }

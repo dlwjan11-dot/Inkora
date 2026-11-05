@@ -59,7 +59,7 @@ class VectorEditor(private val host: Host) {
     // ---- style for new shapes ----
     var fillKind = FillKind.SOLID
     var strokeOn = false
-    var strokeColor = 0xFF1E1E24.toInt()
+    var strokeColor = 0xFF1F2026.toInt()
     var strokeWidth = 6f
     var cornerRadius = 0f
     var polygonSides = 6
@@ -816,7 +816,7 @@ class VectorEditor(private val host: Host) {
     }
 
     private fun drawNodes(c: Canvas, showAllHandles: Boolean) {
-        thin.color = 0xCC4C8DFF.toInt()
+        thin.color = 0xCC6E9FF5.toInt()
         thin.strokeWidth = 1f * d
         for (s in selected) for (con in s.contours) for (n in con.nodes) {
             val p = host.toScreen(n.x, n.y)
@@ -837,7 +837,7 @@ class VectorEditor(private val host: Host) {
             c.drawRect(p.x - r, p.y - r, p.x + r, p.y + r, handle)
             thin.color = Ui.ACCENT
             c.drawRect(p.x - r, p.y - r, p.x + r, p.y + r, thin)
-            thin.color = 0xCC4C8DFF.toInt()
+            thin.color = 0xCC6E9FF5.toInt()
         }
     }
 

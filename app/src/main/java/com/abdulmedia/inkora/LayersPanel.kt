@@ -317,7 +317,7 @@ class LayersPanel(
         val box = LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(10.dp, 4.dp, 10.dp, 10.dp)
-            background = Ui.rounded(0xFF24242A.toInt(), 10f)
+            background = Ui.rounded(0xFF25262D.toInt(), 10f)
         }
         box.addView(Ui.sliderRow(context, "Opacity", g.opacity, { "${(it * 100).roundToInt()}%" }) {
             g.opacity = it
@@ -380,7 +380,7 @@ class LayersPanel(
             }
             val b = Ui.button(context, label) { act() }
             b.textSize = 12.5f
-            if (label == "Delete") b.setTextColor(0xFFFF6B6B.toInt())
+            if (label == "Delete") b.setTextColor(0xFFF07178.toInt())
             row!!.addView(b, LayoutParams(0, -2, 1f).apply { if (i % perRow != 0) leftMargin = 6.dp })
         }
     }
@@ -564,7 +564,7 @@ class LayersPanel(
         val box = LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(10.dp, 4.dp, 10.dp, 10.dp)
-            background = Ui.rounded(0xFF24242A.toInt(), 10f)
+            background = Ui.rounded(0xFF25262D.toInt(), 10f)
         }
         box.addView(Ui.sliderRow(context, "Opacity", layer.opacity, { "${(it * 100).roundToInt()}%" }) {
             layer.opacity = it

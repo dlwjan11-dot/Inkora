@@ -64,7 +64,7 @@ class CanvasView(context: Context) : View(context) {
     var tool = Tool.BRUSH
     var paintBrush = Brush(Brushes.presets[1])
     var eraserBrush = Brush(Brushes.presets[9]).apply { size = 60f }
-    var color = 0xFF1E1E24.toInt()
+    var color = 0xFF1F2026.toInt()
     var symmetry = Symmetry.OFF
         set(v) { field = v; invalidate() }
     var quickShapeEnabled = true
@@ -161,7 +161,7 @@ class CanvasView(context: Context) : View(context) {
         shader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
     }
     private val guidePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xCC4C8DFF.toInt()
+        color = 0xCC6E9FF5.toInt()
         style = Paint.Style.STROKE
     }
     private val cursorPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -489,7 +489,7 @@ class CanvasView(context: Context) : View(context) {
     // =========================================================
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(0xFF2B2B30.toInt())
+        canvas.drawColor(0xFF2A2B31.toInt())
         if (!isDocReady()) return
         val z = zoom()
         canvas.save()

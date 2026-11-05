@@ -48,7 +48,7 @@ class GalleryView(
     private var entries: List<Gallery.Entry> = emptyList()
 
     init {
-        setBackgroundColor(0xFF111114.toInt())
+        setBackgroundColor(0xFF101115.toInt())
         isClickable = true // block touches to the canvas below
 
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }

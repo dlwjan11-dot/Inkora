@@ -120,7 +120,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         PressureCurve.load(prefs)
         Symmetry.segments = prefs.getInt("kaleidoSegments", 6)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.setBackgroundDrawable(ColorDrawable(0xFF2B2B30.toInt()))
+        window.setBackgroundDrawable(ColorDrawable(0xFF2A2B31.toInt()))
         buildUi()
         goFullscreen()
 
@@ -597,7 +597,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         setContentView(root)
     }
 
-    private fun barDivider() = View(this).apply { setBackgroundColor(0x1FFFFFFF) }.also {
+    private fun barDivider() = View(this).apply { setBackgroundColor(0x16FFFFFF) }.also {
         it.layoutParams = LinearLayout.LayoutParams(1.dp, 24.dp).apply { leftMargin = 6.dp; rightMargin = 4.dp }
     }
 
@@ -2733,7 +2733,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(4.dp, 2.dp, 4.dp, 2.dp)
-            if (active) background = Ui.rounded(0x334C8DFF, 10f)
+            if (active) background = Ui.rounded(0x2E6E9FF5, 10f)
             setOnClickListener { onClick() }
         }
         val iv = IconView(this, icon).apply { this.active = active; isClickable = false }
@@ -2799,7 +2799,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             acts.addBar(barButton("Flip ↔") { ed.flip(true) })
             acts.addBar(barButton("Flip ↕") { ed.flip(false) })
             acts.addBar(barButton("Duplicate") { ed.duplicateSelected() })
-            acts.addBar(barButton("Delete") { ed.deleteSelected() }.apply { setTextColor(0xFFFF6B6B.toInt()) })
+            acts.addBar(barButton("Delete") { ed.deleteSelected() }.apply { setTextColor(0xFFF07178.toInt()) })
             acts.addBar(barButton("Deselect") { ed.deselect() })
         }
         col.addView(android.widget.HorizontalScrollView(this).apply { addView(acts); isHorizontalScrollBarEnabled = false },

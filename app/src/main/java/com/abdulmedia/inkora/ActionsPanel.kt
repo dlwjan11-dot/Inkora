@@ -73,7 +73,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
 
     init {
         orientation = VERTICAL
-        background = Ui.rounded(0xF7202025.toInt(), 22f, 0x1AFFFFFF, 1)
+        background = Ui.rounded(0xF51F2026.toInt(), 22f, 0x1AFFFFFF, 1)
         setPadding(14.dp, 16.dp, 14.dp, 12.dp)
         isClickable = true
         addView(Ui.text(context, "Actions", 24f, bold = true).apply { setPadding(10.dp, 0, 0, 10.dp) })
@@ -123,7 +123,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     private fun group(vararg rows: View) {
         val card = LinearLayout(context).apply {
             orientation = VERTICAL
-            background = Ui.rounded(0xFF2A2A30.toInt(), 16f)
+            background = Ui.rounded(0xFF2B2C33.toInt(), 16f)
         }
         rows.forEachIndexed { i, r ->
             if (i > 0) card.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) }, LayoutParams(-1, 1).apply { marginStart = 16.dp })
@@ -169,7 +169,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         r.addView(Ui.text(context, label, 16f))
         val seg = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            background = Ui.rounded(0xFF1E1E23.toInt(), 12f)
+            background = Ui.rounded(0xFF1F2026.toInt(), 12f)
             setPadding(3.dp, 3.dp, 3.dp, 3.dp)
         }
         for ((key, text) in options) {
@@ -370,7 +370,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         )
         val card = LinearLayout(context).apply {
             orientation = VERTICAL
-            background = Ui.rounded(0xFF2A2A30.toInt(), 16f)
+            background = Ui.rounded(0xFF2B2C33.toInt(), 16f)
             setPadding(16.dp, 12.dp, 16.dp, 12.dp)
         }
         card.addView(Ui.text(context, "Gestures", 16f, bold = true).apply { setPadding(0, 0, 0, 6.dp) })
