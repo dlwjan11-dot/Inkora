@@ -6,6 +6,8 @@ plugins {
 android {
     namespace = "com.abdulmedia.inkora"
     compileSdk = 35
+    // the NDK and CMake installed from Android Studio's SDK Manager
+    ndkVersion = "30.0.16248370"
 
     defaultConfig {
         applicationId = "com.abdulmedia.inkora"
@@ -25,7 +27,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+            version = "4.1.2"
         }
     }
 
