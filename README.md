@@ -41,10 +41,22 @@ I'm a designer and artist. I looked for a long time for a drawing app on Android
 | Platform | File | Install |
 |---|---|---|
 | Android 10+ tablets and phones | [`Inkora-0.12.0.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.12.0.apk) (latest built APK) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
-| Android Studio | this repository (source is at **0.14.0**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
+| Android Studio | this repository (source is at **0.18.0**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too, with your finger. Inkora is not on Google Play yet.
 SHA-256 of the 0.12.0 APK: `68e729a9fbffeb3126482818673443d5bab00fcde8800eb4379ee7d905d87abe`
+
+## New in 0.18: living paint
+
+Inkora now has a second brush engine: **MyPaint** (the open-source libmypaint, built into the app as native code). Brushes in the new **Living Paint** set paint with it, and the paint stays alive while you draw:
+
+- colors **mix like real pigment** (blue into yellow turns green, not grey), and a brush **picks up and carries** the paint it passes over
+- **Wet Blender** pushes paint around without adding any
+- strokes **swell with pressure and thin out when you move fast**, charcoal and pastel **break up** on the paper
+- 12 brushes, all designed for Inkora: Rain Wash, Creamy Gouache, Loaded Oil, Wet Blender, Living Ink, Raw Charcoal, Chalk Pastel, Soft Graphite, Dry Bristle, Mist Spray, Felt Marker, Flick Spatter
+- they work with undo, symmetry (also kaleidoscope), selections, alpha lock, layer masks and the eraser. Change size and opacity on the side bar.
+
+The brush files are in `app/src/main/assets/living/`; `tools/living-brushes/` has the script that makes them and a test program that paints a sample sheet with each one.
 
 ## New in 0.14: masks, liquify, magic wand, canvas size, fisheye
 
@@ -152,7 +164,7 @@ Every layer is one full picture the size of the canvas, kept in the tablet's mem
 ## Feature status
 
 **Painting**
-- [x] 207 brushes in 23 sets, pressure and tilt, streamline, paper grain, dual brush, wet mix, color dynamics
+- [x] 219 brushes in 24 sets, including 12 living brushes on the MyPaint engine (real pigment mixing), pressure and tilt, streamline, paper grain, dual brush, wet mix, color dynamics
 - [x] Brush Studio with a live drawing pad; make, rename and export your own brushes
 - [x] Procreate `.brush` / `.brushset` import and export, zip files, brushes from a link
 - [x] Smudge, eraser, Fill and ColorDrop with tolerance, eyedropper with a loupe
@@ -204,6 +216,8 @@ Every layer is one full picture the size of the canvas, kept in the tablet's mem
 
 Open the folder in **Android Studio**, let Gradle sync, then press **Run ▶** with your tablet connected (Developer options → USB debugging on). Android Studio may update the Gradle and plugin versions for you; that is fine.
 
+Since 0.18 Inkora has a native part (the brush engine, in C). Android Studio needs the **NDK** and **CMake** for it: *Tools › SDK Manager › SDK Tools*, tick **NDK (Side by side)** and **CMake**, press **Apply**. Android Studio usually offers to install them by itself on the first sync.
+
 ## Project layout
 
 ```
@@ -220,9 +234,12 @@ app/src/main/java/com/abdulmedia/inkora/
   ToolDock.kt        customizable toolbar              ToolsPanel.kt     Creative / Editing panel
   ProjectIO.kt       .inkora files                     PsdIO.kt          Photoshop files
   L10n.kt            English, Arabic, Kurdish          TimeLapse.kt      recording and video
+  MyPaintNative.kt   living brushes (MyPaint engine)
+app/src/main/cpp/    the MyPaint engine (libmypaint), json-c, and Inkora's bridge to them
+app/src/main/assets/living/   the living brushes' settings
 ```
 
-Credits: the gesture-controls pages and the keyboard-shortcut list follow [ProCraft](https://github.com/artcraft-android/procraft) by artcraft-android (MIT OR Apache-2.0), rewritten for Inkora's own engine.
+Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmypaint) by Martin Renold and the MyPaint contributors (ISC license), which uses [json-c](https://github.com/json-c/json-c) (MIT license); their license texts are in the app under Actions › Help › Open-source licenses. The gesture-controls pages and the keyboard-shortcut list follow [ProCraft](https://github.com/artcraft-android/procraft) by artcraft-android (MIT OR Apache-2.0), rewritten for Inkora's own engine.
 
 ---
 
@@ -238,6 +255,12 @@ Credits: the gesture-controls pages and the keyboard-shortcut list follow [ProCr
 
 ### من فنان، للفنانين
 أنا مصمم وفنان. بحثت طويلاً عن تطبيق رسم على أندرويد يشبه Procreate ولم أجد واحداً جيداً، فصنعت Inkora. جرّبت تطبيقات الرسم الموجودة وأخذت أفضل ما في كل واحد منها، وكل شيء في Inkora في مكانه لسبب.
+
+### الجديد في 0.18: ألوان حيّة
+- محرك فراشي تاني جوّا Inkora: **MyPaint** (مفتوح المصدر). فراشي مجموعة **ألوان حيّة** بترسم فيه، واللون بيضل حي وانت عم ترسم.
+- الألوان **بتختلط متل الصبغة الحقيقية** (أزرق مع أصفر بيطلع أخضر)، والفرشاة **بتسحب اللون** اللي بتمرق عليه وبتحمله معها.
+- 12 فرشاة مصممة لـ Inkora: ألوان مائية، غواش، زيت، دمج رطب، حبر، فحم، باستيل، رصاص، فرشاة ناشفة، رذاذ، ماركر، ورشّ.
+- بتشتغل مع التراجع، التناظر، التحديد، قفل الشفافية، قناع الطبقة والممحاة.
 
 ### الجديد في 0.14
 - **قناع الطبقة**: امسح على القناع لتخفي أجزاء، وارسم لترجعها. وفيه عكس القناع وتطبيقه.
@@ -306,6 +329,12 @@ Credits: the gesture-controls pages and the keyboard-shortcut list follow [ProCr
 
 ### لە هونەرمەندێکەوە، بۆ هونەرمەندان
 من دیزاینەر و هونەرمەندم. ماوەیەکی زۆر بەدوای ئەپێکی وێنەکێشاندا گەڕام لەسەر ئەندرۆید کە وەک Procreate بێت و هیچ یەکێکی باشم نەدۆزییەوە، بۆیە Inkoraم دروست کرد. ئەپەکانی وێنەکێشانم تاقی کردەوە و باشترینی هەر یەکێکیانم وەرگرت، و هەموو شتێک لە Inkora بە هۆیەکەوە لە شوێنی خۆیدایە.
+
+### نوێ لە 0.18: ڕەنگی زیندوو
+- بزوێنەرێکی دووەمی فڵچە لە ناو Inkora: **MyPaint** (سەرچاوە کراوە). فڵچەکانی کۆمەڵەی **ڕەنگی زیندوو** پێی دەکێشن و ڕەنگەکە لە کاتی کێشاندا زیندوو دەمێنێتەوە.
+- ڕەنگەکان **وەک بۆیەی ڕاستەقینە تێکەڵ دەبن** (شین و زەرد دەبنە سەوز)، و فڵچە ئەو ڕەنگەی پیایدا تێدەپەڕێت **هەڵیدەگرێت و لەگەڵ خۆی دەیبات**.
+- 12 فڵچە کە بۆ Inkora دیزاین کراون: ئاوڕەنگ، گواش، ڕۆن، تێکەڵکەری تەڕ، مەرەکەب، خەڵووز، پاستێل، قەڵەمی ڕەساس، فڵچەی وشک، پرژێن، مارکەر و پرژاندن.
+- لەگەڵ گەڕانەوە، هاوتایی، هەڵبژاردن، قفڵی ڕوونی، ماسکی چین و سڕەرەوە کار دەکەن.
 
 ### نوێ لە 0.14
 - **ماسکی چین**: لەسەر ماسکەکە بسڕەوە بۆ شاردنەوە، بکێشە بۆ گەڕاندنەوە.

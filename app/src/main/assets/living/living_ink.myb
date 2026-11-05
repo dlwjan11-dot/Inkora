@@ -1,0 +1,92 @@
+{
+ "version": 3,
+ "comment": "Inkora original brush",
+ "group": "",
+ "parent_brush_name": "",
+ "settings": {
+  "radius_logarithmic": {
+   "base_value": 1.4350845252893227,
+   "inputs": {
+    "pressure": [
+     [
+      0,
+      -1.1
+     ],
+     [
+      0.5,
+      0
+     ],
+     [
+      1,
+      0.45
+     ]
+    ],
+    "speed1": [
+     [
+      0,
+      0
+     ],
+     [
+      4,
+      -0.55
+     ]
+    ]
+   }
+  },
+  "opaque": {
+   "base_value": 1.0,
+   "inputs": {}
+  },
+  "opaque_multiply": {
+   "base_value": 0,
+   "inputs": {
+    "pressure": [
+     [
+      0,
+      0.6
+     ],
+     [
+      0.15,
+      1
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "hardness": {
+   "base_value": 0.96,
+   "inputs": {}
+  },
+  "softness": {
+   "base_value": 0.05,
+   "inputs": {}
+  },
+  "anti_aliasing": {
+   "base_value": 1.2,
+   "inputs": {}
+  },
+  "dabs_per_actual_radius": {
+   "base_value": 4,
+   "inputs": {}
+  },
+  "slow_tracking": {
+   "base_value": 1.2,
+   "inputs": {}
+  },
+  "speed1_slowness": {
+   "base_value": 0.05,
+   "inputs": {}
+  },
+  "speed1_gamma": {
+   "base_value": 3.5,
+   "inputs": {}
+  },
+  "opaque_linearize": {
+   "base_value": 0.0,
+   "inputs": {}
+  }
+ }
+}

@@ -1,0 +1,109 @@
+{
+ "version": 3,
+ "comment": "Inkora original brush",
+ "group": "",
+ "parent_brush_name": "",
+ "settings": {
+  "radius_logarithmic": {
+   "base_value": 2.772588722239781,
+   "inputs": {
+    "pressure": [
+     [
+      0,
+      -0.3
+     ],
+     [
+      1,
+      0.15
+     ]
+    ]
+   }
+  },
+  "opaque": {
+   "base_value": 1.0,
+   "inputs": {}
+  },
+  "opaque_multiply": {
+   "base_value": 0,
+   "inputs": {
+    "pressure": [
+     [
+      0,
+      0.4
+     ],
+     [
+      0.3,
+      0.95
+     ],
+     [
+      1,
+      1
+     ]
+    ]
+   }
+  },
+  "hardness": {
+   "base_value": 0.75,
+   "inputs": {}
+  },
+  "softness": {
+   "base_value": 0.2,
+   "inputs": {}
+  },
+  "dabs_per_actual_radius": {
+   "base_value": 6,
+   "inputs": {}
+  },
+  "smudge": {
+   "base_value": 0.62,
+   "inputs": {
+    "pressure": [
+     [
+      0,
+      0.15
+     ],
+     [
+      1,
+      -0.3
+     ]
+    ]
+   }
+  },
+  "smudge_length": {
+   "base_value": 0.9,
+   "inputs": {}
+  },
+  "smudge_radius_log": {
+   "base_value": 0.15,
+   "inputs": {}
+  },
+  "paint_mode": {
+   "base_value": 1.0,
+   "inputs": {}
+  },
+  "elliptical_dab_ratio": {
+   "base_value": 2.2,
+   "inputs": {}
+  },
+  "elliptical_dab_angle": {
+   "base_value": 90,
+   "inputs": {}
+  },
+  "direction_filter": {
+   "base_value": 2.5,
+   "inputs": {}
+  },
+  "offset_by_random": {
+   "base_value": 0.04,
+   "inputs": {}
+  },
+  "radius_by_random": {
+   "base_value": 0.03,
+   "inputs": {}
+  },
+  "opaque_linearize": {
+   "base_value": 0.0,
+   "inputs": {}
+  }
+ }
+}

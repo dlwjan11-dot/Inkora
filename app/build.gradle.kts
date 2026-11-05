@@ -11,8 +11,22 @@ android {
         applicationId = "com.abdulmedia.inkora"
         minSdk = 29
         targetSdk = 35
-        versionCode = 29
-        versionName = "0.17.0"
+        versionCode = 30
+        versionName = "0.18.0"
+
+        // the living brushes' engine (MyPaint) is native code, built for tablets/phones (arm64)
+        // and the Android Studio emulator (x86_64)
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    // MyPaint brush engine + json-c, built with CMake (Android Studio installs NDK and CMake)
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     buildTypes {
@@ -33,4 +47,5 @@ android {
     }
 }
 
-// No external libraries: Inkora uses only the Android framework + Kotlin.
+// No external libraries from Maven: Inkora uses only the Android framework + Kotlin, plus the
+// open-source MyPaint brush engine (libmypaint, ISC) and json-c (MIT), built from src/main/cpp.

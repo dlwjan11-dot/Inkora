@@ -214,6 +214,11 @@ class CanvasView(context: Context) : View(context) {
 
     // ---- smudge ----
     private var smudging = false
+    /** this stroke is painted by the living-brush engine (MyPaint), straight onto the layer */
+    private var livingStroke = false
+    private val living = LivingPainter()
+    /** the time (ms) of the pen position being added */
+    private var pointTime = 0L
     private var smudger: Smudger? = null
     private var smudgeBefore: Bitmap? = null
 
@@ -509,7 +514,7 @@ class CanvasView(context: Context) : View(context) {
         val sb = strokeBitmap
         val t = transform
         val greySave = if (greyView) canvas.saveLayer(doc.bounds, greyPaint) else -1
-        if (strokeActive && !smudging && sb != null) {
+        if (strokeActive && !smudging && !livingStroke && sb != null) {
             overlayPaint.alpha = (engine.brush.opacity * 255).toInt().coerceIn(0, 255)
             overlayPaint.blendMode = strokeBlend()
             overlayPaint.isFilterBitmap = filter
@@ -1038,10 +1043,13 @@ class CanvasView(context: Context) : View(context) {
                 val idx = e.findPointerIndex(drawPointerId)
                 if (idx < 0) return
                 for (h in 0 until e.historySize) {
+                    pointTime = e.getHistoricalEventTime(h)
                     addPoint(e.getHistoricalX(idx, h), e.getHistoricalY(idx, h),
                         pressureOf(e, idx, h), e.getHistoricalAxisValue(MotionEvent.AXIS_TILT, idx, h))
                 }
+                pointTime = e.eventTime
                 addPoint(e.getX(idx), e.getY(idx), pressureOf(e, idx, -1), e.getAxisValue(MotionEvent.AXIS_TILT, idx))
+                flushLiving()
                 val idx2 = idx
                 // QuickShape: restart the hold timer whenever the pen really moves
                 val ex = e.getX(idx2); val ey = e.getY(idx2)
@@ -1055,7 +1063,7 @@ class CanvasView(context: Context) : View(context) {
                     // the S Pen is very precise: small hand tremor while holding still must not reset the timer
                     holdAnchorX = ex; holdAnchorY = ey
                     removeCallbacks(holdRunnable)
-                    if (quickShapeEnabled && !smudging) postDelayed(holdRunnable, delayMs(GesturePurpose.QUICKSHAPE, 500))
+                    if (quickShapeEnabled && !smudging && !livingStroke) postDelayed(holdRunnable, delayMs(GesturePurpose.QUICKSHAPE, 500))
                 }
                 invalidate()
             }
@@ -1229,6 +1237,17 @@ class CanvasView(context: Context) : View(context) {
             mb?.eraseColor(0)
             mb
         } else null
+        // a living brush paints with the MyPaint engine, straight onto the layer
+        pointTime = e.eventTime
+        livingStroke = !smudging && engine.brush.preset.living != null &&
+            living.begin(engine.brush, engine.color, strokeErasing, layer.alphaLock, doc.width, doc.height,
+                symmetry, doc.width / 2f, doc.height / 2f, e.eventTime)
+        if (livingStroke) {
+            living.viewZoom = zoom()
+            strokeGrain = null
+            strokeMask = null
+            engine.wetSource = null
+        }
         engine.maskTarget = strokeMask
         engine.symmetry = symmetry
         engine.centerX = doc.width / 2f
@@ -1252,10 +1271,11 @@ class CanvasView(context: Context) : View(context) {
             pendingPts.add(ip)
         } else {
             snapPending = false
-            engine.begin(sb, ip, smooth = true, seed = shapeSeed)
+            eBegin(sb, ip, smooth = true)
+            flushLiving()
         }
         // QuickShape works with or without the grid's Assisted Drawing
-        if (quickShapeEnabled && !smudging) postDelayed(holdRunnable, delayMs(GesturePurpose.QUICKSHAPE, 500))
+        if (quickShapeEnabled && !smudging && !livingStroke) postDelayed(holdRunnable, delayMs(GesturePurpose.QUICKSHAPE, 500))
         pressX = e.getX(idx); pressY = e.getY(idx)
         pressMoved = false
         removeCallbacks(longPressRunnable)
@@ -1303,12 +1323,50 @@ class CanvasView(context: Context) : View(context) {
                     first.x, first.y, ip.x - first.x, ip.y - first.y)
                 snapPending = false
                 val sb = strokeBitmap ?: return
-                engine.begin(sb, snapped(first), smooth = constraint !is Constraint.Circle, seed = shapeSeed)
-                for (i in 1 until pendingPts.size) engine.move(snapped(pendingPts[i]))
+                eBegin(sb, snapped(first), smooth = constraint !is Constraint.Circle)
+                for (i in 1 until pendingPts.size) eMove(snapped(pendingPts[i]))
             }
             return
         }
-        engine.move(snapped(ip))
+        eMove(snapped(ip))
+    }
+
+    // the stroke goes to the living-brush engine or to Inkora's own
+    private fun eBegin(sb: Bitmap, p: InputPoint, smooth: Boolean) {
+        if (livingStroke) living.add(p.x, p.y, p.pressure, pointTime)
+        else engine.begin(sb, p, smooth = smooth, seed = shapeSeed)
+    }
+
+    private fun eMove(p: InputPoint) {
+        if (livingStroke) living.add(p.x, p.y, p.pressure, pointTime) else engine.move(p)
+    }
+
+    /** paints the pen positions gathered so far (living brushes, once per pen event) */
+    private fun flushLiving() {
+        if (!livingStroke) return
+        if (living.flush(doc.active.bitmap) != null) invalidate()
+    }
+
+    /** the living stroke is over: kept (with undo) or taken back */
+    private fun endLiving(keep: Boolean) {
+        val layer = doc.active
+        if (keep) flushLiving()
+        val r = Rect(living.dirty)
+        livingStroke = false
+        if (r.intersect(0, 0, doc.width, doc.height) && !r.isEmpty) {
+            val before = living.original(layer.bitmap, r)
+            if (before != null) {
+                if (!keep) {
+                    Canvas(layer.bitmap).drawBitmap(before, r.left.toFloat(), r.top.toFloat(), Paint().apply { blendMode = BlendMode.SRC })
+                    before.recycle()
+                } else {
+                    selection?.let { Selections.restrict(layer.bitmap, before, r, it) }
+                    pushPixelEdit(layer, r, before)
+                }
+            }
+        }
+        living.end()
+        lastStroke = null
     }
 
     private fun flushPending() {
@@ -1316,8 +1374,8 @@ class CanvasView(context: Context) : View(context) {
         snapPending = false
         val sb = strokeBitmap ?: return
         if (pendingPts.isEmpty()) return
-        engine.begin(sb, pendingPts[0], smooth = true, seed = shapeSeed)
-        for (i in 1 until pendingPts.size) engine.move(pendingPts[i])
+        eBegin(sb, pendingPts[0], smooth = true)
+        for (i in 1 until pendingPts.size) eMove(pendingPts[i])
     }
 
     private fun finishStroke() {
@@ -1325,8 +1383,11 @@ class CanvasView(context: Context) : View(context) {
         removeCallbacks(longPressRunnable)
         if (!strokeActive) return
         flushPending()
-        if (shape == null) engine.end()
-        if (smudging) endSmudge(true) else commitStroke()
+        if (livingStroke) endLiving(true)
+        else {
+            if (shape == null) engine.end()
+            if (smudging) endSmudge(true) else commitStroke()
+        }
         if (shape != null) listener?.onMessage(shape!!.label)
         shape = null
         strokeActive = false
@@ -1342,7 +1403,7 @@ class CanvasView(context: Context) : View(context) {
         strokeActive = false
         listener?.onDrawingChanged(false)
         shape = null
-        engine.end()
+        if (livingStroke) endLiving(false) else engine.end()
         if (smudging) endSmudge(false)
         strokeBitmap?.eraseColor(0)
         mode = Mode.NONE
@@ -1451,7 +1512,7 @@ class CanvasView(context: Context) : View(context) {
     // ---------------- QuickShape ----------------
 
     private fun onHold() {
-        if (!strokeActive || shape != null || !quickShapeEnabled || smudging) return
+        if (!strokeActive || shape != null || !quickShapeEnabled || smudging || livingStroke) return
         if (!pressMoved) return // pen still resting where it landed: that's a long press, not a shape
         flushPending()
         // drop the cloud of tremor points collected while the pen was held still

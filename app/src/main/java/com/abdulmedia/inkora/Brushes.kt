@@ -59,7 +59,9 @@ class BrushPreset(
     /** the studio settings it starts with (null: from the fields above) */
     val dynamics: BrushDynamics? = null,
     /** a dual brush's own second shape (from an imported brush) */
-    val dualTip: Bitmap? = null
+    val dualTip: Bitmap? = null,
+    /** a living brush: the name of its MyPaint settings file (assets/living/<name>.myb) */
+    val living: String? = null
 ) {
     val imported get() = id.startsWith("user:")
 }
@@ -122,13 +124,34 @@ object Brushes {
     ) = BrushPreset(name, cat, tip, spacing, minSize, minFlow, flow, streamline, size, opacity, scatter,
         rotation, angle, taper, tilt, curve, grain, grainScale)
 
-    private val categoryOrder = listOf("Sketching", "Inking", "Drawing", "Painting", "Artistic", "Calligraphy",
+    /** a living brush: painted by the MyPaint engine, the paint stays wet and mixes as you draw */
+    private fun lv(name: String, file: String, size: Float, opacity: Float = 1f) =
+        BrushPreset(name, LIVING, TipShape.SOFT, 0.1f, 0.4f, 0.4f, 1f, 0f, size, opacity, living = file)
+
+    const val LIVING = "Living Paint"
+
+    private val categoryOrder = listOf(LIVING, "Sketching", "Inking", "Drawing", "Painting", "Artistic", "Calligraphy",
         "Airbrushing", "Textures & Elements", "Abstract", "Charcoals", "Elements", "Spraypaints", "Touchups",
         "Vintage", "Luminance", "Industrial", "Organic", "Water", "Watercolor", "Materials", "Retro", "Effects", "Pixel Art")
 
     val presets: List<BrushPreset> get() = allPresets
 
     private val allPresets: List<BrushPreset> = listOf(
+        // ---- Living Paint: the MyPaint engine (only when the native part is there) ----
+        *(if (MyPaintNative.ready) arrayOf(
+            lv("Rain Wash", "rain_wash", 40f),
+            lv("Creamy Gouache", "gouache", 28f),
+            lv("Loaded Oil", "oil_drag", 32f),
+            lv("Wet Blender", "blender", 36f),
+            lv("Living Ink", "living_ink", 8f),
+            lv("Raw Charcoal", "charcoal", 8f),
+            lv("Chalk Pastel", "soft_pastel", 18f),
+            lv("Soft Graphite", "graphite", 3.2f),
+            lv("Dry Bristle", "dry_bristle", 6f),
+            lv("Mist Spray", "airbrush", 60f),
+            lv("Felt Marker", "felt_marker", 14f),
+            lv("Flick Spatter", "spatter", 5f)
+        ) else emptyArray()),
         // ---- Inking (15 Brushes) ----
         p("Technical Pen", "Inking", TipShape.HARD, 0.05f, 0.75f, 1f, 1f, 0.35f, 6f),
         p("Studio Ink", "Inking", TipShape.HARD, 0.04f, 0.12f, 1f, 1f, 0.55f, 16f, taper = 5f, curve = 1.3f),

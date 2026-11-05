@@ -93,6 +93,7 @@ class BrushPanel(
         set.startsWith("Callig") -> Icon.NIB
         set.startsWith("Sketch") -> Icon.PENCIL
         set.startsWith("Paint") -> Icon.PALETTE
+        set.startsWith("Living") -> Icon.PALETTE
         set.startsWith("Water") -> Icon.DROP
         set.startsWith("Air") -> Icon.SPRAY
         set.startsWith("Textur") -> Icon.TEXTURE
@@ -264,6 +265,10 @@ class BrushPanel(
         fun render(source: Brush): Bitmap {
             val w = 420
             val h = 64
+            if (source.preset.living != null) {
+                LivingPainter.preview(Brush(source.preset).apply { size = source.preset.defaultSize.coerceIn(5f, 26f); opacity = source.opacity },
+                    w, h, 0xFFE8E9ED.toInt())?.let { return it }
+            }
             val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val brush = Brush(source.preset).apply {
                 size = source.preset.defaultSize.coerceIn(5f, 26f)

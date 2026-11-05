@@ -109,6 +109,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installCrashReporter()
+        LivingBrushes.init(this)
         // the layer limit follows this device's memory
         runCatching {
             val am = getSystemService(android.app.ActivityManager::class.java)
@@ -1498,6 +1499,11 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun openStudio(tool: Tool, b: Brush) {
         if (busy()) return
+        if (b.preset.living != null) {
+            // a living brush is tuned as a whole; its size and opacity are on the side bar
+            Ui.toast(this, "Living brushes: change size and opacity on the side bar")
+            return
+        }
         studioTool = tool
         showOverlay(BrushStudioView(this, b, studioHost))
     }
@@ -1809,6 +1815,14 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (cv.liquify != null || cv.transform != null || adjustKind != null) { hud.show("Finish or cancel the current edit first"); return }
             val d = cv.doc
             runCanvasOp("Flipped") { CanvasOps.flip(d, horizontal) }
+        }
+        override fun openLicenses() {
+            val text = runCatching { assets.open("licenses.txt").bufferedReader().use { it.readText() } }.getOrDefault("")
+            AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(L10n.tr("Open-source licenses"))
+                .setMessage(text)
+                .setPositiveButton(L10n.tr("OK"), null)
+                .show()
         }
         override fun canvasInfo() {
             val d = cv.doc

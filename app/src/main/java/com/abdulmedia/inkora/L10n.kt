@@ -1210,6 +1210,10 @@ object L10n {
         "Uneven flow", "تدفق غير منتظم", "ڕۆیشتنی نایەکسان",
         "Speed", "السرعة", "خێرایی",
         "Speed thins the line", "السرعة ترفّع الخط", "خێرایی هێڵەکە باریک دەکات",
+        "Living Paint", "ألوان حيّة", "ڕەنگی زیندوو",
+        "Living brushes: change size and opacity on the side bar", "الفراشي الحيّة: غيّر الحجم والشفافية من الشريط الجانبي", "فڵچە زیندووەکان: قەبارە و ڕوونی لە شریتی لاتەنیشت بگۆڕە",
+        "Open-source licenses", "تراخيص المصادر المفتوحة", "مۆڵەتەکانی سەرچاوە کراوە",
+        "The MyPaint brush engine and json-c", "محرك فراشي MyPaint ومكتبة json-c", "بزوێنەری فڵچەی MyPaint و json-c",
         "Color saved", "تم حفظ اللون", "ڕەنگ پاشەکەوت کرا"
     )
 }

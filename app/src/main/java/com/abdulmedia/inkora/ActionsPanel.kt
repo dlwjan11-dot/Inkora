@@ -36,6 +36,7 @@ interface ActionsHost {
     fun cropResize()
     fun flipCanvasContent(horizontal: Boolean)
     fun canvasInfo()
+    fun openLicenses()
     var sidebarShown: Boolean
     var brushCursor: Boolean
     // Share
@@ -349,7 +350,8 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         group(
             row("Gesture controls", "Change what each gesture does") { host.openGestureControls() },
             row("Keyboard shortcuts", "Or hold Ctrl on a keyboard") { host.openShortcuts() },
-            row("Show the tips again") { host.showTips() }
+            row("Show the tips again") { host.showTips() },
+            row("Open-source licenses", "The MyPaint brush engine and json-c") { host.openLicenses() }
         )
         val lines = listOf(
             "Two-finger pinch" to "Zoom, move and turn the canvas",
