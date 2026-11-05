@@ -174,7 +174,18 @@ class LayersPanel(
         texts.addView(Ui.text(context, sub, 11f, Ui.TEXT_DIM))
         row.addView(texts, LayoutParams(0, -2, 1f))
 
-        val eye = IconView(context, if (layer.visible) Icon.EYE else Icon.EYE_OFF)
+        // blend mode as a short letter (tap it for the modes), then the visibility checkbox
+        row.addView(Ui.text(context, blendCode(layer.blend), 13f, Ui.TEXT_DIM, true).apply {
+            gravity = Gravity.CENTER
+            setOnClickListener { v ->
+                val pm = PopupMenu(context, v)
+                LayerBlend.values().forEachIndexed { k, b -> pm.menu.add(0, k, k, b.label) }
+                pm.setOnMenuItemClickListener { item -> layer.blend = LayerBlend.values()[item.itemId]; changed(); true }
+                L10n.menu(pm.menu); pm.show()
+            }
+        }, LayoutParams(30.dp, 40.dp))
+        val eye = CheckBoxView(context, layer.visible)
+        eye.contentDescription = "Visible"
         eye.setOnClickListener {
             layer.visible = !layer.visible
             changed()
@@ -875,5 +886,39 @@ class LayersPanel(
         private const val PICKED = 0xFF35507A.toInt()
         private const val GROUP_ROW = 0xFF2F2F37.toInt()
         private const val GROUP_HAS_ACTIVE = 0xFF2B3446.toInt()
+    }
+}
+
+/** short letters for the blend modes, shown on each layer row */
+fun blendCode(b: LayerBlend): String = when (b) {
+    LayerBlend.NORMAL -> "N"; LayerBlend.MULTIPLY -> "M"; LayerBlend.DARKEN -> "D"; LayerBlend.COLOR_BURN -> "CB"
+    LayerBlend.LIGHTEN -> "L"; LayerBlend.SCREEN -> "S"; LayerBlend.COLOR_DODGE -> "CD"; LayerBlend.ADD -> "A"
+    LayerBlend.OVERLAY -> "O"; LayerBlend.SOFT_LIGHT -> "SL"; LayerBlend.HARD_LIGHT -> "HL"; LayerBlend.DIFFERENCE -> "Di"
+    LayerBlend.EXCLUSION -> "E"; LayerBlend.HUE -> "H"; LayerBlend.SATURATION -> "Sa"; LayerBlend.COLOR -> "C"
+    LayerBlend.LUMINOSITY -> "Lu"
+}
+
+/** a rounded checkbox drawn in code: checked = the layer shows */
+@SuppressLint("ViewConstructor")
+class CheckBoxView(context: Context, private val checked: Boolean) : View(context) {
+    private val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+    private val path = android.graphics.Path()
+    init { isClickable = true }
+    override fun onDraw(c: Canvas) {
+        val s = 20f.dp
+        val l = (width - s) / 2; val t = (height - s) / 2
+        val r = android.graphics.RectF(l, t, l + s, t + s)
+        if (checked) {
+            p.style = android.graphics.Paint.Style.FILL; p.color = Ui.ACCENT
+            c.drawRoundRect(r, 5f.dp, 5f.dp, p)
+            p.style = android.graphics.Paint.Style.STROKE; p.strokeWidth = 2.4f.dp; p.color = 0xFFFFFFFF.toInt()
+            p.strokeCap = android.graphics.Paint.Cap.ROUND; p.strokeJoin = android.graphics.Paint.Join.ROUND
+            path.reset()
+            path.moveTo(l + s * 0.25f, t + s * 0.52f); path.lineTo(l + s * 0.43f, t + s * 0.7f); path.lineTo(l + s * 0.76f, t + s * 0.32f)
+            c.drawPath(path, p)
+        } else {
+            p.style = android.graphics.Paint.Style.STROKE; p.strokeWidth = 1.6f.dp; p.color = 0x99FFFFFF.toInt()
+            c.drawRoundRect(r, 5f.dp, 5f.dp, p)
+        }
     }
 }

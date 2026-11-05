@@ -147,6 +147,8 @@ class CanvasView(context: Context) : View(context) {
 
     /** 1 = linear; <1 = soft pen (less force needed); >1 = firm */
     var pressureGamma = 1f
+    /** the brush outline where the pen hovers (Actions › Prefs › Brush cursor) */
+    var showBrushCursor = true
     private val commitPaint = Paint()
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66000000 }
     private val checkerPaint = Paint().apply {
@@ -545,7 +547,7 @@ class CanvasView(context: Context) : View(context) {
         if (interaction == Interaction.VECTOR && doc.active.vector != null) vectorEditor.drawOverlay(canvas)
         if (editingGuide) drawVpHandles(canvas)
 
-        if (hovering && !strokeActive) {
+        if (hovering && !strokeActive && showBrushCursor) {
             val r = max(3f, currentBrush.size * z / 2f)
             cursorPaint.style = Paint.Style.STROKE
             cursorPaint.strokeWidth = 3f
@@ -1149,8 +1151,28 @@ class CanvasView(context: Context) : View(context) {
     private fun pressureOf(e: MotionEvent, idx: Int, h: Int): Float {
         if (!drawIsStylus) return 1f
         val p = if (h < 0) e.getPressure(idx) else e.getHistoricalPressure(idx, h)
-        val c = p.coerceIn(0f, 1f)
-        return if (pressureGamma == 1f) c else c.pow(pressureGamma)
+        return PressureCurve.map(p.coerceIn(0f, 1f))
+    }
+
+    // app-wide stroke smoothing (Actions › Prefs › Pressure and Smoothing)
+    private var stabX = 0f
+    private var stabY = 0f
+    private var mfX = 0f
+    private var mfY = 0f
+
+    private fun resetSmoothing(sx: Float, sy: Float) { stabX = sx; stabY = sy; mfX = sx; mfY = sy }
+
+    /** the pen position after Stabilization and Motion Filtering (screen pixels) */
+    private fun smoothed(sx: Float, sy: Float): Pair<Float, Float> {
+        val st = PressureCurve.stabilization
+        val mf = PressureCurve.motionFiltering
+        if (st <= 0f && mf <= 0f) { resetSmoothing(sx, sy); return sx to sy }
+        val k = 1f - st.coerceIn(0f, 1f) * 0.9f
+        stabX += (sx - stabX) * k; stabY += (sy - stabY) * k
+        val km = 1f - mf.coerceIn(0f, 1f) * 0.8f
+        mfX += (stabX - mfX) * km; mfY += (stabY - mfY) * km
+        val ex = PressureCurve.motionExpression.coerceIn(0f, 1f)
+        return (mfX + (stabX - mfX) * ex) to (mfY + (stabY - mfY) * ex)
     }
 
     // ---------------- strokes ----------------
@@ -1215,6 +1237,7 @@ class CanvasView(context: Context) : View(context) {
         shape = null
         val p = toDoc(e.getX(idx), e.getY(idx))
         val ip = InputPoint(p.x, p.y, pressureOf(e, idx, -1), e.getAxisValue(MotionEvent.AXIS_TILT, idx))
+        resetSmoothing(e.getX(idx), e.getY(idx))
         strokePoints.add(ip)
         shapeSeed = (System.nanoTime() and 0xFFFFFF).toInt()
         strokeActive = true
@@ -1265,8 +1288,9 @@ class CanvasView(context: Context) : View(context) {
         before.recycle()
     }
 
-    private fun addPoint(sx: Float, sy: Float, pressure: Float, tilt: Float) {
+    private fun addPoint(rawX: Float, rawY: Float, pressure: Float, tilt: Float) {
         if (!strokeActive || shape != null) return
+        val (sx, sy) = smoothed(rawX, rawY)
         val p = toDoc(sx, sy)
         val ip = InputPoint(p.x, p.y, pressure, tilt)
         strokePoints.add(ip)

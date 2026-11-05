@@ -33,6 +33,11 @@ interface ActionsHost {
     fun isWindowOpen(id: String): Boolean
     fun flipCanvas()
     fun fitCanvas()
+    fun cropResize()
+    fun flipCanvasContent(horizontal: Boolean)
+    fun canvasInfo()
+    var sidebarShown: Boolean
+    var brushCursor: Boolean
     // Share
     fun export(kind: String)
     // Video
@@ -62,6 +67,8 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     private val tabsRow = LinearLayout(context).apply { orientation = HORIZONTAL }
     private val body = LinearLayout(context).apply { orientation = VERTICAL }
     private val cv get() = host.canvas
+    /** an open sub-page of a tab (for now: "pressure" in Prefs) */
+    private var page: String? = null
     private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "CANVAS")!!) }.getOrDefault(Tab.CANVAS)
 
     init {
@@ -87,6 +94,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
                 setPadding(0, 4.dp, 0, 4.dp)
                 setOnClickListener {
                     tab = t
+                    page = null
                     host.prefs.edit().putString("actions_tab", t.name).apply()
                     rebuild()
                 }
@@ -99,6 +107,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             tabsRow.addView(item, LayoutParams(0, -2, 1f))
         }
         body.removeAllViews()
+        if (page == "pressure") { buildPressure(); return }
         when (tab) {
             Tab.ADD -> buildAdd()
             Tab.CANVAS -> buildCanvas()
@@ -210,6 +219,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     private fun buildCanvas() {
         val d = cv.doc
         val g = d.guide
+        group(row("Crop & Resize", "Canvas size, resize, crop, rotate") { host.cropResize() })
         group(
             row("New canvas…") { host.newCanvas() },
             row("Rename artwork…", d.title.ifBlank { L10n.tr("Untitled Artwork") }) { host.renameArtwork() }
@@ -232,9 +242,12 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             switchRow("Grey view", "Shows the artwork in greys, to check values", cv.greyView) { cv.greyView = it }
         )
         group(
-            row("Flip canvas horizontally", closes = false) { host.flipCanvas() },
+            row("Flip horizontal") { host.flipCanvasContent(true) },
+            row("Flip vertical") { host.flipCanvasContent(false) },
+            row("Flip the view", "Only how you see it, to check your drawing", closes = false) { host.flipCanvas() },
             row("Fit canvas to screen") { host.fitCanvas() }
         )
+        group(row("Canvas information") { host.canvasInfo() })
         val layers = d.layers.size
         note(String.format(Locale.US, "%d × %d px · %s %d / %d", d.width, d.height, L10n.tr("Layers"), layers, d.maxLayers()))
     }
@@ -282,22 +295,20 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             }
         )
 
-        val gamma = cv.pressureGamma
-        val curve = when { gamma < 0.85f -> "soft"; gamma > 1.2f -> "hard"; else -> "normal" }
         group(
-            choiceRow("Pen pressure", listOf("soft" to "Soft", "normal" to "Normal", "hard" to "Firm / Hard"), curve) { c ->
-                val gm = when (c) { "soft" -> 0.7f; "hard" -> 1.5f; else -> 1f }
-                cv.pressureGamma = gm
-                host.prefs.edit().putFloat("pressureGamma", gm).putString("pressureCurve", c).apply()
-                rebuild()
+            switchRow("Right-hand interface", "Size and opacity sliders on the right", sliders == "Right") { on ->
+                val s = if (on) "Right" else "Left"
+                val dk = if (dock == s) (if (s == "Left") "Right" else "Left") else dock
+                host.setEdges(dk, s); rebuild()
             },
-            sliderRow("Fine-tune pressure", 1f - ((2f - gamma) / 1.6f).coerceIn(0f, 1f), { v ->
-                val gm = 2f - (1f - v) * 1.6f
-                when { gm < 0.8f -> L10n.tr("Soft"); gm > 1.25f -> L10n.tr("Firm / Hard"); else -> L10n.tr("Normal") }
-            }) { v ->
-                cv.pressureGamma = 2f - (1f - v) * 1.6f
-                host.prefs.edit().putFloat("pressureGamma", cv.pressureGamma).remove("pressureCurve").apply()
-            },
+            switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor) { host.brushCursor = it },
+            switchRow("Size & Opacity sidebar", null, host.sidebarShown) { host.sidebarShown = it }
+        )
+        group(
+            row("Pressure and Smoothing", closes = false) { page = "pressure"; rebuild() },
+            row("Gesture controls", "What fingers, the S Pen and □ do") { host.openGestureControls() }
+        )
+        group(
             sliderRow("S Pen button hold time", ((cv.penHoldMs - 400L) / 1600f).coerceIn(0f, 1f),
                 { String.format(Locale.US, "%.2f s", it * 1.6f + 0.4f) }) { v ->
                 val ms = ((v * 1.6f + 0.4f) * 1000).toLong()
@@ -309,10 +320,29 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
                 host.prefs.edit().putFloat("fillThreshold", v).apply()
             }
         )
+        group(row("Keyboard shortcuts") { host.openShortcuts() })
+    }
+
+    /** Prefs › Pressure and Smoothing */
+    private fun buildPressure() {
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 8.dp) }
+        head.addView(Ui.text(context, "‹", 30f).apply {
+            setPadding(10.dp, 0, 14.dp, 0)
+            setOnClickListener { page = null; rebuild() }
+        })
+        head.addView(Ui.text(context, "Pressure and Smoothing", 20f, bold = true))
+        body.addView(head)
+        val pc = PressureCurve
         group(
-            row("Gesture controls", "What fingers, the S Pen and □ do") { host.openGestureControls() },
-            row("Keyboard shortcuts") { host.openShortcuts() }
+            sliderRow("Stabilization", pc.stabilization, { "${(it * 100).roundToInt()}%" }) { pc.stabilization = it; pc.save() },
+            sliderRow("Motion filtering", pc.motionFiltering, { if (it < 0.005f) L10n.tr("None") else "${(it * 100).roundToInt()}%" }) { pc.motionFiltering = it; pc.save() },
+            sliderRow("Motion filtering expression", pc.motionExpression, { if (it < 0.005f) L10n.tr("None") else "${(it * 100).roundToInt()}%" }) { pc.motionExpression = it; pc.save() }
         )
+        body.addView(Ui.text(context, "App pressure sensitivity", 14f, Ui.TEXT, true).apply { setPadding(10.dp, 6.dp, 0, 6.dp) })
+        val curve = PressureCurveView(context) {}
+        body.addView(curve, LayoutParams(-1, -2).apply { leftMargin = 6.dp; rightMargin = 6.dp })
+        note("Drag the points: up = more ink for a light touch, down = you need to press harder.")
+        group(row("Reset all", closes = false) { pc.reset(); pc.save(); rebuild() })
     }
 
     private fun buildHelp() {

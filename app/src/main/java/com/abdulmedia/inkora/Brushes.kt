@@ -122,8 +122,9 @@ object Brushes {
     ) = BrushPreset(name, cat, tip, spacing, minSize, minFlow, flow, streamline, size, opacity, scatter,
         rotation, angle, taper, tilt, curve, grain, grainScale)
 
-    private val categoryOrder = listOf("Inking", "Calligraphy", "Sketching", "Painting", "Watercolor",
-        "Airbrushing", "Textures & Elements", "Effects", "Pixel Art")
+    private val categoryOrder = listOf("Sketching", "Inking", "Drawing", "Painting", "Artistic", "Calligraphy",
+        "Airbrushing", "Textures & Elements", "Abstract", "Charcoals", "Elements", "Spraypaints", "Touchups",
+        "Vintage", "Luminance", "Industrial", "Organic", "Water", "Watercolor", "Materials", "Retro", "Effects", "Pixel Art")
 
     val presets: List<BrushPreset> get() = allPresets
 
@@ -257,6 +258,121 @@ object Brushes {
         p("Stipple Shading", "Effects", TipShape.SPRAY, 0.9f, 0.7f, 0.6f, 1f, 0f, 30f, scatter = 0.4f, rotation = RotationMode.RANDOM),
         p("Glitter Gold", "Effects", TipShape.STAR, 1.5f, 0.3f, 0.6f, 1f, 0f, 28f, scatter = 1.8f, rotation = RotationMode.RANDOM),
         p("Smoke Tendrils", "Effects", TipShape.CLOUD, 0.2f, 0.7f, 0.15f, 0.4f, 0.15f, 110f, scatter = 0.3f, rotation = RotationMode.RANDOM),
+
+        // ---- Drawing ----
+        p("Cedar Lead", "Drawing", TipShape.PENCIL, 0.04f, 0.5f, 0.35f, 0.9f, 0.3f, 7f, grain = GrainType.PAPER, grainScale = 0.7f),
+        p("Felt Sketcher", "Drawing", TipShape.MARKER, 0.05f, 0.7f, 0.6f, 0.85f, 0.35f, 10f),
+        p("Contour Liner", "Drawing", TipShape.HARD, 0.04f, 0.35f, 1f, 1f, 0.5f, 5f, taper = 4f),
+        p("Ballpoint Scribble", "Drawing", TipShape.HARD, 0.05f, 0.6f, 0.55f, 0.8f, 0.25f, 3f, grain = GrainType.PAPER, grainScale = 0.5f),
+        p("Conté Stick", "Drawing", TipShape.CHARCOAL, 0.06f, 0.4f, 0.4f, 0.9f, 0.2f, 18f, grain = GrainType.ROUGH, grainScale = 0.9f),
+        p("Silverpoint", "Drawing", TipShape.PENCIL, 0.04f, 0.8f, 0.2f, 0.55f, 0.35f, 3f, grain = GrainType.PAPER, grainScale = 0.4f),
+        p("Rough Marker", "Drawing", TipShape.MARKER, 0.05f, 0.85f, 0.7f, 0.8f, 0.3f, 20f, grain = GrainType.ROUGH, grainScale = 1.2f),
+
+        // ---- Artistic ----
+        p("Sunlit Daub", "Artistic", TipShape.BRISTLE, 0.08f, 0.4f, 0.6f, 1f, 0.2f, 60f, rotation = RotationMode.FOLLOW, grain = GrainType.CANVAS),
+        p("Torn Pigment", "Artistic", TipShape.DRY, 0.1f, 0.5f, 0.5f, 1f, 0.15f, 70f, rotation = RotationMode.FOLLOW, grain = GrainType.ROUGH),
+        p("Thick Swipe", "Artistic", TipShape.FLAT, 0.05f, 0.6f, 0.8f, 1f, 0.25f, 55f, rotation = RotationMode.FOLLOW, tilt = true),
+        p("Gallery Scumble", "Artistic", TipShape.DRY, 0.12f, 0.3f, 0.3f, 0.7f, 0.1f, 90f, scatter = 0.2f, rotation = RotationMode.RANDOM, grain = GrainType.CANVAS),
+        p("Palette Scrape", "Artistic", TipShape.FLAT, 0.06f, 0.8f, 0.7f, 1f, 0.2f, 80f, rotation = RotationMode.FOLLOW, grain = GrainType.ROUGH, grainScale = 1.5f),
+        p("Loose Gouache", "Artistic", TipShape.SOFT, 0.06f, 0.5f, 0.7f, 0.9f, 0.2f, 45f, grain = GrainType.PAPER),
+        p("Island Light", "Artistic", TipShape.SPLATTER, 0.15f, 0.6f, 0.5f, 0.9f, 0.1f, 70f, scatter = 0.3f, rotation = RotationMode.RANDOM),
+
+        // ---- Abstract ----
+        p("Shard Field", "Abstract", TipShape.SQUARE, 0.9f, 0.3f, 0.6f, 1f, 0f, 40f, scatter = 1.2f, rotation = RotationMode.RANDOM),
+        p("Orbit Rings", "Abstract", TipShape.RING, 0.7f, 0.4f, 0.7f, 1f, 0f, 50f, scatter = 0.8f, rotation = RotationMode.RANDOM),
+        p("Ribbon Echo", "Abstract", TipShape.STREAK, 0.08f, 0.6f, 0.6f, 0.9f, 0.3f, 60f, rotation = RotationMode.FOLLOW),
+        p("Confetti Burst", "Abstract", TipShape.STAR, 1.1f, 0.3f, 0.7f, 1f, 0f, 30f, scatter = 2f, rotation = RotationMode.RANDOM),
+        p("Dot Rhythm", "Abstract", TipShape.HARD, 1.4f, 0.5f, 1f, 1f, 0f, 16f),
+        p("Line Weave", "Abstract", TipShape.HATCH, 0.6f, 0.7f, 0.6f, 1f, 0.2f, 45f, rotation = RotationMode.FOLLOW),
+
+        // ---- Charcoals ----
+        p("Willow Stick", "Charcoals", TipShape.CHARCOAL, 0.05f, 0.4f, 0.35f, 0.95f, 0.2f, 22f, grain = GrainType.PAPER, grainScale = 1.1f),
+        p("Compressed Block", "Charcoals", TipShape.CHARCOAL, 0.05f, 0.6f, 0.6f, 1f, 0.2f, 40f, rotation = RotationMode.FOLLOW, grain = GrainType.ROUGH),
+        p("Vine Shade", "Charcoals", TipShape.SOFT, 0.06f, 0.5f, 0.15f, 0.6f, 0.15f, 70f, grain = GrainType.PAPER, grainScale = 1.4f),
+        p("Charcoal Pencil", "Charcoals", TipShape.PENCIL, 0.04f, 0.5f, 0.45f, 1f, 0.3f, 9f, grain = GrainType.ROUGH, grainScale = 0.7f),
+        p("Smudged Dust", "Charcoals", TipShape.SPRAY, 0.2f, 0.7f, 0.2f, 0.5f, 0.1f, 80f, scatter = 0.2f, grain = GrainType.PAPER),
+        p("Side Stroke", "Charcoals", TipShape.FLAT, 0.05f, 0.7f, 0.5f, 0.9f, 0.15f, 50f, rotation = RotationMode.FOLLOW, tilt = true, grain = GrainType.ROUGH),
+
+        // ---- Elements ----
+        p("Rain Drift", "Elements", TipShape.STREAK, 1.2f, 0.4f, 0.5f, 0.8f, 0f, 30f, scatter = 1.5f, rotation = RotationMode.FIXED, angle = 80f),
+        p("Snow Flurry", "Elements", TipShape.SOFT, 1.4f, 0.2f, 0.7f, 1f, 0f, 14f, scatter = 2.2f),
+        p("Cloud Bank", "Elements", TipShape.CLOUD, 0.25f, 0.6f, 0.25f, 0.6f, 0.1f, 160f, scatter = 0.3f, rotation = RotationMode.RANDOM),
+        p("Fire Lick", "Elements", TipShape.STREAK, 0.12f, 0.3f, 0.5f, 0.9f, 0.2f, 50f, rotation = RotationMode.FOLLOW, taper = 6f),
+        p("Mist Veil", "Elements", TipShape.SOFT, 0.15f, 0.9f, 0.08f, 0.3f, 0.1f, 220f),
+        p("Starfield", "Elements", TipShape.STAR, 2f, 0.15f, 0.8f, 1f, 0f, 10f, scatter = 3f, rotation = RotationMode.RANDOM),
+        p("Water Ripple", "Elements", TipShape.RING, 0.5f, 0.5f, 0.5f, 0.8f, 0.1f, 40f, scatter = 0.5f),
+
+        // ---- Spraypaints ----
+        p("Can Fine Cap", "Spraypaints", TipShape.SPRAY, 0.12f, 0.8f, 0.3f, 0.7f, 0.1f, 40f),
+        p("Can Fat Cap", "Spraypaints", TipShape.SPRAY, 0.1f, 0.9f, 0.4f, 0.8f, 0.1f, 120f),
+        p("Drippy Tag", "Spraypaints", TipShape.SPLATTER, 0.12f, 0.7f, 0.6f, 1f, 0.15f, 60f, scatter = 0.25f, rotation = RotationMode.RANDOM),
+        p("Spatter Flick", "Spraypaints", TipShape.SPLATTER, 1.1f, 0.3f, 0.7f, 1f, 0f, 70f, scatter = 1.4f, rotation = RotationMode.RANDOM),
+        p("Stencil Mist", "Spraypaints", TipShape.SPRAY, 0.15f, 1f, 0.2f, 0.5f, 0f, 200f),
+        p("Overspray", "Spraypaints", TipShape.SPRAY, 0.4f, 0.6f, 0.2f, 0.5f, 0f, 90f, scatter = 0.8f),
+
+        // ---- Touchups ----
+        p("Soft Blender", "Touchups", TipShape.SOFT, 0.08f, 0.7f, 0.1f, 0.3f, 0.2f, 60f),
+        p("Skin Smoother", "Touchups", TipShape.SOFT, 0.08f, 0.8f, 0.06f, 0.2f, 0.25f, 90f),
+        p("Detail Lifter", "Touchups", TipShape.HARD, 0.05f, 0.5f, 0.4f, 0.7f, 0.4f, 8f),
+        p("Highlight Pop", "Touchups", TipShape.SOFT, 0.06f, 0.3f, 0.5f, 0.9f, 0.3f, 18f),
+        p("Edge Softener", "Touchups", TipShape.SOFT, 0.1f, 0.9f, 0.05f, 0.15f, 0.2f, 140f),
+        p("Hair Strand", "Touchups", TipShape.HARD, 0.03f, 0.1f, 0.8f, 1f, 0.6f, 4f, taper = 10f, curve = 1.4f),
+
+        // ---- Vintage ----
+        p("Woodcut Edge", "Vintage", TipShape.DRY, 0.06f, 0.6f, 0.9f, 1f, 0.2f, 30f, rotation = RotationMode.FOLLOW, grain = GrainType.ROUGH, grainScale = 1.3f),
+        p("Letterpress", "Vintage", TipShape.HARD, 0.05f, 0.8f, 0.8f, 1f, 0.3f, 22f, grain = GrainType.ROUGH, grainScale = 2f),
+        p("Old Halftone", "Vintage", TipShape.HALFTONE, 0.3f, 1f, 1f, 1f, 0f, 60f),
+        p("Faded Poster", "Vintage", TipShape.SOFT, 0.08f, 0.8f, 0.4f, 0.7f, 0.2f, 80f, grain = GrainType.CANVAS, grainScale = 1.6f),
+        p("Engraver Lines", "Vintage", TipShape.HATCH, 0.5f, 0.8f, 0.8f, 1f, 0.3f, 30f, rotation = RotationMode.FOLLOW),
+        p("Stamp Ink", "Vintage", TipShape.DRY, 0.08f, 0.7f, 0.7f, 0.9f, 0.1f, 50f, grain = GrainType.ROUGH, grainScale = 2.2f),
+
+        // ---- Luminance ----
+        p("Neon Tube", "Luminance", TipShape.SOFT, 0.04f, 0.9f, 0.9f, 1f, 0.5f, 18f),
+        p("Glow Wash", "Luminance", TipShape.SOFT, 0.1f, 0.8f, 0.15f, 0.4f, 0.2f, 160f),
+        p("Light Flare", "Luminance", TipShape.STAR, 1.6f, 0.4f, 0.6f, 0.9f, 0f, 60f, scatter = 0.6f, rotation = RotationMode.RANDOM),
+        p("Bokeh Dots", "Luminance", TipShape.RING, 1.5f, 0.3f, 0.5f, 0.7f, 0f, 50f, scatter = 1.8f),
+        p("Sparkle Trail", "Luminance", TipShape.STAR, 0.9f, 0.2f, 0.8f, 1f, 0.1f, 22f, scatter = 1.2f, rotation = RotationMode.RANDOM),
+        p("Light Beam", "Luminance", TipShape.STREAK, 0.06f, 0.9f, 0.3f, 0.6f, 0.4f, 90f, rotation = RotationMode.FOLLOW),
+
+        // ---- Industrial ----
+        p("Rust Patch", "Industrial", TipShape.DRY, 0.2f, 0.5f, 0.5f, 0.9f, 0.05f, 80f, scatter = 0.4f, rotation = RotationMode.RANDOM, grain = GrainType.ROUGH, grainScale = 1.8f),
+        p("Concrete", "Industrial", TipShape.CLOUD, 0.25f, 0.7f, 0.4f, 0.8f, 0f, 120f, scatter = 0.3f, rotation = RotationMode.RANDOM, grain = GrainType.ROUGH, grainScale = 2.4f),
+        p("Weld Seam", "Industrial", TipShape.SPLATTER, 0.25f, 0.5f, 0.7f, 1f, 0.3f, 16f, rotation = RotationMode.RANDOM),
+        p("Scratched Metal", "Industrial", TipShape.STREAK, 0.4f, 0.5f, 0.4f, 0.7f, 0.1f, 50f, scatter = 0.8f, rotation = RotationMode.RANDOM),
+        p("Grime", "Industrial", TipShape.SPRAY, 0.3f, 0.7f, 0.25f, 0.6f, 0f, 110f, scatter = 0.5f, grain = GrainType.ROUGH),
+        p("Rivets", "Industrial", TipShape.HARD, 2.2f, 1f, 1f, 1f, 0.5f, 10f),
+
+        // ---- Organic ----
+        p("Bark", "Organic", TipShape.STREAK, 0.12f, 0.6f, 0.7f, 1f, 0.15f, 50f, rotation = RotationMode.FOLLOW, grain = GrainType.ROUGH, grainScale = 1.6f),
+        p("Leaf Scatter", "Organic", TipShape.LEAF, 0.8f, 0.4f, 0.8f, 1f, 0f, 40f, scatter = 1.2f, rotation = RotationMode.RANDOM),
+        p("Twig", "Organic", TipShape.HARD, 0.04f, 0.15f, 1f, 1f, 0.4f, 8f, taper = 8f),
+        p("Moss", "Organic", TipShape.SPRAY, 0.3f, 0.6f, 0.5f, 0.9f, 0f, 60f, scatter = 0.6f, grain = GrainType.ROUGH),
+        p("Fern Frond", "Organic", TipShape.GRASS, 0.5f, 0.5f, 0.8f, 1f, 0.1f, 50f, rotation = RotationMode.FOLLOW),
+        p("Pebbles", "Organic", TipShape.CLOUD, 1.2f, 0.3f, 0.8f, 1f, 0f, 30f, scatter = 1.5f, rotation = RotationMode.RANDOM),
+        p("Fur Tuft", "Organic", TipShape.FUR, 0.3f, 0.5f, 0.7f, 1f, 0.2f, 40f, rotation = RotationMode.FOLLOW),
+
+        // ---- Water ----
+        p("Wet Edge", "Water", TipShape.SOFT, 0.06f, 0.7f, 0.25f, 0.6f, 0.2f, 70f, grain = GrainType.PAPER),
+        p("Puddle Wash", "Water", TipShape.CLOUD, 0.2f, 0.8f, 0.15f, 0.4f, 0.1f, 180f, rotation = RotationMode.RANDOM, grain = GrainType.PAPER),
+        p("Bleed Bloom", "Water", TipShape.CLOUD, 0.3f, 0.6f, 0.2f, 0.5f, 0.05f, 120f, scatter = 0.3f, rotation = RotationMode.RANDOM),
+        p("Drip Line", "Water", TipShape.STREAK, 0.08f, 0.4f, 0.5f, 0.8f, 0.3f, 20f, rotation = RotationMode.FIXED, angle = 90f),
+        p("Granulation", "Water", TipShape.SPRAY, 0.25f, 0.8f, 0.3f, 0.6f, 0.05f, 90f, grain = GrainType.ROUGH, grainScale = 0.8f),
+
+        // ---- Materials ----
+        p("Linen Weave", "Materials", TipShape.SOFT, 0.1f, 0.9f, 0.5f, 0.8f, 0.1f, 100f, grain = GrainType.CANVAS, grainScale = 1.2f),
+        p("Paper Fiber", "Materials", TipShape.SOFT, 0.1f, 0.9f, 0.4f, 0.7f, 0.1f, 100f, grain = GrainType.PAPER, grainScale = 1.8f),
+        p("Stone Grain", "Materials", TipShape.CLOUD, 0.3f, 0.8f, 0.5f, 0.8f, 0f, 120f, rotation = RotationMode.RANDOM, grain = GrainType.ROUGH, grainScale = 2f),
+        p("Plank Grain", "Materials", TipShape.STREAK, 0.08f, 0.8f, 0.6f, 0.9f, 0.3f, 80f, rotation = RotationMode.FOLLOW),
+        p("Leather Patch", "Materials", TipShape.DRY, 0.15f, 0.8f, 0.5f, 0.8f, 0.05f, 90f, rotation = RotationMode.RANDOM, grain = GrainType.ROUGH, grainScale = 1.2f),
+        p("Knit", "Materials", TipShape.HATCH, 0.4f, 0.9f, 0.6f, 0.9f, 0.1f, 40f, rotation = RotationMode.FIXED, angle = 45f),
+
+        // ---- Retro ----
+        p("Comic Dots", "Retro", TipShape.HALFTONE, 0.25f, 1f, 1f, 1f, 0f, 80f),
+        p("Speed Lines", "Retro", TipShape.STREAK, 0.6f, 0.4f, 0.9f, 1f, 0.3f, 60f, rotation = RotationMode.FOLLOW, taper = 6f),
+        p("Pop Outline", "Retro", TipShape.HARD, 0.04f, 0.6f, 1f, 1f, 0.5f, 18f),
+        p("Offset Print", "Retro", TipShape.HALFTONE, 0.35f, 1f, 0.7f, 0.85f, 0f, 50f, grain = GrainType.PAPER),
+        p("Sunburst", "Retro", TipShape.HATCH, 0.9f, 0.6f, 0.8f, 1f, 0f, 70f, rotation = RotationMode.RANDOM),
+        p("Chalk Board", "Retro", TipShape.CHARCOAL, 0.06f, 0.6f, 0.6f, 0.9f, 0.2f, 20f, grain = GrainType.ROUGH, grainScale = 1.4f),
 
         // ---- Pixel Art (6 Brushes) ----
         p("Pixel 1px", "Pixel Art", TipShape.SQUARE, 0.5f, 1f, 1f, 1f, 0f, 1f),

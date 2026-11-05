@@ -98,6 +98,19 @@ class BrushPanel(
         set.startsWith("Textur") -> Icon.TEXTURE
         set.startsWith("Effect") -> Icon.SPARKLE
         set.startsWith("Pixel") -> Icon.PIXEL
+        set.startsWith("Draw") -> Icon.PENCIL
+        set.startsWith("Artist") -> Icon.PALETTE
+        set.startsWith("Abstract") -> Icon.SHAPE
+        set.startsWith("Charcoal") -> Icon.PENCIL
+        set.startsWith("Element") -> Icon.DROP
+        set.startsWith("Spray") -> Icon.SPRAY
+        set.startsWith("Touch") -> Icon.SMUDGE
+        set.startsWith("Vintage") -> Icon.CLOCK
+        set.startsWith("Lumin") -> Icon.LIGHTBULB
+        set.startsWith("Industr") -> Icon.WRENCH
+        set.startsWith("Organic") -> Icon.STAR
+        set.startsWith("Material") -> Icon.TEXTURE
+        set.startsWith("Retro") -> Icon.STAR_FILLED
         else -> Icon.BRUSH
     }
 

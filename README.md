@@ -152,7 +152,7 @@ Every layer is one full picture the size of the canvas, kept in the tablet's mem
 ## Feature status
 
 **Painting**
-- [x] 120 brushes in 9 sets, pressure and tilt, streamline, paper grain, dual brush, wet mix, color dynamics
+- [x] 207 brushes in 23 sets, pressure and tilt, streamline, paper grain, dual brush, wet mix, color dynamics
 - [x] Brush Studio with a live drawing pad; make, rename and export your own brushes
 - [x] Procreate `.brush` / `.brushset` import and export, zip files, brushes from a link
 - [x] Smudge, eraser, Fill and ColorDrop with tolerance, eyedropper with a loupe
@@ -209,7 +209,7 @@ Open the folder in **Android Studio**, let Gradle sync, then press **Run ▶** w
 ```
 app/src/main/java/com/abdulmedia/inkora/
   MainActivity.kt    layout, menus, dialogs           CanvasView.kt     drawing, gestures, S Pen, liquify
-  StrokeEngine.kt    brush dabs, pressure, symmetry   Brushes.kt        the 120 brush presets
+  StrokeEngine.kt    brush dabs, pressure, symmetry   Brushes.kt        the 207 brush presets
   BrushStudio.kt     brush settings page               BrushImport.kt    Procreate brush files
   Document.kt        layers, groups, masks, drawing   History.kt        undo and redo
   Selection.kt       selections, magic wand            Liquify.kt        liquify mesh

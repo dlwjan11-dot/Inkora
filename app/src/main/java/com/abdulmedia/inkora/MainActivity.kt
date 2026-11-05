@@ -117,6 +117,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             Document.setDeviceMemory(mi.totalMem)
         }
         PaletteStore.load(prefs)
+        PressureCurve.load(prefs)
         Symmetry.segments = prefs.getInt("kaleidoSegments", 6)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.setBackgroundDrawable(ColorDrawable(0xFF2B2B30.toInt()))
@@ -134,6 +135,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.eraserBrush = eraserBrushes.first { it.preset.name == "Soft Airbrush" }
         cv.eraserBrush.size = 80f
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
+        cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
+        if (!prefs.getBoolean("sidebar", true)) sideBar.visibility = View.GONE
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)
         cv.fillThreshold = prefs.getFloat("fillThreshold", cv.fillThreshold)
@@ -346,19 +349,21 @@ class MainActivity : Activity(), CanvasView.Listener {
             elevation = 6f.dp
         }
         topBar = bar
-        val homeBtn = IconView(this, Icon.HOME).apply { contentDescription = "Gallery" }
-        homeBtn.setOnClickListener { if (!busy()) showGallery() }
-        bar.addView(homeBtn, LinearLayout.LayoutParams(46.dp, 48.dp))
+        val homeBtn = Ui.text(this, "Gallery", 16f).apply {
+            contentDescription = "Gallery"
+            gravity = Gravity.CENTER
+            setPadding(10.dp, 0, 12.dp, 0)
+            setOnClickListener { if (!busy()) showGallery() }
+        }
+        bar.addView(homeBtn, LinearLayout.LayoutParams(-2, 48.dp))
         val actionsBtn = IconView(this, Icon.WRENCH).apply { contentDescription = "Actions" }
         actionsBtn.setOnClickListener { if (!busy()) showActions(actionsBtn) }
-        bar.addView(actionsBtn, LinearLayout.LayoutParams(46.dp, 48.dp))
+        bar.addView(actionsBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
         this.actionsBtn = actionsBtn
-        bar.addView(barDivider())
 
+        // the Creative and Editing panels open from the "•••" in the middle of the bar
         creativeBtn = barTab(Icon.SPARKLE, "Creative") { if (!busy()) showToolsMenu(true) }
-        bar.addView(creativeBtn, LinearLayout.LayoutParams(-2, 40.dp).apply { leftMargin = 4.dp })
         editingBtn = barTab(Icon.WAND, "Editing") { if (!busy()) showToolsMenu(false) }
-        bar.addView(editingBtn, LinearLayout.LayoutParams(-2, 40.dp).apply { leftMargin = 2.dp })
 
         // one tap to the editing tools painters use most: adjustments, selection, transform
         adjustBtn = IconView(this, Icon.ADJUST).apply { contentDescription = "Adjustments" }
@@ -373,10 +378,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (cv.interaction == Interaction.TRANSFORM) leaveTransform(true)
             else if (!busy()) runTool("transform", transformBtn)
         }
-        bar.addView(adjustBtn, LinearLayout.LayoutParams(44.dp, 48.dp).apply { leftMargin = 2.dp })
+        bar.addView(adjustBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
         bar.addView(selectBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
         bar.addView(transformBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
-        bar.addView(barDivider())
         symmetryBtn = IconView(this, Icon.SYMMETRY)
         guideBtn = IconView(this, Icon.GRID)
 
@@ -391,13 +395,35 @@ class MainActivity : Activity(), CanvasView.Listener {
                 }
             }
         }
-        bar.addView(titleView, LinearLayout.LayoutParams(0, 48.dp, 1f))
+        // the middle of the bar: "•••" opens the Creative and Editing tool panels
+        val more = Ui.text(this, "•••", 18f, Ui.TEXT_DIM).apply {
+            gravity = Gravity.CENTER
+            contentDescription = "More tools"
+            setOnClickListener { v ->
+                if (busy()) return@setOnClickListener
+                val pm = PopupMenu(this@MainActivity, v)
+                pm.menu.add(0, 1, 0, "Creative tools")
+                pm.menu.add(0, 2, 1, "Editing tools")
+                pm.menu.add(0, 3, 2, "Rename artwork…")
+                pm.setOnMenuItemClickListener {
+                    when (it.itemId) {
+                        1 -> showToolsMenu(true)
+                        2 -> showToolsMenu(false)
+                        else -> titleView.performClick()
+                    }
+                    true
+                }
+                L10n.menu(pm.menu); pm.show()
+            }
+        }
+        bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        bar.addView(more, LinearLayout.LayoutParams(64.dp, 48.dp))
+        bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
 
         // painting tools as one group
         val tools = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Ui.rounded(0xFF1E1E23.toInt(), 14f)
             setPadding(3.dp, 0, 3.dp, 0)
         }
         brushBtn = IconView(this, Icon.BRUSH).apply { contentDescription = "Brush" }
@@ -438,7 +464,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             gravity = Gravity.CENTER
             setOnClickListener { if (!busy()) showLayers() }
         }
-        layersBox.addView(layerName, LinearLayout.LayoutParams(64.dp, -2).apply { topMargin = (-3).dp })
+        layerName.visibility = View.GONE // the Layers panel shows the names
         bar.addView(layersBox, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 4.dp })
 
         colorBtn = ColorSwatchView(this)
@@ -713,7 +739,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val v = if (on) View.GONE else View.VISIBLE
         topBar.visibility = v
         (root.getChildAt(root.indexOfChild(topBar) + 1))?.visibility = v // hairline
-        sideBar.visibility = v
+        sideBar.visibility = if (on || !prefs.getBoolean("sidebar", true)) View.GONE else View.VISIBLE
         dock.visibility = v
         focusExit.visibility = if (on) View.VISIBLE else View.GONE
         if (on) hud.show("Focus mode · tap the corner button to bring the tools back")
@@ -818,7 +844,7 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     /** opens [content] next to [anchor]: to its side when the anchor sits on a screen edge, below it otherwise */
     private fun showBeside(anchor: View?, content: View, widthDp: Int, heightDp: Int?) {
-        val a = anchor ?: creativeBtn
+        val a = anchor ?: actionsBtn
         popup?.dismiss()
         val loc = IntArray(2); a.getLocationInWindow(loc)
         val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
@@ -1772,12 +1798,41 @@ class MainActivity : Activity(), CanvasView.Listener {
             autosave(force = true)
             refreshAll()
         }
-        override fun editGuide() = showGuide(creativeBtn)
-        override fun showSymmetry() = showSymmetry(creativeBtn)
+        override fun editGuide() = showGuide(actionsBtn)
+        override fun showSymmetry() = showSymmetry(actionsBtn)
         override fun toggleWindow(id: String) = runTool(id)
         override fun isWindowOpen(id: String) = pinned.containsKey(id)
         override fun flipCanvas() = cv.flipHorizontal()
         override fun fitCanvas() = cv.fitToScreen()
+        override fun cropResize() = showCanvasSize()
+        override fun flipCanvasContent(horizontal: Boolean) {
+            if (cv.liquify != null || cv.transform != null || adjustKind != null) { hud.show("Finish or cancel the current edit first"); return }
+            val d = cv.doc
+            runCanvasOp("Flipped") { CanvasOps.flip(d, horizontal) }
+        }
+        override fun canvasInfo() {
+            val d = cv.doc
+            val mb = d.width.toLong() * d.height * 4 / 1_000_000.0
+            val text = listOf(
+                L10n.tr("Canvas size") + ": ${d.width} × ${d.height} px",
+                String.format(java.util.Locale.US, "%.1f MP", d.width.toLong() * d.height / 1_000_000.0),
+                L10n.tr("Layers") + ": ${d.layers.size} / ${d.maxLayers()}",
+                String.format(java.util.Locale.US, "%s: %.0f MB", L10n.tr("Memory per layer"), mb),
+                L10n.tr("Groups") + ": ${d.groups.size}",
+                L10n.tr("Print size at 300 dpi") + String.format(java.util.Locale.US, ": %.1f × %.1f cm", d.width / 300f * 2.54f, d.height / 300f * 2.54f)
+            ).joinToString("\n")
+            AlertDialog.Builder(this@MainActivity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(d.title.ifBlank { L10n.tr("Untitled Artwork") })
+                .setMessage(text)
+                .setPositiveButton(L10n.tr("OK"), null)
+                .show()
+        }
+        override var sidebarShown: Boolean
+            get() = prefs.getBoolean("sidebar", true)
+            set(v) { prefs.edit().putBoolean("sidebar", v).apply(); sideBar.visibility = if (v && !focusMode) View.VISIBLE else View.GONE }
+        override var brushCursor: Boolean
+            get() = cv.showBrushCursor
+            set(v) { cv.showBrushCursor = v; prefs.edit().putBoolean("brushCursor", v).apply() }
         override fun export(kind: String) {
             when (kind) {
                 "share" -> exportImage(jpeg = false, share = true)
