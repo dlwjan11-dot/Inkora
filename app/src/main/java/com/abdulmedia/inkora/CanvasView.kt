@@ -1349,12 +1349,39 @@ class CanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** where each layer's watercolor is still wet, by layer id */
+    private val wetMaps = HashMap<Int, WetMap>()
+
+    /**
+     * A watercolor stroke dries: dark rims, uneven wash, grain, and bleeding into paint that is
+     * still wet. Works on the stroke's pixels (and a margin for the bleed); [r] grows to match.
+     */
+    private fun dryWatercolor(sb: Bitmap, r: Rect, layer: Layer) {
+        val dyn = engine.brush.dyn
+        val size = engine.brush.size
+        val margin = (size * 0.7f).toInt().coerceIn(8, 90)
+        r.inset(-margin, -margin)
+        if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
+        val w = r.width(); val h = r.height()
+        if (w.toLong() * h > 9_000_000L) return // a giant stroke stays as it is
+        val px = IntArray(w * h)
+        sb.getPixels(px, 0, w, r.left, r.top, w, h)
+        val wm = wetMaps.getOrPut(layer.id) { WetMap(doc.width, doc.height) }
+        val now = android.os.SystemClock.uptimeMillis()
+        val alpha = try {
+            Watercolor.dry(px, w, h, r.left, r.top, dyn.watercolor, dyn.bloom, size, engine.color) { x, y -> wm.wetness(x, y, now) }
+        } catch (e: OutOfMemoryError) { return }
+        sb.setPixels(px, 0, w, r.left, r.top, w, h)
+        wm.paint(r.left, r.top, w, h, alpha, now)
+    }
+
     private fun commitStroke() {
         val sb = strokeBitmap ?: return
         val r = Rect()
         engine.dirty.roundOut(r)
         if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
         val layer = doc.active
+        if (engine.brush.dyn.watercolor > 0f && !strokeErasing && !layer.isLayerMask) dryWatercolor(sb, r, layer)
         val before = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
         commitPaint.alpha = (engine.brush.opacity * 255).toInt().coerceIn(0, 255)
         commitPaint.blendMode = strokeBlend()

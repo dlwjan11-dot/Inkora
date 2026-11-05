@@ -49,7 +49,12 @@ class BrushDynamics(
     var dualOn: Boolean = false,
     var dualShape: String = "CHARCOAL",  // a TipShape name, or "CUSTOM" for the brush's own second shape
     var dualSize: Float = 1f,            // relative to the brush
-    var dualScatter: Float = 0.3f
+    var dualScatter: Float = 0.3f,
+    // physics
+    var watercolor: Float = 0f,         // 0..1: the stroke dries like watercolor (dark rims, uneven wash, granulation)
+    var bloom: Float = 0f,              // 0..1: on paint that is still wet, the stroke bleeds out
+    var speedSize: Float = 0f,          // 0..1: a fast stroke gets thinner, like ink
+    var flowNoise: Float = 0f           // 0..1: the paint comes out a little uneven along the stroke
 ) {
     fun copy() = BrushDynamics().also { it.read(toJson()) }
 
@@ -72,6 +77,8 @@ class BrushDynamics(
         put("sizeJitter", sizeJitter.toDouble()); put("opacityJitter", opacityJitter.toDouble())
         put("tiltShading", tiltShading); put("pressureCurve", pressureCurve.toDouble())
         put("dualOn", dualOn); put("dualShape", dualShape); put("dualSize", dualSize.toDouble()); put("dualScatter", dualScatter.toDouble())
+        put("watercolor", watercolor.toDouble()); put("bloom", bloom.toDouble())
+        put("speedSize", speedSize.toDouble()); put("flowNoise", flowNoise.toDouble())
     }
 
     /** Reads what the JSON has; anything missing keeps its value. */
@@ -107,13 +114,46 @@ class BrushDynamics(
         dualShape = j.optString("dualShape", dualShape)
         dualSize = f("dualSize", dualSize).coerceIn(0.1f, 4f)
         dualScatter = f("dualScatter", dualScatter).coerceIn(0f, 2f)
+        watercolor = f("watercolor", watercolor).coerceIn(0f, 1f)
+        bloom = f("bloom", bloom).coerceIn(0f, 1f)
+        speedSize = f("speedSize", speedSize).coerceIn(0f, 1f)
+        flowNoise = f("flowNoise", flowNoise).coerceIn(0f, 1f)
     }
 
     companion object {
         /** What a preset starts with: its old fixed values carried over. */
         fun fromPreset(p: BrushPreset): BrushDynamics = p.dynamics?.copy() ?: BrushDynamics(
             taperLength = p.taper, tiltShading = p.tiltShading, pressureCurve = p.pressureCurve
-        )
+        ).also { physics(it, p) }
+
+        /**
+         * Gives the built-in brushes the behaviour of their real medium: watercolor dries with
+         * dark rims and bleeds on wet paint, paint runs out and mixes with what is under it,
+         * ink thins when you move fast, dry media come out a little uneven.
+         */
+        private fun physics(d: BrushDynamics, p: BrushPreset) {
+            val wash = p.tip == TipShape.SOFT || p.tip == TipShape.CLOUD || p.tip == TipShape.SPRAY
+            when (p.category) {
+                "Watercolor", "Water" -> {
+                    d.watercolor = if (p.tip == TipShape.STREAK) 0.6f else 0.9f
+                    d.bloom = 0.75f
+                    d.wetDilution = 0.35f; d.wetPull = 0.3f; d.wetCharge = 0.8f
+                    d.flowNoise = 0.3f
+                }
+                "Painting", "Artistic" -> {
+                    d.wetPull = if (wash) 0.2f else 0.4f
+                    d.wetCharge = 0.82f
+                    d.wetDilution = 0.06f
+                    d.flowNoise = 0.3f
+                    d.sizeJitter = maxOf(d.sizeJitter, 0.04f)
+                }
+                "Sketching", "Drawing", "Charcoals" -> { d.flowNoise = 0.28f; d.opacityJitter = maxOf(d.opacityJitter, 0.06f) }
+                "Inking", "Calligraphy" -> { d.speedSize = if (p.tip == TipShape.HARD) 0.35f else 0.2f; d.flowNoise = 0.06f }
+                "Airbrushing", "Spraypaints" -> d.flowNoise = 0.15f
+                "Touchups" -> d.wetPull = 0.25f
+                "Vintage", "Industrial", "Organic", "Materials", "Elements", "Abstract", "Retro", "Luminance" -> d.flowNoise = 0.18f
+            }
+        }
     }
 }
 

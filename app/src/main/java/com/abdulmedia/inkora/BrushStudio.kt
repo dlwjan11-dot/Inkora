@@ -361,7 +361,12 @@ class BrushStudioView(
             slider("Charge", brush.dyn.wetCharge, 0f, 1f) { brush.dyn.wetCharge = it }
             slider("Pull", brush.dyn.wetPull, 0f, 1f) { brush.dyn.wetPull = it }
         }
-        note("Wet mix makes the brush behave like real paint. Dilution adds water, Charge is how long the paint lasts along a stroke, and Pull is how much of the colors under the brush it picks up and drags along. Try it over other colors on the pad.")
+        group("Watercolor") {
+            slider("Watercolor drying", brush.dyn.watercolor, 0f, 1f) { brush.dyn.watercolor = it }
+            slider("Wet bleed", brush.dyn.bloom, 0f, 1f) { brush.dyn.bloom = it }
+            slider("Uneven flow", brush.dyn.flowNoise, 0f, 1f) { brush.dyn.flowNoise = it }
+        }
+        note("Watercolor drying: when you lift the pen the pigment runs to the edges, the edge wanders like water and the paper grain shows. Wet bleed: painting on a stroke that is still wet (the last 30 seconds) makes the colors bleed into each other. Wet mix makes the brush behave like real paint. Dilution adds water, Charge is how long the paint lasts along a stroke, and Pull is how much of the colors under the brush it picks up and drags along. Try it over other colors on the pad.")
     }
 
     private fun color() {
@@ -395,6 +400,9 @@ class BrushStudioView(
                 val c = exp(ln(0.3f) + v * (ln(3f) - ln(0.3f)))
                 when { c < 0.8f -> L10n.tr("Soft"); c > 1.25f -> L10n.tr("Firm / Hard"); else -> L10n.tr("Normal") }
             }) { v -> brush.dyn.pressureCurve = exp(ln(0.3f) + v * (ln(3f) - ln(0.3f))); touched() })
+        }
+        group("Speed") {
+            slider("Speed thins the line", brush.dyn.speedSize, 0f, 1f) { brush.dyn.speedSize = it }
         }
         group("Pen tilt") {
             switch("Tilt shading (wider and lighter when tilted)", brush.dyn.tiltShading) { brush.dyn.tiltShading = it }

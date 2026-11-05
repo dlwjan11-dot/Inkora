@@ -81,6 +81,9 @@ class StrokeEngine {
     private var lastTilt = 0f
     private var distToNext = 0f
     private var traveled = 0f
+    /** how fast the pen moves (canvas pixels between input points, smoothed) */
+    private var speed = 0f
+    private var noiseSeed = 0
     private var lastAngle = 0f
     private var rawLast: InputPoint? = null
     private var smoothing = true
@@ -125,11 +128,14 @@ class StrokeEngine {
         loadG = ((color shr 8) and 0xFF).toFloat()
         loadB = (color and 0xFF).toFloat()
         paintLeft = 1f
+        speed = 0f
+        noiseSeed = random.nextInt(1000)
         stamp(p.x, p.y, p.pressure, p.tilt, 0f)
         distToNext = spacingFor(diameterFor(p.pressure, p.tilt, 0f))
     }
 
     fun move(p: InputPoint) {
+        rawLast?.let { r -> speed += (hypot(p.x - r.x, p.y - r.y) - speed) * 0.3f }
         rawLast = p
         val dyn = brush.dyn
         var tx = p.x
@@ -251,6 +257,9 @@ class StrokeEngine {
         val pc = pressure.coerceIn(0f, 1f).pow(brush.dyn.pressureCurve)
         val sizeF = brush.minSize + (1f - brush.minSize) * pc
         var d = brush.size * sizeF * taperFactor(dist)
+        // ink: a quick stroke leaves a thinner line
+        val ss = brush.dyn.speedSize
+        if (ss > 0f) d *= 1f - ss * 0.6f * ((speed - brush.size * 0.08f) / (brush.size * 1.2f + 4f)).coerceIn(0f, 1f)
         d *= 1f + 2.5f * tiltAmount(tilt)
         return max(0.5f, d)
     }
@@ -317,6 +326,8 @@ class StrokeEngine {
         if (dyn.taperOpacity > 0f) alpha *= 1f - dyn.taperOpacity * (1f - taperT(dist))
         if (dyn.sizeJitter > 0f) d *= 1f - dyn.sizeJitter * random.nextFloat() * 0.9f
         if (dyn.opacityJitter > 0f) alpha *= 1f - dyn.opacityJitter * random.nextFloat()
+        // real paint never comes out perfectly even: a slow wave of more and less along the stroke
+        if (dyn.flowNoise > 0f) alpha *= 1f - dyn.flowNoise * 0.55f * Watercolor.noise(dist / (brush.size * 2.5f + 6f), noiseSeed.toFloat(), 3)
         if (dyn.hasWetMix) {
             alpha *= paintLeft * (1f - 0.65f * dyn.wetDilution)
             // the brush runs dry as the stroke goes on, the less charge the faster
