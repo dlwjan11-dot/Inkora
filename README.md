@@ -38,7 +38,7 @@ I'm a designer and artist. I looked for a long time for a drawing app on Android
 - **Shadow layers**: a layer you see while you draw, but that stays out of the time-lapse, exports and thumbnails. Use **Shadow photo** to trace a picture without it showing in your time-lapse, or switch any layer to Shadow in its options. 3D layers are shadow layers unless you turn it off.
 - **Your own palettes**: make, name, switch and delete palettes in the color panel, add the current color with one tap, long-press a color to remove it, or build a palette from your artwork or a photo. The active palette shows in the pen's quick menu.
 - **Hue, Saturation and Brightness sliders** in the color panel.
-- **Actual size**: a quick pinch out shows the canvas at 100% (also in Creative › View).
+- **Actual size**: Creative › View shows the canvas at 100%. A quick, short pinch in still fits it to the screen.
 
 ### New in 0.12: layer groups and picking several layers
 

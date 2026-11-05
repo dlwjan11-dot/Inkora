@@ -1110,10 +1110,9 @@ class CanvasView(context: Context) : View(context) {
                         3 -> if (!noUndo) redo()
                         4 -> purposeOf(GestureTrigger.FOUR_TAP)?.let { runPurpose(it, e.x, e.y) }
                     }
-                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 450 && gPinchTotal < 0.75f) {
-                    fitToScreen() // a quick pinch in fits the canvas
-                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 450 && gPinchTotal > 1.35f) {
-                    actualSize(gPinchX, gPinchY) // a quick pinch out: actual size (100%)
+                } else if (!gFired && gMaxPointers == 2 && e.eventTime - gStartTime < 280 && gPinchTotal < 0.72f && gPinchTotal > 0.2f) {
+                    // a short, quick pinch in (a flick of two fingers) fits the canvas; slower zooming stays as it is
+                    fitToScreen()
                 }
             }
             Mode.PICK -> {

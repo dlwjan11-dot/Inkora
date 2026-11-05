@@ -56,7 +56,7 @@ object ToolCatalog {
     } + listOf(
         ToolDef("fit", "Fit to screen", Icon.FIT, "View", "Center the canvas"),
         ToolDef("flip", "Flip view", Icon.FLIP, "View", "Check your drawing mirrored"),
-        ToolDef("actual_size", "Actual size", Icon.FIT, "View", "100% zoom · or a quick pinch out"),
+        ToolDef("actual_size", "Actual size", Icon.FIT, "View", "100% zoom"),
         ToolDef("reference", "Reference image", Icon.REFERENCE, "View", "Floating reference window"),
         ToolDef("navigator", "Navigator", Icon.NAVIGATOR, "View", "Floating canvas thumbnail"),
         ToolDef("lighting", "3D Lighting orb", Icon.ORB, "View", "3D reference sphere for light and shade"),
