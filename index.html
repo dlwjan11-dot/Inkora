@@ -100,6 +100,16 @@
   .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
   .btn.ghost:hover { background: var(--accent-soft); }
   .btn .s { font-weight: 400; opacity: .8; font-size: 13px; direction: ltr; unicode-bidi: isolate; }
+  /* beta testers */
+  .beta { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.25fr; gap: 26px; align-items: center; }
+  .beta p { color: var(--text-2); margin: 0 0 6px; }
+  .beta ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: s; }
+  .beta li { counter-increment: s; display: flex; gap: 12px; align-items: center; }
+  .beta li::before { content: counter(s); flex: none; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+    font: 700 14px var(--font); color: var(--accent); background: var(--accent-soft); }
+  .beta li .btn { flex: 1; margin: 0; }
+  .beta .note { font-size: 14px; color: var(--text-3); margin-top: 10px; }
+  @media (max-width: 760px) { .beta { grid-template-columns: 1fr; } }
   .hash { margin-top: 14px; font: 12px/1.5 Consolas, Menlo, monospace; color: var(--text-3); word-break: break-all; direction: ltr; text-align: left; }
 
   /* features */
@@ -310,6 +320,36 @@
             <span><span class="ar">ماذا بعد؟</span><span class="en">What's next</span><span class="ckb">داهاتوو چییە؟</span></span>
             <span class="s">ROADMAP.md</span>
           </a>
+        </div>
+        <div class="card beta" id="beta">
+          <div>
+            <h3>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6.5L4.6 18.2A1.8 1.8 0 006.1 21h11.8a1.8 1.8 0 001.5-2.8L14 9.5V3"/><path d="M7.5 15h9"/></svg>
+              <span class="ar">جرّب Inkora على Google Play</span><span class="en">Test Inkora on Google Play</span><span class="ckb">Inkora لەسەر Google Play تاقی بکەرەوە</span>
+              <span class="tag">Beta</span>
+            </h3>
+            <p>
+              <span class="ar">قبل أن ينزل Inkora على Google Play للجميع، أحتاج فنانين يجرّبونه. يكفي أن يكون عندك جهاز أندرويد وحساب Google. مجاني، وملاحظاتك تشكّل التطبيق.</span>
+              <span class="en">Before Inkora comes to Google Play for everyone, I need artists to try it. All you need is an Android device and a Google account. It's free, and your feedback shapes the app.</span>
+              <span class="ckb">پێش ئەوەی Inkora بۆ هەمووان بێتە سەر Google Play، پێویستم بە هونەرمەندانە تاقی بکەنەوە. تەنها ئامێرێکی ئەندرۆید و هەژمارێکی Google پێویستە. بێبەرامبەرە، و تێبینییەکانت ئەپەکە دادەڕێژن.</span>
+            </p>
+            <p class="note">
+              <span class="ar">من فضلك ابقَ في التجربة 14 يوماً على الأقل: هكذا يسمح Google بنشر التطبيق.</span>
+              <span class="en">Please stay in the test for at least 14 days: that's what lets Google publish the app.</span>
+              <span class="ckb">تکایە لانیکەم 14 ڕۆژ لە تاقیکردنەوەکەدا بمێنەوە: ئەمە ڕێگە دەدات Google ئەپەکە بڵاو بکاتەوە.</span>
+            </p>
+          </div>
+          <ol>
+            <li><a class="btn" href="https://groups.google.com/g/inkora-testers" target="_blank" rel="noopener">
+              <span><span class="ar">انضم إلى مجموعة المجرّبين</span><span class="en">Join the testers group</span><span class="ckb">بەشداری گرووپی تاقیکەرەوان بکە</span></span>
+              <span class="s">Google Groups</span></a></li>
+            <li><a class="btn ghost" href="https://play.google.com/apps/testing/com.abdulmedia.inkora" target="_blank" rel="noopener">
+              <span><span class="ar">اضغط «كن مختبِراً»</span><span class="en">Tap "Become a tester"</span><span class="ckb">«ببە بە تاقیکەرەوە» دابگرە</span></span>
+              <span class="s">Google Play</span></a></li>
+            <li><a class="btn ghost" href="https://play.google.com/store/apps/details?id=com.abdulmedia.inkora" target="_blank" rel="noopener">
+              <span><span class="ar">ثبّت Inkora من Google Play</span><span class="en">Install Inkora from Google Play</span><span class="ckb">Inkora لە Google Play دابمەزرێنە</span></span>
+              <span class="s">Install</span></a></li>
+          </ol>
         </div>
       </div>
     </div>
