@@ -1,5 +1,6 @@
 package com.abdulmedia.inkora
 
+import kotlin.math.min
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
@@ -74,8 +75,9 @@ object ProjectIO {
         g.color = o.optInt("color", g.color)
         g.assisted = o.optBoolean("assisted", false)
         val arr = o.optJSONArray("vps")
-        if (arr != null && arr.length() == g.vps.size) {
-            for (i in 0 until arr.length()) g.vps[i] = arr.getDouble(i).toFloat()
+        if (arr != null && arr.length() >= 2) {
+            // older projects have fewer points: the rest keep their defaults
+            for (i in 0 until min(arr.length(), g.vps.size)) g.vps[i] = arr.getDouble(i).toFloat()
             g.version++
         }
     }

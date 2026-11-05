@@ -120,6 +120,7 @@ class GuidePanel(
         GuideType.PERSPECTIVE_1 -> "Strokes snap toward the vanishing point, or horizontal / vertical."
         GuideType.PERSPECTIVE_2 -> "Strokes snap toward either vanishing point, or vertical."
         GuideType.PERSPECTIVE_3 -> "Strokes snap toward one of the three vanishing points."
+        GuideType.FISHEYE -> "Strokes follow the curved horizontals and verticals, or go straight toward the center. Point 1 is the center, point 2 sets the size and tilt of the fisheye."
         GuideType.ELLIPSE_RULER -> "Strokes follow circles around the center of the canvas."
         GuideType.OFF -> ""
     }

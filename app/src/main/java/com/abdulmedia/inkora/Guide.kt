@@ -25,7 +25,9 @@ enum class GuideType(val label: String, val usesSize: Boolean, val vanishingPoin
     ELLIPSE_RULER("Circle Ruler", true, intArrayOf()),
     PERSPECTIVE_1("1-Point Perspective", true, intArrayOf(0)),
     PERSPECTIVE_2("2-Point Perspective", true, intArrayOf(1, 2)),
-    PERSPECTIVE_3("3-Point Perspective", true, intArrayOf(1, 2, 3));
+    PERSPECTIVE_3("3-Point Perspective", true, intArrayOf(1, 2, 3)),
+    /** curvilinear (fisheye) perspective: point 1 = center, point 2 = edge of the fisheye circle on the horizon */
+    FISHEYE("Fisheye Perspective", true, intArrayOf(0, 4));
 
     val isPerspective get() = vanishingPoints.isNotEmpty()
 }
@@ -41,7 +43,7 @@ class GuideSettings {
     var color = 0xFF4C8DFF.toInt()
     var assisted = false
 
-    /** x0,y0, x1,y1, x2,y2, x3,y3 : VP0 = 1-point, VP1+VP2 = 2-point, VP1+VP2+VP3 = 3-point */
+    /** x0,y0 … x4,y4 : VP0 = 1-point, VP1+VP2 = 2-point, VP1+VP2+VP3 = 3-point, VP0+VP4 = fisheye (center, edge) */
     val vps = DEFAULT_VPS.copyOf()
 
     /** bumped whenever the geometry changes (used for caching) */
@@ -62,7 +64,7 @@ class GuideSettings {
     fun vpY(i: Int, h: Int) = vps[i * 2 + 1] * h
 
     companion object {
-        val DEFAULT_VPS = floatArrayOf(0.5f, 0.45f, 0.06f, 0.42f, 0.94f, 0.42f, 0.5f, 0.96f)
+        val DEFAULT_VPS = floatArrayOf(0.5f, 0.45f, 0.06f, 0.42f, 0.94f, 0.42f, 0.5f, 0.96f, 0.1f, 0.45f)
         const val MIN_SIZE = 8f
         const val MAX_SIZE = 600f
     }
@@ -173,6 +175,7 @@ object Guides {
                 rays(lines, g.vpX(3, w), g.vpY(3, h), w, h)
                 horizon(lines, ax, ay, bx, by, w, h)
             }
+            GuideType.FISHEYE -> fisheye(lines, circles, g, w, h, s)
         }
         return GuideGeometry(lines.toArray(), points.toArray(), circles.toArray())
     }
@@ -194,6 +197,80 @@ object Guides {
             val c = k * spacing
             val px = ox + nx * c; val py = oy + ny * c
             clipAdd(out, px - dx * big, py - dy * big, px + dx * big, py + dy * big, w, h)
+        }
+    }
+
+    /** center, radius and axes (e1 = along the horizon, e2 = across) of the fisheye guide */
+    class Fish(val cx: Float, val cy: Float, val r: Float, val e1x: Float, val e1y: Float) {
+        val e2x get() = -e1y
+        val e2y get() = e1x
+    }
+
+    fun fish(g: GuideSettings, w: Int, h: Int): Fish {
+        val cx = g.vpX(0, w); val cy = g.vpY(0, h)
+        val ex = g.vpX(4, w); val ey = g.vpY(4, h)
+        var dx = cx - ex; var dy = cy - ey
+        val r = hypot(dx, dy)
+        if (r < 1f) { dx = 1f; dy = 0f } else { dx /= r; dy /= r }
+        return Fish(cx, cy, max(r, 20f), dx, dy)
+    }
+
+    /**
+     * Curvilinear (fisheye) perspective: the circle, arcs through the left and right edge points
+     * (curved horizontals), arcs through the top and bottom points (curved verticals), and lines
+     * from the center (depth).
+     */
+    private fun fisheye(lines: FloatList, circles: FloatList, g: GuideSettings, w: Int, h: Int, spacing: Float) {
+        val f = fish(g, w, h)
+        val R = f.r
+        circles.add(f.cx); circles.add(f.cy); circles.add(R)
+        // spacing measured across the middle of the circle, at least a few lines
+        val step = spacing.coerceIn(R / 14f, R / 2f)
+        val reach = hypot(w.toFloat(), h.toFloat()) * 1.5f
+        val n = ceil(reach / step).toInt().coerceAtMost(60)
+        for (family in 0..1) {
+            // family 0: horizontals (through ±e1), family 1: verticals (through ±e2)
+            val ax = if (family == 0) f.e1x else f.e2x
+            val ay = if (family == 0) f.e1y else f.e2y
+            val bx = if (family == 0) f.e2x else f.e1x
+            val by = if (family == 0) f.e2y else f.e1y
+            for (j in -n..n) {
+                val v0 = j * step
+                if (j == 0) {
+                    clipAdd(lines, f.cx - ax * reach, f.cy - ay * reach, f.cx + ax * reach, f.cy + ay * reach, w, h)
+                    continue
+                }
+                // the arc through the two edge points and the point v0 across the middle
+                val k = (v0 * v0 - R * R) / (2 * v0)
+                val ocx = f.cx + bx * k; val ocy = f.cy + by * k
+                val rr = sqrt(R * R + k * k)
+                arc(lines, ocx, ocy, rr, f.cx - ax * R, f.cy - ay * R, f.cx + bx * v0, f.cy + by * v0, f.cx + ax * R, f.cy + ay * R, w, h)
+            }
+        }
+        // depth lines from the center
+        for (k in 0 until 32) {
+            val a = (2 * PI * k / 32).toFloat()
+            clipAdd(lines, f.cx, f.cy, f.cx + cos(a) * reach, f.cy + sin(a) * reach, w, h)
+        }
+    }
+
+    /** an arc of the circle (ox, oy, r) from point A through point M to point B, as short segments */
+    private fun arc(out: FloatList, ox: Float, oy: Float, r: Float,
+                    ax: Float, ay: Float, mx: Float, my: Float, bx: Float, by: Float, w: Int, h: Int) {
+        val a0 = atan2(ay - oy, ax - ox)
+        val am = atan2(my - oy, mx - ox)
+        val a1 = atan2(by - oy, bx - ox)
+        fun norm(a: Float): Float { var x = a; while (x < 0) x += (2 * PI).toFloat(); while (x >= 2 * PI) x -= (2 * PI).toFloat(); return x }
+        // sweep from a0 to a1 counter-clockwise if M lies on that way, otherwise clockwise
+        var sweep = norm(a1 - a0)
+        if (norm(am - a0) > sweep) sweep -= (2 * PI).toFloat()
+        val segs = (abs(sweep) * r / 12f).toInt().coerceIn(12, 160)
+        var px = ox + r * cos(a0); var py = oy + r * sin(a0)
+        for (i in 1..segs) {
+            val a = a0 + sweep * i / segs
+            val qx = ox + r * cos(a); val qy = oy + r * sin(a)
+            clipAdd(out, px, py, qx, qy, w, h)
+            px = qx; py = qy
         }
     }
 
@@ -300,6 +377,27 @@ object Guides {
             GuideType.PERSPECTIVE_2 -> { toward(g.vpX(1, w), g.vpY(1, h)); toward(g.vpX(2, w), g.vpY(2, h)); angle(90f) }
             GuideType.PERSPECTIVE_3 -> {
                 toward(g.vpX(1, w), g.vpY(1, h)); toward(g.vpX(2, w), g.vpY(2, h)); toward(g.vpX(3, w), g.vpY(3, h))
+            }
+            GuideType.FISHEYE -> {
+                val f = fish(g, w, h)
+                val R = f.r
+                // the stroke start in the fisheye's own axes
+                val u = (sx - f.cx) * f.e1x + (sy - f.cy) * f.e1y
+                val v = (sx - f.cx) * f.e2x + (sy - f.cy) * f.e2y
+                // curved horizontal through the start: an arc through both horizon edge points
+                if (abs(v) < 0.5f) cands.add(Constraint.Line(sx, sy, f.e1x, f.e1y))
+                else {
+                    val k = (u * u + v * v - R * R) / (2 * v)
+                    cands.add(Constraint.Circle(f.cx + f.e2x * k, f.cy + f.e2y * k, sqrt(R * R + k * k)))
+                }
+                // curved vertical through the start
+                if (abs(u) < 0.5f) cands.add(Constraint.Line(sx, sy, f.e2x, f.e2y))
+                else {
+                    val k = (u * u + v * v - R * R) / (2 * u)
+                    cands.add(Constraint.Circle(f.cx + f.e1x * k, f.cy + f.e1y * k, sqrt(R * R + k * k)))
+                }
+                // depth: straight toward the center
+                toward(f.cx, f.cy)
             }
             GuideType.ELLIPSE_RULER -> {
                 // strokes follow circles around the canvas center

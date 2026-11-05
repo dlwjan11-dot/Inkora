@@ -1090,6 +1090,9 @@ object L10n {
         "Grays", "رماديات", "خۆڵەمێشییەکان",
         "From artwork", "من الرسمة", "لە تابلۆکە",
         "From photo", "من صورة", "لە وێنە",
+        "Fisheye Perspective", "منظور عين السمكة", "پێرسپێکتیڤی چاوی ماسی",
+        "Fisheye persp.", "عين السمكة", "چاوی ماسی",
+        "Strokes follow the curved horizontals and verticals, or go straight toward the center. Point 1 is the center, point 2 sets the size and tilt of the fisheye.", "الخطوط تتبع الأفقيات والعموديات المنحنية، أو تتجه مباشرة نحو المركز. النقطة 1 هي المركز، والنقطة 2 تحدد حجم عين السمكة وميلانها.", "هێڵەکان شوێن ئاسۆیی و ستوونییە چەماوەکان دەکەون، یان ڕاستەوخۆ بەرەو ناوەند دەچن. خاڵی 1 ناوەندە، خاڵی 2 قەبارە و لاری چاوی ماسی دیاری دەکات.",
         "Color saved", "تم حفظ اللون", "ڕەنگ پاشەکەوت کرا"
     )
 }

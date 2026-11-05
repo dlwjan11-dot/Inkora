@@ -20,6 +20,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
@@ -519,6 +520,23 @@ class GuidePreview(context: Context, private val type: GuideType, private val se
             GuideType.PERSPECTIVE_3 -> {
                 val y = r.top + r.height() * 0.25f
                 rays(canvas, r.left + 2f.dp, y, r, 7); rays(canvas, r.right - 2f.dp, y, r, 7); rays(canvas, r.centerX(), r.bottom - 1f.dp, r, 7)
+            }
+            GuideType.FISHEYE -> {
+                val cx = r.centerX(); val cy = r.centerY()
+                val R = min(r.width(), r.height()) * 0.62f
+                canvas.drawCircle(cx, cy, R, p)
+                for (j in -3..3) {
+                    if (j == 0) { canvas.drawLine(cx - R, cy, cx + R, cy, p); canvas.drawLine(cx, cy - R, cx, cy + R, p); continue }
+                    val v0 = j * R / 3.5f
+                    val k = (v0 * v0 - R * R) / (2 * v0)
+                    val rr = sqrt(R * R + k * k)
+                    val sweep = Math.toDegrees(2 * Math.atan2(R.toDouble(), abs(k).toDouble())).toFloat()
+                    // horizontal-ish arc: center below / above the middle
+                    val start = if (k > 0) 270f - sweep / 2 else 90f - sweep / 2
+                    canvas.drawArc(RectF(cx - rr, cy + k - rr, cx + rr, cy + k + rr), start, sweep, false, p)
+                    val startV = if (k > 0) 180f - sweep / 2 else -sweep / 2
+                    canvas.drawArc(RectF(cx + k - rr, cy - rr, cx + k + rr, cy + rr), startV, sweep, false, p)
+                }
             }
         }
         canvas.restore()
