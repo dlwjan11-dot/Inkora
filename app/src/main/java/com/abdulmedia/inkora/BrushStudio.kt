@@ -363,6 +363,7 @@ class BrushStudioView(
             slider("Pull", brush.dyn.wetPull, 0f, 1f) { brush.dyn.wetPull = it }
         }
         group("Watercolor") {
+            slider("Wet edge", brush.dyn.wetEdge, 0f, 1f) { brush.dyn.wetEdge = it }
             slider("Watercolor drying", brush.dyn.watercolor, 0f, 1f) { brush.dyn.watercolor = it }
             slider("Wet bleed", brush.dyn.bloom, 0f, 1f) { brush.dyn.bloom = it }
             slider("Uneven flow", brush.dyn.flowNoise, 0f, 1f) { brush.dyn.flowNoise = it }
@@ -592,15 +593,17 @@ class DrawingPad(context: Context, private val brush: Brush, private val colorOf
         commitPaint.alpha = (brush.opacity * 255).roundToInt().coerceIn(0, 255)
         commitPaint.blendMode = brush.dyn.blend.mode
         val grain = grainPaintFor(brush)
-        val gran = if (grain != null) granulationFor(brush) else null
+        val look = strokeLookFor(brush)
         val m = engine.maskTarget
         val all = RectF(0f, 0f, l.width.toFloat(), l.height.toFloat())
         val s = c.saveLayer(all, commitPaint)
-        val gi = if (gran != null) c.saveLayer(all, gran.layer) else -1
+        val gi = if (look?.layer != null) c.saveLayer(all, look.layer) else -1
         c.drawBitmap(sb, 0f, 0f, null)
         if (m != null) c.drawBitmap(m, 0f, 0f, maskDstIn)
         if (grain != null) c.drawRect(0f, 0f, l.width.toFloat(), l.height.toFloat(), grain)
-        if (gran != null) { c.restoreToCount(gi); c.drawBitmap(sb, 0f, 0f, gran.tone) }
+        if (gi >= 0) c.restoreToCount(gi)
+        look?.tone?.let { c.drawBitmap(sb, 0f, 0f, it) }
+        look?.core?.let { c.drawBitmap(sb, 0f, 0f, it) }
         c.restoreToCount(s)
         sb.eraseColor(0)
     }

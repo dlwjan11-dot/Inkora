@@ -59,7 +59,12 @@ class BrushDynamics(
      * 0..1: the paint catches on the paper's grain as you draw. A light touch leaves specks on
      * the high points of the paper only; pressing fills it in. Needs a grain.
      */
-    var granulation: Float = 0f
+    var granulation: Float = 0f,
+    /**
+     * 0..1: wet edge. The middle of a wash is lighter than its rim, where the pigment gathers,
+     * as it does when watercolor pools. Shows while you draw.
+     */
+    var wetEdge: Float = 0f
 ) {
     fun copy() = BrushDynamics().also { it.read(toJson()) }
 
@@ -84,7 +89,7 @@ class BrushDynamics(
         put("dualOn", dualOn); put("dualShape", dualShape); put("dualSize", dualSize.toDouble()); put("dualScatter", dualScatter.toDouble())
         put("watercolor", watercolor.toDouble()); put("bloom", bloom.toDouble())
         put("speedSize", speedSize.toDouble()); put("flowNoise", flowNoise.toDouble())
-        put("granulation", granulation.toDouble())
+        put("granulation", granulation.toDouble()); put("wetEdge", wetEdge.toDouble())
     }
 
     /** Reads what the JSON has; anything missing keeps its value. */
@@ -125,6 +130,7 @@ class BrushDynamics(
         speedSize = f("speedSize", speedSize).coerceIn(0f, 1f)
         flowNoise = f("flowNoise", flowNoise).coerceIn(0f, 1f)
         granulation = f("granulation", granulation).coerceIn(0f, 1f)
+        wetEdge = f("wetEdge", wetEdge).coerceIn(0f, 1f)
     }
 
     companion object {
@@ -148,7 +154,12 @@ class BrushDynamics(
                     d.wetDilution = 0.35f; d.wetPull = 0.3f; d.wetCharge = 1f
                     d.flowNoise = 0.3f
                     // washes glaze: one over another gets deeper, as transparent paint does
-                    if (p.name != "Heavy Gouache") d.blend = LayerBlend.MULTIPLY
+                    if (p.name != "Heavy Gouache") {
+                        d.blend = LayerBlend.MULTIPLY
+                        // the look is there while you draw: pigment at the rim, paint caught in the paper
+                        d.wetEdge = if (p.tip == TipShape.SOFT || p.tip == TipShape.CLOUD) 0.45f else 0.25f
+                        if (p.grain != GrainType.NONE) { d.granulation = 0.45f; d.grainDepth = 0.7f }
+                    }
                 }
                 "Painting", "Artistic" -> {
                     d.wetPull = if (wash) 0.2f else 0.4f

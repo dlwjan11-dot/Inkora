@@ -137,7 +137,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.eraserBrush.size = 80f
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
-        cv.watercolorDrying = prefs.getBoolean("watercolorDrying", true)
+        // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
+        cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
         if (!prefs.getBoolean("sidebar", true)) sideBar.visibility = View.GONE
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)

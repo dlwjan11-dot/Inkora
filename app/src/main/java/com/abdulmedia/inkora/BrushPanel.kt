@@ -41,36 +41,40 @@ fun grainPaintFor(b: Brush): Paint? {
 }
 
 /**
- * Granulation: the stroke through the grain is pushed to "paint or paper" (the paint catches on
- * the paper's high points first), then light pressure is kept lighter.
- * [layer] is the paint of the layer the stroke and its grain are drawn into; [tone] then draws
- * the stroke once more.
+ * What makes a stroke look like watercolor while it is drawn:
+ *  - granulation: the stroke through the grain is pushed to "paint or paper" (the paint catches
+ *    on the paper's high points first), and light pressure is kept lighter;
+ *  - wet edge: the middle of the wash is made lighter than its rim.
+ * The stroke and its grain are drawn into a layer with [layer] (when there is one), then the
+ * stroke is drawn again with [tone] and with [core].
  */
-class Granulation(val layer: Paint, val tone: Paint)
+class StrokeLook(val layer: Paint?, val tone: Paint?, val core: Paint?)
 
-fun granulationFor(b: Brush): Granulation? {
-    val gr = b.dyn.granulation.coerceIn(0f, 1f)
-    if (gr < 0.01f || b.grain() == null) return null
-    // alpha' = gain × alpha − cut: with a deep grain a full stroke is solid, a faint one only
-    // reaches the paper's high points
-    val gain = 1f + 4f * gr
-    val cut = 0.05f * gr * gain * 255f
-    val layer = Paint().apply {
-        colorFilter = android.graphics.ColorMatrixColorFilter(floatArrayOf(
-            1f, 0f, 0f, 0f, 0f,
-            0f, 1f, 0f, 0f, 0f,
-            0f, 0f, 1f, 0f, 0f,
-            0f, 0f, 0f, gain, -cut))
+private fun alphaFilter(scale: Float, add: Float) = android.graphics.ColorMatrixColorFilter(floatArrayOf(
+    1f, 0f, 0f, 0f, 0f,
+    0f, 1f, 0f, 0f, 0f,
+    0f, 0f, 1f, 0f, 0f,
+    0f, 0f, 0f, scale, add * 255f))
+
+fun strokeLookFor(b: Brush): StrokeLook? {
+    val gr = if (b.grain() == null) 0f else b.dyn.granulation.coerceIn(0f, 1f)
+    val edge = b.dyn.wetEdge.coerceIn(0f, 1f)
+    if (gr < 0.01f && edge < 0.01f) return null
+    var layer: Paint? = null
+    var tone: Paint? = null
+    if (gr >= 0.01f) {
+        // alpha' = gain × alpha − cut: with a deep grain a full stroke is solid, a faint one only
+        // reaches the paper's high points
+        val gain = 1f + 4f * gr
+        layer = Paint().apply { colorFilter = alphaFilter(gain, -0.05f * gr * gain) }
+        tone = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_IN; colorFilter = alphaFilter(0.5f, 0.5f) }
     }
-    val tone = Paint(Paint.FILTER_BITMAP_FLAG).apply {
-        blendMode = BlendMode.DST_IN
-        colorFilter = android.graphics.ColorMatrixColorFilter(floatArrayOf(
-            1f, 0f, 0f, 0f, 0f,
-            0f, 1f, 0f, 0f, 0f,
-            0f, 0f, 1f, 0f, 0f,
-            0f, 0f, 0f, 0.5f, 127.5f))
+    // the stroke's own middle (where it is more than half covered) takes some of the paint away again
+    val core = if (edge < 0.01f) null else Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        blendMode = BlendMode.DST_OUT
+        colorFilter = alphaFilter(1.2f * edge, -0.6f * edge)
     }
-    return Granulation(layer, tone)
+    return StrokeLook(layer, tone, core)
 }
 
 /**
@@ -128,6 +132,9 @@ class BrushPanel(
         set.startsWith("Paint") -> Icon.PALETTE
         set.startsWith("Living") -> Icon.PALETTE
         set.startsWith("Water") || set.startsWith("Aquarelle") -> Icon.DROP
+        set.startsWith("Tempera") -> Icon.PALETTE
+        set.startsWith("Marker") -> Icon.NIB
+        set.startsWith("Light &") -> Icon.LIGHTBULB
         set.startsWith("Air") -> Icon.SPRAY
         set.startsWith("Textur") -> Icon.TEXTURE
         set.startsWith("Effect") -> Icon.SPARKLE
@@ -333,20 +340,21 @@ class BrushPanel(
             }
             engine.renderPressurePoints(bmp, pts, 7)
             if (mask != null) { StrokeEngine.applyMask(bmp, mask); mask.recycle() }
-            val grain = grainPaintFor(brush) ?: return bmp
-            val gran = granulationFor(brush)
-            if (gran == null) {
-                Canvas(bmp).drawRect(0f, 0f, w.toFloat(), h.toFloat(), grain)
+            val grain = grainPaintFor(brush)
+            val look = strokeLookFor(brush)
+            if (look == null) {
+                if (grain != null) Canvas(bmp).drawRect(0f, 0f, w.toFloat(), h.toFloat(), grain)
                 return bmp
             }
-            // a granulating brush shows its sandy stroke in the library too
+            // a watercolor brush shows its sandy, rimmed stroke in the library too
             val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
             val c = Canvas(out)
-            val i = c.saveLayer(0f, 0f, w.toFloat(), h.toFloat(), gran.layer)
+            val i = if (look.layer != null) c.saveLayer(0f, 0f, w.toFloat(), h.toFloat(), look.layer) else -1
             c.drawBitmap(bmp, 0f, 0f, null)
-            c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), grain)
-            c.restoreToCount(i)
-            c.drawBitmap(bmp, 0f, 0f, gran.tone)
+            if (grain != null) c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), grain)
+            if (i >= 0) c.restoreToCount(i)
+            look.tone?.let { c.drawBitmap(bmp, 0f, 0f, it) }
+            look.core?.let { c.drawBitmap(bmp, 0f, 0f, it) }
             bmp.recycle()
             return out
         }

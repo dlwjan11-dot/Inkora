@@ -135,14 +135,26 @@ object Brushes {
         name: String, tip: TipShape, spacing: Float, minSize: Float, minFlow: Float, flow: Float, size: Float, opacity: Float,
         granulation: Float, grainScale: Float = 1.5f, depth: Float = 0.75f, scatter: Float = 0f,
         rotation: RotationMode = RotationMode.NONE, taper: Float = 0f, pull: Float = 0.25f, dilution: Float = 0.15f,
-        sizeJitter: Float = 0f, flowNoise: Float = 0.3f, streamline: Float = 0.25f
+        sizeJitter: Float = 0f, flowNoise: Float = 0.3f, streamline: Float = 0.25f, wetEdge: Float = 0.45f
     ) = BrushPreset(name, AQUARELLE, tip, spacing, minSize, minFlow, flow, streamline, size, opacity, scatter, rotation,
         taper = taper, grain = GrainType.COLD_PRESS, grainScale = grainScale,
         dynamics = BrushDynamics(taperLength = taper, grainDepth = depth, blend = LayerBlend.MULTIPLY,
             wetDilution = dilution, wetPull = pull, wetCharge = 1f, sizeJitter = sizeJitter, flowNoise = flowNoise,
-            granulation = granulation))
+            granulation = granulation, wetEdge = wetEdge))
 
     const val AQUARELLE = "Aquarelle"
+
+    /** a brush with its own Brush Studio settings ([dyn]) instead of its set's usual ones */
+    private fun dy(
+        name: String, cat: String, tip: TipShape, spacing: Float, minSize: Float, minFlow: Float, flow: Float,
+        streamline: Float, size: Float, opacity: Float = 1f, rotation: RotationMode = RotationMode.NONE, angle: Float = 0f,
+        grain: GrainType = GrainType.NONE, grainScale: Float = 1f, dyn: BrushDynamics
+    ) = BrushPreset(name, cat, tip, spacing, minSize, minFlow, flow, streamline, size, opacity, 0f, rotation, angle,
+        taper = dyn.taperLength, grain = grain, grainScale = grainScale, dynamics = dyn)
+
+    /** an airbrush that changes the paint under it through a blend mode (lighter, deeper, another hue…) */
+    private fun adj(name: String, blend: LayerBlend, size: Float, opacity: Float, flow: Float = 0.12f) =
+        dy(name, "Light & Shade", TipShape.SOFT, 0.08f, 0.9f, 0.1f, flow, 0.1f, size, opacity, dyn = BrushDynamics(blend = blend))
 
     /** a living brush: painted by the MyPaint engine, the paint stays wet and mixes as you draw */
     private fun lv(name: String, file: String, size: Float, opacity: Float = 1f) =
@@ -150,7 +162,7 @@ object Brushes {
 
     const val LIVING = "Living Paint"
 
-    private val categoryOrder = listOf(LIVING, AQUARELLE, "Sketching", "Inking", "Drawing", "Painting", "Artistic", "Calligraphy",
+    private val categoryOrder = listOf(LIVING, AQUARELLE, "Tempera", "Markers", "Light & Shade", "Sketching", "Inking", "Drawing", "Painting", "Artistic", "Calligraphy",
         "Airbrushing", "Textures & Elements", "Abstract", "Charcoals", "Elements", "Spraypaints", "Touchups",
         "Vintage", "Luminance", "Industrial", "Organic", "Water", "Watercolor", "Materials", "Retro", "Effects", "Pixel Art")
 
@@ -246,14 +258,45 @@ object Brushes {
         // ---- Aquarelle: watercolor on cold-press paper, grainy while you draw ----
         aq("Round Grain", TipShape.SOFT, 0.06f, 0.35f, 0.10f, 0.30f, 70f, 0.85f, granulation = 1f),
         aq("Soft Wash", TipShape.SOFT, 0.07f, 0.8f, 0.06f, 0.16f, 160f, 0.7f, granulation = 0.7f, grainScale = 1.8f, pull = 0.3f, dilution = 0.3f),
-        aq("Dry Round", TipShape.SOFT, 0.06f, 0.4f, 0.05f, 0.14f, 60f, 0.9f, granulation = 1f, grainScale = 1.3f, depth = 0.9f, pull = 0.1f, dilution = 0.05f),
+        aq("Dry Round", TipShape.SOFT, 0.06f, 0.4f, 0.05f, 0.14f, 60f, 0.9f, granulation = 1f, grainScale = 1.3f, depth = 0.9f, pull = 0.1f, dilution = 0.05f, wetEdge = 0.15f),
         aq("Sandy Flat", TipShape.FLAT, 0.05f, 0.6f, 0.12f, 0.34f, 80f, 0.85f, granulation = 1f, rotation = RotationMode.FOLLOW),
         aq("Mop", TipShape.CLOUD, 0.12f, 0.75f, 0.08f, 0.22f, 190f, 0.65f, granulation = 0.8f, grainScale = 2f, rotation = RotationMode.RANDOM, pull = 0.35f, dilution = 0.3f, sizeJitter = 0.1f),
-        aq("Detail Round", TipShape.SOFT, 0.05f, 0.2f, 0.25f, 0.6f, 18f, 0.9f, granulation = 0.6f, grainScale = 1.1f, taper = 1.5f, streamline = 0.4f),
+        aq("Detail Round", TipShape.SOFT, 0.05f, 0.2f, 0.25f, 0.6f, 18f, 0.9f, granulation = 0.6f, grainScale = 1.1f, taper = 1.5f, streamline = 0.4f, wetEdge = 0.3f),
+        aq("Puddle", TipShape.SOFT, 0.07f, 0.85f, 0.10f, 0.26f, 140f, 0.75f, granulation = 0.35f, grainScale = 1.8f, depth = 0.5f, pull = 0.35f, dilution = 0.35f, wetEdge = 0.8f),
         aq("Grain Glaze", TipShape.SOFT, 0.07f, 0.7f, 0.05f, 0.12f, 120f, 0.5f, granulation = 0.5f, grainScale = 1.6f, depth = 0.6f, pull = 0.05f, dilution = 0.1f),
         aq("Bristle Wash", TipShape.BRISTLE, 0.05f, 0.5f, 0.12f, 0.4f, 90f, 0.8f, granulation = 0.9f, rotation = RotationMode.FOLLOW, pull = 0.2f),
-        aq("Speckle", TipShape.SPRAY, 0.25f, 0.6f, 0.2f, 0.6f, 110f, 0.8f, granulation = 1f, grainScale = 1.2f, scatter = 0.5f, rotation = RotationMode.RANDOM, pull = 0f, dilution = 0f),
+        aq("Speckle", TipShape.SPRAY, 0.25f, 0.6f, 0.2f, 0.6f, 110f, 0.8f, granulation = 1f, grainScale = 1.2f, scatter = 0.5f, rotation = RotationMode.RANDOM, pull = 0f, dilution = 0f, wetEdge = 0f),
         aq("Edge Bloom", TipShape.RING, 0.08f, 0.7f, 0.1f, 0.3f, 90f, 0.75f, granulation = 0.8f, rotation = RotationMode.RANDOM, pull = 0.3f, dilution = 0.25f, sizeJitter = 0.15f),
+
+        // ---- Tempera: opaque paint that covers what is under it and does not mix ----
+        dy("Flat Opaque", "Tempera", TipShape.FLAT, 0.04f, 0.6f, 0.85f, 1f, 0.2f, 60f, rotation = RotationMode.FOLLOW, dyn = BrushDynamics(flowNoise = 0.15f)),
+        dy("Round Opaque", "Tempera", TipShape.MARKER, 0.04f, 0.5f, 0.9f, 1f, 0.25f, 40f, dyn = BrushDynamics(flowNoise = 0.12f)),
+        dy("Dry Bristle Flat", "Tempera", TipShape.BRISTLE, 0.04f, 0.6f, 0.35f, 0.9f, 0.2f, 70f, rotation = RotationMode.FOLLOW, dyn = BrushDynamics(flowNoise = 0.4f, sizeJitter = 0.05f)),
+        dy("Canvas Scumble", "Tempera", TipShape.BRISTLE, 0.05f, 0.6f, 0.15f, 0.5f, 0.2f, 90f, rotation = RotationMode.FOLLOW,
+            grain = GrainType.CANVAS, grainScale = 1.6f, dyn = BrushDynamics(grainDepth = 0.8f, granulation = 0.8f, flowNoise = 0.3f)),
+        dy("Thin Glaze", "Tempera", TipShape.SOFT, 0.06f, 0.8f, 0.1f, 0.25f, 0.2f, 110f, opacity = 0.4f, dyn = BrushDynamics()),
+        dy("Thick Dab", "Tempera", TipShape.DRY, 0.08f, 0.5f, 0.7f, 1f, 0.15f, 55f, rotation = RotationMode.FOLLOW, dyn = BrushDynamics(sizeJitter = 0.12f, flowNoise = 0.25f)),
+
+        // ---- Markers: ink that gets deeper where strokes cross ----
+        dy("Chisel Marker", "Markers", TipShape.FLAT, 0.03f, 0.9f, 0.8f, 1f, 0.3f, 34f, opacity = 0.75f, rotation = RotationMode.FIXED, angle = 35f, dyn = BrushDynamics(blend = LayerBlend.MULTIPLY)),
+        dy("Bullet Marker", "Markers", TipShape.MARKER, 0.04f, 0.85f, 0.85f, 1f, 0.3f, 16f, opacity = 0.8f, dyn = BrushDynamics(blend = LayerBlend.MULTIPLY)),
+        dy("Layout Marker", "Markers", TipShape.MARKER, 0.04f, 0.9f, 0.7f, 0.9f, 0.3f, 70f, opacity = 0.45f, dyn = BrushDynamics(blend = LayerBlend.MULTIPLY, wetEdge = 0.2f)),
+        dy("Highlighter", "Markers", TipShape.FLAT, 0.03f, 1f, 1f, 1f, 0.35f, 46f, opacity = 0.4f, rotation = RotationMode.FIXED, angle = 80f, dyn = BrushDynamics(blend = LayerBlend.MULTIPLY)),
+        dy("Brush Pen", "Markers", TipShape.HARD, 0.03f, 0.1f, 1f, 1f, 0.45f, 22f, dyn = BrushDynamics(taperLength = 3f, speedSize = 0.25f)),
+        dy("Fineliner", "Markers", TipShape.HARD, 0.03f, 0.85f, 1f, 1f, 0.5f, 4f, dyn = BrushDynamics()),
+        dy("Dry Marker", "Markers", TipShape.MARKER, 0.04f, 0.85f, 0.5f, 0.85f, 0.3f, 28f, opacity = 0.7f, grain = GrainType.COLD_PRESS, grainScale = 1.2f,
+            dyn = BrushDynamics(blend = LayerBlend.MULTIPLY, grainDepth = 0.8f, granulation = 0.7f)),
+
+        // ---- Light & Shade: airbrushes that change the paint under them ----
+        adj("Brighten", LayerBlend.SCREEN, 160f, 0.5f),
+        adj("Deepen", LayerBlend.MULTIPLY, 160f, 0.5f),
+        adj("Glow", LayerBlend.COLOR_DODGE, 140f, 0.35f),
+        adj("Scorch", LayerBlend.COLOR_BURN, 140f, 0.35f),
+        adj("Punch", LayerBlend.OVERLAY, 160f, 0.5f),
+        adj("Gentle Light", LayerBlend.SOFT_LIGHT, 180f, 0.6f),
+        adj("Tint", LayerBlend.COLOR, 120f, 0.7f, flow = 0.25f),
+        adj("Hue Only", LayerBlend.HUE, 120f, 0.8f, flow = 0.25f),
+        adj("Drain Color", LayerBlend.SATURATION, 120f, 0.7f, flow = 0.25f),
 
         // ---- Watercolor (14 Brushes) ----
         p("Watercolor Wash", "Watercolor", TipShape.SOFT, 0.05f, 0.8f, 0.2f, 0.35f, 0.3f, 80f, opacity = 0.6f, grain = GrainType.PAPER, grainScale = 1.6f),
