@@ -141,13 +141,21 @@ class LayersPanel(
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val indent = (if (inGroup) 18.dp else 0) + (if (layer.isClippingMask || layer.isLayerMask) 22.dp else 8.dp)
+            val indent = (if (inGroup) 14.dp else 0) + (if (layer.isClippingMask || layer.isLayerMask) 16.dp else 2.dp)
             setPadding(indent, 6.dp, 4.dp, 6.dp)
             background = Ui.rounded(when {
                 isActive -> Ui.PANEL_ROW_ACTIVE
                 isPicked -> PICKED
                 else -> Ui.PANEL_ROW
             }, 10f)
+        }
+        // the grip: drag it up or down to put the layer somewhere else (a mask travels with its layer)
+        row.tag = layer
+        if (layer.isLayerMask && i > 0 && doc.hasMask(i - 1)) row.addView(View(context), LayoutParams(26.dp, 44.dp))
+        else {
+            val grip = IconView(context, Icon.DRAG).apply { tint = Ui.TEXT_DIM; iconScale = 0.5f; contentDescription = "Drag to reorder" }
+            dragGrip(grip, row, layer)
+            row.addView(grip, LayoutParams(26.dp, 44.dp))
         }
         val img = ImageView(context)
         img.setImageBitmap(thumbnail(layer))
@@ -257,6 +265,75 @@ class LayersPanel(
             }
             true
         }
+    }
+
+    /** dragging a layer by its grip: the row follows the finger, and is put where it is let go */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun dragGrip(grip: View, row: View, layer: Layer) {
+        val slop = ViewConfiguration.get(context).scaledTouchSlop
+        var y0 = 0f; var moved = false; var on = false
+        grip.setOnTouchListener { v, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    on = !blocked()
+                    if (on) {
+                        y0 = e.rawY; moved = false
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                        row.elevation = 12f.dp
+                        row.alpha = 0.9f
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> if (on) {
+                    row.translationY = e.rawY - y0
+                    if (kotlin.math.abs(e.rawY - y0) > slop) moved = true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (on) {
+                    on = false
+                    row.elevation = 0f
+                    row.alpha = 1f
+                    if (e.actionMasked != MotionEvent.ACTION_UP || !moved || !dropRow(row, layer, row.translationY))
+                        row.animate().translationY(0f).setDuration(120).start()
+                }
+            }
+            true
+        }
+    }
+
+    /** puts [layer] where its row was dropped; false when that is where it already is */
+    private fun dropRow(row: View, layer: Layer, dy: Float): Boolean {
+        val rows = (0 until list.childCount).map { list.getChildAt(it) }.filter { it.tag is Layer }
+        val p = rows.indexOf(row)
+        if (p < 0) return false
+        val others = rows.filter { it !== row }
+        val center = row.top + row.height / 2f + dy
+        val q = others.count { it.top + it.height / 2f < center }
+        if (q == p || others.isEmpty()) return false
+        // moved up: it goes above the row now under it; moved down: below the row now over it
+        val above = q < p
+        val anchor = (if (above) others[q] else others[q - 1]).tag as Layer
+        val unit = unitOf(layer)
+        if (anchor in unit) return false
+        val wasIn = layer.groupId
+        structural("layer order") {
+            doc.layers.removeAll(unit.toHashSet())
+            val ai = doc.layers.indexOf(anchor)
+            val at = (if (above) ai + 1 + (if (doc.hasMask(ai)) 1 else 0)          // above the anchor and its mask
+                else if (anchor.isLayerMask && ai > 0 && doc.hasMask(ai - 1)) ai - 1 // below the layer the anchor masks
+                else ai).coerceIn(0, doc.layers.size)
+            // inside a group when it lands between two of its layers (or stays in its own group)
+            val below = doc.layers.getOrNull(at - 1)?.groupId
+            val over = doc.layers.getOrNull(at)?.groupId
+            val g = when {
+                below != null && below == over -> below
+                wasIn != null && wasIn == anchor.groupId -> wasIn
+                else -> null
+            }
+            for (u in unit) u.groupId = g
+            doc.layers.addAll(at, unit)
+            doc.activeIndex = doc.layers.indexOf(layer)
+            true
+        }
+        return true
     }
 
     /** true (with a message) while a transform, an adjustment or liquify is open */
