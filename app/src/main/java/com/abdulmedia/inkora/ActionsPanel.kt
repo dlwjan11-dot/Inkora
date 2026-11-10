@@ -56,6 +56,7 @@ interface ActionsHost {
     fun showTips()
     /** the guide: every feature and gesture on one screen */
     fun openGuide()
+    fun openDemos()
     fun openSnapshots()
     fun comicPanels()
     fun speechBubble()
@@ -364,6 +365,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     private fun buildHelp() {
         group(
             row("Guide", "Everything Inkora can do, and the gestures that get you there") { host.openGuide() },
+            row("Shortcuts, shown", "Every gesture as a small moving picture") { host.openDemos() },
             row("Gesture controls", "Change what each gesture does") { host.openGestureControls() },
             row("Keyboard shortcuts", "Or hold Ctrl on a keyboard") { host.openShortcuts() },
             row("Take the tour again") { host.showTips() },

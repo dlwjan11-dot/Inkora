@@ -142,7 +142,7 @@ class ToolDockView(
         hscroll.overScrollMode = OVER_SCROLL_NEVER
         divider = Ui.divider(context)
         addView(divider, LayoutParams(28.dp, 1.dp).apply { topMargin = 4.dp; bottomMargin = 4.dp })
-        val edit = IconView(context, Icon.CUSTOMIZE).apply { tint = Ui.TEXT_DIM }
+        val edit = IconView(context, Icon.CUSTOMIZE).apply { tint = Ui.TEXT_DIM; contentDescription = "Customize toolbar" }
         edit.setOnClickListener { onCustomize() }
         addView(edit, LayoutParams(46.dp, 42.dp))
     }
@@ -175,6 +175,7 @@ class ToolDockView(
             val def = ToolCatalog.byId[id] ?: continue
             val b = IconView(context, def.icon)
             b.contentDescription = def.label
+            b.tip = def.hint
             b.setOnClickListener { onTool(id, b) }
             b.setOnLongClickListener { onCustomize(); true }
             buttons[id] = b

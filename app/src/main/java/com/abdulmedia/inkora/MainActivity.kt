@@ -387,6 +387,21 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun buildUi() {
         root = FrameLayout(this)
+        // the window's real size decides the phone layout (turning the phone, split screen, a folded screen)
+        root.addOnLayoutChangeListener { _, l, t, r, b, _, _, _, _ ->
+            val d = resources.displayMetrics.density
+            val w = ((r - l) / d).toInt(); val h = ((b - t) / d).toInt()
+            if (w > 0 && h > 0 && (w != Screen.wDp || h != Screen.hDp)) {
+                val turned = Screen.wDp > 0
+                Screen.wDp = w; Screen.hDp = h
+                if (::sideBar.isInitialized) root.post {
+                    if (turned) popup?.dismiss()
+                    applyScreenSize()
+                    // the gallery is laid out for the other way round: build it again
+                    if (turned && gallery != null) { val fromCanvas = galleryFromCanvas; gallery?.let { root.removeView(it) }; gallery = null; showGallery(fromCanvas) }
+                }
+            }
+        }
         cv = CanvasView(this)
         cv.listener = this
         root.addView(cv, FrameLayout.LayoutParams(-1, -1))
@@ -413,6 +428,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             setPadding(10.dp, 0, 12.dp, 0)
             setOnClickListener { if (!busy()) showGallery() }
         }
+        HoverTip.attach(homeBtn) { "Gallery" to TipTexts.byName["Gallery"] }
         bar.addView(homeBtn, LinearLayout.LayoutParams(-2, 48.dp))
         this.homeBtn = homeBtn
         val actionsBtn = IconView(this, Icon.WRENCH).apply { contentDescription = "Actions" }
@@ -476,6 +492,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             }
         }
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        HoverTip.attach(more) { "More tools" to TipTexts.byName["More tools"] }
         bar.addView(more, LinearLayout.LayoutParams(64.dp, 48.dp))
         moreBtn = more
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
@@ -529,6 +546,7 @@ class MainActivity : Activity(), CanvasView.Listener {
 
         colorBtn = ColorSwatchView(this)
         setupColorButton()
+        HoverTip.attach(colorBtn) { "Color" to TipTexts.byName["Color"] }
         bar.addView(colorBtn, LinearLayout.LayoutParams(52.dp, 52.dp))
 
         root.addView(bar, FrameLayout.LayoutParams(-1, 56.dp, Gravity.TOP))
@@ -545,6 +563,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         sideBar = side
         brushDot = BrushDotView(this).apply { setOnClickListener { if (!busy()) showBrushes(cv.tool) } }
+        HoverTip.attach(brushDot) { cv.currentBrush.preset.name to TipTexts.byName["Brush preview"] }
         side.addView(brushDot, LinearLayout.LayoutParams(40.dp, 40.dp))
         sizeSlider = VerticalSlider(this)
         sizeSlider.onChange = { v ->
@@ -555,6 +574,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         sizeSlider.onDragState = { dragging -> if (dragging) showSizeHud(true) else hud.hideSoon() }
         sliderPins(sizeSlider, "size_pins")
         sizeSlider.onExact = { exactValue(true) }
+        HoverTip.attach(sizeSlider) { "Brush size" to TipTexts.byName["Brush size"] }
         side.addView(sizeSlider, LinearLayout.LayoutParams(44.dp, 180.dp))
 
         // the □ modify button: tapped, it does what "Tap □" is set to (the eyedropper at first);
@@ -599,6 +619,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         sliderPins(opacitySlider, "opacity_pins")
         opacitySlider.onExact = { exactValue(false) }
+        HoverTip.attach(opacitySlider) { "Brush opacity" to TipTexts.byName["Brush opacity"] }
         side.addView(opacitySlider, LinearLayout.LayoutParams(44.dp, 180.dp))
         opacityLabel = Ui.text(this, "100%", 10f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER }
         side.addView(opacityLabel, LinearLayout.LayoutParams(-1, -2))
@@ -752,7 +773,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         topBar.requestLayout()
 
         // the sliders take what height there is
-        val avail = resources.configuration.screenHeightDp - 56 - 24
+        val avail = (if (Screen.hDp > 0) Screen.hDp else resources.configuration.screenHeightDp) - 56 - 24
         val tight = avail < 430
         brushDot.visibility = if (tight) View.GONE else View.VISIBLE
         opacityLabel.visibility = if (tight) View.GONE else View.VISIBLE
@@ -2181,6 +2202,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         override fun openShortcuts() { popup?.dismiss(); showShortcuts() }
         override fun showTips() { popup?.dismiss(); this@MainActivity.showTips() }
         override fun openGuide() { popup?.dismiss(); showGuidePage() }
+        override fun openDemos() { popup?.dismiss(); showDemos() }
         override fun openSnapshots() { popup?.dismiss(); showSnapshots() }
         override fun comicPanels() { popup?.dismiss(); panelsDialog() }
         override fun speechBubble() { popup?.dismiss(); bubbleDialog() }
@@ -3609,7 +3631,13 @@ class MainActivity : Activity(), CanvasView.Listener {
             onTour = { closeSettings(); showTips() },
             onShortcuts = { showShortcuts() },
             onGestures = { showGestureControls() },
+            onDemos = { showDemos() },
             onClose = { closeSettings() }))
+    }
+
+    private fun showDemos() {
+        popup?.dismiss()
+        showOverlay(DemosPage(this, onKeyboard = { showShortcuts() }, onClose = { closeSettings() }))
     }
 
     private fun showTips() {

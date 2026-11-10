@@ -85,6 +85,8 @@ object Tour {
             "A reference photo you import stays with its artwork"), listOf(Icon.FOLDER, Icon.EXPORT, Icon.VIDEO)),
         Page(-1, "Find all of this again", listOf(
             "Actions (the wrench) › Help › Guide: everything on these pages",
+            "Help › Shortcuts, shown: every gesture as a small moving picture",
+            "Rest the pen over any button for two seconds: it says what it does",
             "Gesture controls: change what each gesture and the pen button do",
             "With a keyboard: hold Ctrl to see every shortcut"), listOf(Icon.HELP, Icon.HAND, Icon.KEYBOARD))
     )
@@ -288,6 +290,7 @@ class GuideView(
     private val onTour: () -> Unit,
     private val onShortcuts: () -> Unit,
     private val onGestures: () -> Unit,
+    private val onDemos: () -> Unit,
     private val onClose: () -> Unit
 ) : FrameLayout(context) {
     init {
@@ -308,6 +311,7 @@ class GuideView(
         val pills = if (narrow) LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL } else head
         if (narrow) head.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(pills) }, LinearLayout.LayoutParams(-1, -2))
         pills.addView(Ui.pill(context, "Take the tour") { onTour() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
+        pills.addView(Ui.pill(context, "Shortcuts, shown") { onDemos() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
         pills.addView(Ui.pill(context, "Gesture controls") { onGestures() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
         pills.addView(Ui.pill(context, "Keyboard shortcuts") { onShortcuts() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
         pills.addView(Ui.pill(context, "Close", primary = true) { onClose() })

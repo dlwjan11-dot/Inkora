@@ -21,9 +21,12 @@ import kotlin.math.roundToInt
 
 val Int.dp: Int get() = (this * Resources.getSystem().displayMetrics.density).roundToInt()
 /** a phone held upright (or any window this narrow): panels and bars use their small layout */
-val android.content.Context.narrow: Boolean get() = resources.configuration.screenWidthDp < 600
+val android.content.Context.narrow: Boolean get() = (if (Screen.wDp > 0) Screen.wDp else resources.configuration.screenWidthDp) < 600
 /** a phone on its side: not much room from top to bottom */
-val android.content.Context.short: Boolean get() = resources.configuration.screenHeightDp < 560
+val android.content.Context.short: Boolean get() = (if (Screen.hDp > 0) Screen.hDp else resources.configuration.screenHeightDp) < 560
+
+/** the size of the app's window as it is laid out right now (dp); MainActivity keeps it up to date */
+object Screen { var wDp = 0; var hDp = 0 }
 
 val Float.dp: Float get() = this * Resources.getSystem().displayMetrics.density
 
@@ -131,7 +134,103 @@ enum class Icon { BRUSH, ERASER, LAYERS, ACTIONS, UNDO, REDO, SYMMETRY, EYEDROPP
 
 
 /** Toolbar button showing one icon. */
+
+/** A small label that explains a control when the pen or a mouse rests over it for two seconds. */
+object HoverTip {
+    private const val WAIT_MS = 2000L
+    private var popup: android.widget.PopupWindow? = null
+    private var pending: Runnable? = null
+    private var owner: View? = null
+
+    /** [text] gives the title and what it does, or null for no tip */
+    fun attach(v: View, text: () -> Pair<String, String?>?) {
+        v.setOnHoverListener { view, e ->
+            when (e.actionMasked) {
+                MotionEvent.ACTION_HOVER_ENTER -> {
+                    cancel()
+                    owner = view
+                    val r = Runnable { if (owner === view && view.isAttachedToWindow) text()?.let { show(view, it.first, it.second) } }
+                    pending = r
+                    view.postDelayed(r, WAIT_MS)
+                }
+                MotionEvent.ACTION_HOVER_EXIT -> if (owner === view) cancel()
+            }
+            false
+        }
+    }
+
+    fun cancel() {
+        pending?.let { owner?.removeCallbacks(it) }
+        pending = null; owner = null
+        runCatching { popup?.dismiss() }
+        popup = null
+    }
+
+    private fun show(anchor: View, title: String, body: String?) {
+        val ctx = anchor.context
+        val box = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(12.dp, 9.dp, 12.dp, 10.dp)
+            background = Ui.rounded(0xF526282F.toInt(), 12f, 0x24FFFFFF, 1)
+        }
+        if (title.isNotBlank()) box.addView(Ui.text(ctx, title, 13.5f, bold = true))
+        if (!body.isNullOrBlank()) box.addView(Ui.text(ctx, body, 12.5f, 0xFFC5C8D2.toInt()).apply { setPadding(0, 2.dp, 0, 0) })
+        if (box.childCount == 0) return
+        val root = anchor.rootView
+        val maxW = minOf(280.dp, root.width - 24.dp)
+        box.measure(View.MeasureSpec.makeMeasureSpec(maxW, View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val w = box.measuredWidth; val h = box.measuredHeight
+        val loc = IntArray(2); anchor.getLocationInWindow(loc)
+        val cx = loc[0] + anchor.width / 2; val cy = loc[1] + anchor.height / 2
+        val x: Int; val y: Int
+        if (loc[1] < 70.dp) {                      // in the top bar: under it
+            x = cx - w / 2; y = loc[1] + anchor.height + 6.dp
+        } else if (loc[1] + anchor.height > root.height - 70.dp) { // at the bottom: over it
+            x = cx - w / 2; y = loc[1] - h - 6.dp
+        } else {                                    // at a side: beside it
+            x = if (cx < root.width / 2) loc[0] + anchor.width + 8.dp else loc[0] - w - 8.dp
+            y = cy - h / 2
+        }
+        val pw = android.widget.PopupWindow(box, w, h, false)
+        pw.isTouchable = false
+        pw.elevation = 12f.dp
+        pw.animationStyle = android.R.style.Animation_Toast
+        runCatching {
+            pw.showAtLocation(anchor, Gravity.NO_GRAVITY, x.coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp)), y.coerceIn(8.dp, (root.height - h - 8.dp).coerceAtLeast(8.dp)))
+            popup = pw
+        }
+    }
+}
+
+/** What each control does, shown when the pen (or a mouse) rests over it. By the control's name. */
+object TipTexts {
+    val byName = mapOf(
+        "Gallery" to "All your artworks. Your work is saved on the way",
+        "Actions" to "Add things, canvas settings, share and export, preferences, help",
+        "Adjustments" to "Change colors and sharpness of the layer: hue, brightness, blur and more",
+        "Selection" to "Mark a part of the artwork; painting and edits then stay inside it",
+        "Transform" to "Move, scale, turn or bend the layer or the selection",
+        "More tools" to "Creative tools (text, shapes, 3D, gradient) and editing tools (liquify, crop, filters)",
+        "Brush" to "Paint. Tap again for the brush library; hold to bring the brush from another tool",
+        "Smudge" to "Push and blend paint that is already there. Hold: use the brush you paint with",
+        "Eraser" to "Rub paint out. Hold: erase with the brush you paint with",
+        "Layers" to "The layers of the artwork: add, hide, reorder, group, blend, mask",
+        "Color" to "The color you paint with. Tap for the wheel and palettes; drag it onto the canvas to fill",
+        "Brush size" to "Drag up or down. Slide away for fine control; double-tap the handle to leave a mark; hold it for a number",
+        "Brush opacity" to "How see-through the stroke is. Works like the size slider",
+        "Modify" to "Tap, then touch the canvas to pick a color. Held down, it changes what touches do (Gesture controls)",
+        "Undo" to "Take back the last step. Also: tap with two fingers",
+        "Redo" to "Bring back the step you undid. Also: tap with three fingers",
+        "Brush preview" to "The brush in hand, at its size. Tap for the brush library",
+        "Show interface" to "Brings the bars and tools back",
+        "Customize toolbar" to "Choose the tools on this toolbar and their order"
+    )
+}
+
 class IconView(context: Context, var icon: Icon) : View(context) {
+    /** what the pen sees when it rests over this button (else its name says it, see [TipTexts]) */
+    var tip: String? = null
+
     var active = false
         set(v) { field = v; invalidate() }
     var tint = Ui.TEXT
@@ -146,6 +245,11 @@ class IconView(context: Context, var icon: Icon) : View(context) {
 
     init {
         isClickable = true
+        HoverTip.attach(this) {
+            val name = contentDescription?.toString()
+            val body = tip ?: name?.let { TipTexts.byName[it] }
+            if (name == null && body == null) null else (name ?: "") to body
+        }
     }
 
     override fun setPressed(p: Boolean) {

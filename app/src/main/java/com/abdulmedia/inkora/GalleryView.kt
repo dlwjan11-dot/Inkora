@@ -64,7 +64,7 @@ class GalleryView(
         val head = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(28.dp, 22.dp, 24.dp, 6.dp)
+            if (context.narrow) setPadding(14.dp, 16.dp, 12.dp, 4.dp) else setPadding(28.dp, 22.dp, 24.dp, 6.dp)
         }
         val titles = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         titles.addView(TextView(context).apply {
@@ -74,7 +74,7 @@ class GalleryView(
             typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.NORMAL)
         })
         val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
-        titles.addView(Ui.text(context, "Your artworks  ·  version $version", 14f, Ui.TEXT_DIM))
+        titles.addView(Ui.text(context, if (context.narrow) "version $version" else "Your artworks  ·  version $version", 14f, Ui.TEXT_DIM))
         head.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
         if (showBack) head.addView(Ui.button(context, "‹ Back to canvas") { onClose() },
             LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 8.dp })
@@ -95,7 +95,11 @@ class GalleryView(
             setPadding(24.dp, 10.dp, 24.dp, 4.dp)
         }
         chips.orientation = LinearLayout.HORIZONTAL
-        tools.addView(chips, LinearLayout.LayoutParams(0, -2, 1f))
+        // the filters slide sideways when there is no room for them all (phones)
+        val chipScroll = android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(chips) }
+        val phone = context.narrow
+        if (phone) { tools.orientation = LinearLayout.VERTICAL; tools.gravity = Gravity.START; tools.setPadding(14.dp, 8.dp, 14.dp, 4.dp) }
+        tools.addView(chipScroll, if (phone) LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 8.dp } else LinearLayout.LayoutParams(0, -2, 1f))
         val search = EditText(context).apply {
             hint = "Search"
             setHintTextColor(Ui.TEXT_DIM)
@@ -114,7 +118,7 @@ class GalleryView(
                 }
             })
         }
-        tools.addView(search, LinearLayout.LayoutParams(if (context.narrow) 130.dp else 240.dp, -2))
+        tools.addView(search, LinearLayout.LayoutParams(if (phone) -1 else 240.dp, -2))
         col.addView(tools)
 
         val scroll = ScrollView(context)
