@@ -137,12 +137,15 @@ class BrushDynamics(
                 "Watercolor", "Water" -> {
                     d.watercolor = if (p.tip == TipShape.STREAK) 0.6f else 0.9f
                     d.bloom = 0.75f
-                    d.wetDilution = 0.35f; d.wetPull = 0.3f; d.wetCharge = 0.8f
+                    // the brush does not run dry by itself (Brush Studio › Wet mix › Charge turns that on)
+                    d.wetDilution = 0.35f; d.wetPull = 0.3f; d.wetCharge = 1f
                     d.flowNoise = 0.3f
+                    // washes glaze: one over another gets deeper, as transparent paint does
+                    if (p.name != "Heavy Gouache") d.blend = LayerBlend.MULTIPLY
                 }
                 "Painting", "Artistic" -> {
                     d.wetPull = if (wash) 0.2f else 0.4f
-                    d.wetCharge = 0.82f
+                    d.wetCharge = 1f
                     d.wetDilution = 0.06f
                     d.flowNoise = 0.3f
                     d.sizeJitter = maxOf(d.sizeJitter, 0.04f)

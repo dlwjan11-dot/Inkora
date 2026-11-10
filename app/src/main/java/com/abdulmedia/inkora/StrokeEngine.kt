@@ -329,9 +329,14 @@ class StrokeEngine {
         // real paint never comes out perfectly even: a slow wave of more and less along the stroke
         if (dyn.flowNoise > 0f) alpha *= 1f - dyn.flowNoise * 0.55f * Watercolor.noise(dist / (brush.size * 2.5f + 6f), noiseSeed.toFloat(), 3)
         if (dyn.hasWetMix) {
+            // the brush runs dry along the stroke only when its Charge is turned down, and by how far
+            // it has gone in brush widths (not by how many dabs it took): full charge never runs out,
+            // a charge of 50% lasts about 45 brush widths and fades over the last part of that
+            paintLeft = if (dyn.wetCharge >= 0.999f) 1f else {
+                val dryLen = max(1f, brush.size) * (10f + 150f * dyn.wetCharge * dyn.wetCharge)
+                ((dryLen - dist) / (0.45f * dryLen)).coerceIn(0f, 1f)
+            }
             alpha *= paintLeft * (1f - 0.65f * dyn.wetDilution)
-            // the brush runs dry as the stroke goes on, the less charge the faster
-            paintLeft = max(0f, paintLeft - (1f - dyn.wetCharge) * 0.012f)
         }
         if (d < 1f) {
             alpha *= d

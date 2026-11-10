@@ -776,6 +776,8 @@ class CanvasView(context: Context) : View(context) {
     private fun strokeBlend(): BlendMode = when {
         strokeErasing -> BlendMode.DST_OUT
         doc.active.alphaLock -> BlendMode.SRC_ATOP
+        // on a mask paint is white ("show"): a glazing brush would multiply it away
+        doc.active.isLayerMask -> BlendMode.SRC_OVER
         else -> engine.brush.dyn.blend.mode
     }
 
@@ -1448,20 +1450,60 @@ class CanvasView(context: Context) : View(context) {
         r.inset(-margin, -margin)
         if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
         val w = r.width(); val h = r.height()
-        if (w.toLong() * h > 9_000_000L) return // a giant stroke stays as it is
+        // a big stroke is dried as a smaller copy and scaled back up: lifting the pen stays quick
+        val k = max(1f, kotlin.math.sqrt(w.toFloat() * h / 600_000f))
+        val lw = (w / k).toInt().coerceAtLeast(1); val lh = (h / k).toInt().coerceAtLeast(1)
+        var region: Bitmap? = null; var small: Bitmap? = null; var dried: Bitmap? = null
         try {
-            val px = IntArray(w * h)
-            sb.getPixels(px, 0, w, r.left, r.top, w, h)
+            region = Bitmap.createBitmap(sb, r.left, r.top, w, h)
+            small = if (lw == w && lh == h) region else Bitmap.createScaledBitmap(region, lw, lh, true)
+            val px = IntArray(lw * lh)
+            small.getPixels(px, 0, lw, 0, 0, lw, lh)
             // wet maps of layers that are gone are let go
             if (wetMaps.size > 6) wetMaps.keys.retainAll(doc.layers.map { it.id }.toSet())
             val wm = wetMaps.getOrPut(layer.id) { WetMap(doc.width, doc.height) }
             val now = android.os.SystemClock.uptimeMillis()
-            val alpha = Watercolor.dry(px, w, h, r.left, r.top, dyn.watercolor, dyn.bloom, size, engine.color) { x, y -> wm.wetness(x, y, now) }
-            sb.setPixels(px, 0, w, r.left, r.top, w, h)
-            wm.paint(r.left, r.top, w, h, alpha, now)
+            val sx = w / lw.toFloat(); val sy = h / lh.toFloat()
+            val ox = (r.left / sx).toInt(); val oy = (r.top / sy).toInt()
+            val alpha = Watercolor.dry(px, lw, lh, ox, oy, dyn.watercolor, dyn.bloom, size / k, engine.color) { x, y ->
+                wm.wetness((x * sx).toInt(), (y * sy).toInt(), now)
+            }
+            dried = Bitmap.createBitmap(px, lw, lh, Bitmap.Config.ARGB_8888)
+            val c = Canvas(sb)
+            c.save()
+            c.clipRect(r)
+            c.drawBitmap(dried, null, r, dryPaint)
+            // pigment settles into the paper's grain, most where the wash is watery
+            c.drawRect(RectF(r), grainPaint(dyn.watercolor))
+            c.restore()
+            wm.paintScaled(r.left, r.top, w, h, lw, lh, alpha, now)
         } catch (e: OutOfMemoryError) {
             // not enough memory to dry it: the stroke stays as it was painted
+        } finally {
+            if (small !== region) small?.recycle()
+            if (region !== sb) region?.recycle()
+            dried?.recycle()
         }
+    }
+
+    private val dryPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.SRC }
+    private var grainShader: BitmapShader? = null
+    private var grainStrength = -1f
+    private val grainDstIn = Paint().apply { blendMode = BlendMode.DST_IN }
+
+    /** the paper grain as a paint that thins the stroke a little where the paper dips ([strength] 0..1) */
+    private fun grainPaint(strength: Float): Paint {
+        val st = (strength.coerceIn(0f, 1f) * 20).toInt() / 20f
+        if (grainShader == null || st != grainStrength) {
+            val t = Watercolor.GRAIN_TILE
+            val g = Watercolor.grainTile()
+            val px = IntArray(t * t) { ((255 * (1f - st * 0.30f * g[it])).toInt().coerceIn(0, 255) shl 24) }
+            val tile = Bitmap.createBitmap(px, t, t, Bitmap.Config.ARGB_8888)
+            grainShader = BitmapShader(tile, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT)
+            grainStrength = st
+        }
+        grainDstIn.shader = grainShader
+        return grainDstIn
     }
 
     private fun commitStroke() {
