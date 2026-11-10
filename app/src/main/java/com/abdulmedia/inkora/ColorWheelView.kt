@@ -124,8 +124,11 @@ class ColorWheelView(context: Context) : View(context) {
     // =========================================================
 
     fun open(x: Float, y: Float, current: Int) {
-        cx = x.coerceIn(rHub + 40f.dp, (width - rHub - 40f.dp).coerceAtLeast(rHub + 40f.dp))
-        cy = y.coerceIn(rHub + 60f.dp, (height - rHub - 60f.dp).coerceAtLeast(rHub + 60f.dp))
+        // not laid out yet the first time (it starts hidden): the screen's size is used
+        val w = if (width > 0) width else (parent as? android.view.View)?.width ?: 0
+        val h = if (height > 0) height else (parent as? android.view.View)?.height ?: 0
+        cx = x.coerceIn(rHub + 40f.dp, (w - rHub - 40f.dp).coerceAtLeast(rHub + 40f.dp))
+        cy = y.coerceIn(rHub + 60f.dp, (h - rHub - 60f.dp).coerceAtLeast(rHub + 60f.dp))
         color = current or 0xFF000000.toInt()
         selected = chips.firstOrNull { it.color == color }
         // turn the wheel so the current color's family faces the open side of the screen
@@ -137,8 +140,8 @@ class ColorWheelView(context: Context) : View(context) {
 
     /** angle (wheel space 0 = up, clockwise) pointing to the roomiest side of the screen */
     private fun towardScreen(): Float {
-        val dx = width / 2f - cx
-        val dy = height / 2f - cy
+        val dx = (if (width > 0) width else (parent as? android.view.View)?.width ?: 0) / 2f - cx
+        val dy = (if (height > 0) height else (parent as? android.view.View)?.height ?: 0) / 2f - cy
         if (abs(dx) < 1f && abs(dy) < 1f) return 90f
         return Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
     }

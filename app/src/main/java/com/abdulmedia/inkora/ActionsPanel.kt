@@ -53,6 +53,8 @@ interface ActionsHost {
     fun openGestureControls()
     fun openShortcuts()
     fun showTips()
+    /** the guide: every feature and gesture on one screen */
+    fun openGuide()
 }
 
 /**
@@ -351,9 +353,10 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
 
     private fun buildHelp() {
         group(
+            row("Guide", "Everything Inkora can do, and the gestures that get you there") { host.openGuide() },
             row("Gesture controls", "Change what each gesture does") { host.openGestureControls() },
             row("Keyboard shortcuts", "Or hold Ctrl on a keyboard") { host.openShortcuts() },
-            row("Show the tips again") { host.showTips() },
+            row("Take the tour again") { host.showTips() },
             row("Open-source licenses", "The MyPaint brush engine and json-c") { host.openLicenses() }
         )
         val lines = listOf(

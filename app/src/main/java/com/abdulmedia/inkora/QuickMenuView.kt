@@ -105,8 +105,12 @@ class QuickMenuView(context: Context) : View(context) {
     fun open(x: Float, y: Float, color: Int, tools: List<Item>, brushes: List<Item>, swatchColors: List<Int>,
              size: Float, opacity: Float) {
         val mh = rBase + 8f.dp
-        cx = x.coerceIn(mh, (width - mh).coerceAtLeast(mh))
-        cy = y.coerceIn(rBase + 46f.dp, (height - mh).coerceAtLeast(rBase + 46f.dp))
+        // the first time it opens it has not been laid out yet (it starts hidden): its size is then
+        // the screen's, as it will be. Without this it opened in the top corner once.
+        val w = if (width > 0) width else (parent as? android.view.View)?.width ?: 0
+        val h = if (height > 0) height else (parent as? android.view.View)?.height ?: 0
+        cx = x.coerceIn(mh, (w - mh).coerceAtLeast(mh))
+        cy = y.coerceIn(rBase + 46f.dp, (h - mh).coerceAtLeast(rBase + 46f.dp))
         openX = x; openY = y
         this.size = size.coerceIn(0f, 1f)
         this.opacity = opacity.coerceIn(0f, 1f)

@@ -171,6 +171,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         restorePins()
         // the app always starts on the home screen
         showGallery(fromCanvas = false)
+        // the first time Inkora opens: the tour of what it can do (it can be skipped, and it is
+        // always there again under Actions › Help)
+        if (!prefs.getBoolean("tour_done", false)) root.postDelayed({ if (!isFinishing) showTips() }, 600)
         // a brush file, project or image opened with Inkora from another app
         handleIncoming(intent)
     }
@@ -201,7 +204,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onBackPressed() {
         when {
             quickMenu.isOpen -> quickMenu.close()
-            root.findViewWithTag<View>("tips") != null -> root.findViewWithTag<View>("tips")?.let { root.removeView(it); prefs.edit().putBoolean("tips_done", true).apply() }
+            root.findViewWithTag<View>("tips") != null -> root.findViewWithTag<View>("tips")?.let { root.removeView(it); prefs.edit().putBoolean("tour_done", true).apply() }
             root.findViewWithTag<View>("overlay") != null -> closeSettings()
             focusMode -> setFocus(false)
             colorWheel.isOpen -> colorWheel.close()
@@ -1969,6 +1972,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         override fun openGestureControls() { popup?.dismiss(); showGestureControls() }
         override fun openShortcuts() { popup?.dismiss(); showShortcuts() }
         override fun showTips() { popup?.dismiss(); this@MainActivity.showTips() }
+        override fun openGuide() { popup?.dismiss(); showGuidePage() }
     }
 
     private fun pickBrushFiles() {
@@ -3212,13 +3216,25 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private var galleryFromCanvas = true
 
+    /** the guide: every page of the tour on one screen */
+    private fun showGuidePage() {
+        popup?.dismiss()
+        showOverlay(GuideView(this,
+            onTour = { closeSettings(); showTips() },
+            onShortcuts = { showShortcuts() },
+            onGestures = { showGestureControls() },
+            onClose = { closeSettings() }))
+    }
+
     private fun showTips() {
         if (root.findViewWithTag<View>("tips") != null) return
         val tips = TipsOverlay(this) { v ->
             root.removeView(v)
-            prefs.edit().putBoolean("tips_done", true).apply()
+            prefs.edit().putBoolean("tour_done", true).apply()
         }
         tips.tag = "tips"
+        // above the Gallery and everything else
+        tips.elevation = 80f.dp
         root.addView(tips, FrameLayout.LayoutParams(-1, -1))
     }
 
@@ -3226,7 +3242,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val wasOpen = gallery != null
         gallery?.let { root.removeView(it) }
         gallery = null
-        if (wasOpen && !prefs.getBoolean("tips_done", false)) root.post { showTips() }
+        if (wasOpen && !prefs.getBoolean("tour_done", false)) root.post { showTips() }
         if (!focusMode) {
             topBar.visibility = View.VISIBLE
             // the size and opacity sliders stay hidden when they were turned off in Prefs
