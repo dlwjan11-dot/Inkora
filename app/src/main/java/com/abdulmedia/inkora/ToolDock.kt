@@ -46,6 +46,7 @@ object ToolCatalog {
         ToolDef("canvas", "Canvas size & crop", Icon.FIT, "Transform", "Crop, resize, rotate the canvas"),
         ToolDef("eyedropper", "Eyedropper", Icon.EYEDROPPER, "Color", "Pick a color from the canvas"),
         ToolDef("fill", "Fill", Icon.FILL, "Color", "Tap areas to fill them"),
+        ToolDef("gradient", "Gradient", Icon.CONTRAST, "Color", "Drag: one color into another, or fading out"),
         ToolDef("text", "Text", Icon.TEXT, "Create", "Any language, 9 fonts"),
         ToolDef("photo", "Insert photo", Icon.PHOTO, "Create", "As a new layer"),
         ToolDef("vector", "Vector layer", Icon.VECTOR, "Create", "Pen, shapes, logos"),

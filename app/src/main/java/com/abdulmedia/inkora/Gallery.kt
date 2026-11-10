@@ -28,7 +28,62 @@ object Gallery {
     private fun thumbFile(ctx: Context, id: String) = File(dir(ctx), "$id.png")
     private fun metaFile(ctx: Context, id: String) = File(dir(ctx), "$id.json")
 
+    private fun refFile(ctx: Context, id: String) = File(dir(ctx), "$id.ref.webp")
+    private fun snapDir(ctx: Context, id: String) = File(dir(ctx), "$id.snaps")
+
     fun newId(): String = UUID.randomUUID().toString()
+
+    // ---- the reference photo of an artwork ----
+
+    /** Keeps (or with null forgets) the reference photo of an artwork. Background thread. */
+    fun saveRef(ctx: Context, id: String, bmp: Bitmap?) {
+        val f = refFile(ctx, id)
+        if (bmp == null) { f.delete(); return }
+        val tmp = File(dir(ctx), "$id.ref.tmp")
+        runCatching {
+            tmp.outputStream().use { bmp.compress(Bitmap.CompressFormat.WEBP_LOSSY, 92, it) }
+            if (!tmp.renameTo(f)) { tmp.copyTo(f, overwrite = true); tmp.delete() }
+        }.onFailure { tmp.delete() }
+    }
+
+    fun loadRef(ctx: Context, id: String): Bitmap? {
+        val f = refFile(ctx, id)
+        if (!f.exists()) return null
+        return try { android.graphics.BitmapFactory.decodeFile(f.path) } catch (e: OutOfMemoryError) { null }
+    }
+
+    // ---- snapshots: earlier states of an artwork you can go back to ----
+
+    class Snap(val time: Long, val file: File, val thumb: File, val auto: Boolean)
+
+    const val MAX_SNAPS = 12
+
+    fun snapshots(ctx: Context, id: String): List<Snap> {
+        val d = snapDir(ctx, id)
+        return (d.listFiles() ?: emptyArray()).filter { it.name.endsWith(".inkora") }.mapNotNull { f ->
+            val stem = f.name.removeSuffix(".inkora")
+            val auto = stem.endsWith("a")
+            val t = stem.removeSuffix("a").toLongOrNull() ?: return@mapNotNull null
+            Snap(t, f, File(d, "$stem.png"), auto)
+        }.sortedByDescending { it.time }
+    }
+
+    /** Writes a snapshot; the oldest ones go when there are more than [MAX_SNAPS]. Background thread. */
+    fun saveSnapshot(ctx: Context, id: String, snap: ProjectIO.Snapshot, thumb: Bitmap?, auto: Boolean) {
+        val d = snapDir(ctx, id).apply { mkdirs() }
+        val stem = System.currentTimeMillis().toString() + if (auto) "a" else ""
+        val tmp = File(d, "$stem.tmp")
+        try {
+            tmp.outputStream().use { ProjectIO.write(snap, it) }
+            if (!tmp.renameTo(File(d, "$stem.inkora"))) throw java.io.IOException("rename")
+        } catch (e: Throwable) { tmp.delete(); throw e }
+        if (thumb != null) runCatching { File(d, "$stem.png").outputStream().use { thumb.compress(Bitmap.CompressFormat.PNG, 90, it) } }
+        snapshots(ctx, id).drop(MAX_SNAPS).forEach { deleteSnapshot(it) }
+    }
+
+    fun loadSnapshot(s: Snap): Document? = runCatching { s.file.inputStream().use { ProjectIO.read(it) } }.getOrNull()
+
+    fun deleteSnapshot(s: Snap) { s.file.delete(); s.thumb.delete() }
 
     fun list(ctx: Context): List<Entry> {
         val files = dir(ctx).listFiles { f -> f.name.endsWith(".json") } ?: return emptyList()
@@ -130,6 +185,7 @@ object Gallery {
         o.put("modified", System.currentTimeMillis())
         o.put("created", System.currentTimeMillis())
         metaFile(ctx, nid).writeText(o.toString())
+        refFile(ctx, id).takeIf { it.exists() }?.let { runCatching { it.copyTo(refFile(ctx, nid)) } }
         return nid
     }
 
@@ -137,6 +193,8 @@ object Gallery {
         projectFile(ctx, id).delete()
         thumbFile(ctx, id).delete()
         metaFile(ctx, id).delete()
+        refFile(ctx, id).delete()
+        snapDir(ctx, id).deleteRecursively()
         TimeLapse.clear(ctx, id)
     }
 

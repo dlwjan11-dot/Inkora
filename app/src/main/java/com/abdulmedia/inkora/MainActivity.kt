@@ -32,6 +32,7 @@ import android.widget.ScrollView
 import android.widget.Toast
 import kotlin.concurrent.thread
 import kotlin.math.hypot
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -139,6 +140,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
+        cv.wetBleed = prefs.getBoolean("wetBleed", true)
         if (!prefs.getBoolean("sidebar", true)) sideBar.visibility = View.GONE
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)
@@ -197,6 +199,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         // opening an artwork is not a step of its time-lapse
         lapseDoc = d; lapseRevision = d.revision
         prefs.edit().putString("current", d.galleryId).apply()
+        loadReference()
         refreshAll()
     }
 
@@ -213,6 +216,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             cv.isDocReady() && cv.liquify != null -> leaveLiquify(false)
             cv.editingGuide -> finishGuideEdit()
             cv.interaction == Interaction.SELECT -> { cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll() }
+            cv.interaction == Interaction.GRADIENT -> leaveGradient()
             gallery != null && galleryFromCanvas -> closeGallery()
             else -> {
                 autosave()
@@ -839,6 +843,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             }, REQ_SHADOW_IMAGE)
             id == "actual_size" -> cv.actualSize()
             id == "liquify" -> if (cv.liquify != null) leaveLiquify(true) else enterLiquify()
+            id == "gradient" -> if (cv.interaction == Interaction.GRADIENT) leaveGradient() else enterGradient()
             id == "canvas" -> showCanvasSize()
             id == "guides" -> showGuide(anchor)
             id == "assisted" -> {
@@ -883,6 +888,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "sel_brush" -> sel && cv.selectShape == SelectShape.BRUSH
             "transform" -> cv.interaction == Interaction.TRANSFORM
             "liquify" -> cv.liquify != null
+            "gradient" -> cv.interaction == Interaction.GRADIENT
             "fill" -> cv.fillMode
             "guides" -> cv.doc.guide.type != GuideType.OFF
             "assisted" -> cv.doc.guide.assisted && cv.doc.guide.type != GuideType.OFF
@@ -1189,6 +1195,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             return
         }
         // picking a painting tool leaves selection mode (the selection itself stays and limits painting)
+        if (cv.interaction == Interaction.GRADIENT) leaveGradient()
         if (cv.interaction == Interaction.SELECT) {
             cv.interaction = Interaction.PAINT
             hideBottomBar()
@@ -1387,6 +1394,14 @@ class MainActivity : Activity(), CanvasView.Listener {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
                 }, REQ_REF_IMAGE)
+            }, onRemove = {
+                AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(L10n.tr("Remove the reference photo?"))
+                    .setPositiveButton(L10n.tr("Remove")) { _, _ ->
+                        referenceWindow()?.setImage(null)
+                        cv.doc.galleryId?.let { id -> saver.execute { Gallery.saveRef(applicationContext, id, null) } }
+                    }
+                    .setNegativeButton(L10n.tr("Cancel"), null).show()
             }, onColorPicked = { c ->
                 cv.color = c or 0xFF000000.toInt()
                 colorBtn.color = cv.color
@@ -1431,6 +1446,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         // below the quick menu, the bars and the home screen
         root.addView(fp, root.indexOfChild(hud) + 1, lp)
         pinned[kind] = fp
+        if (kind == "reference") loadReference()
         prefs.edit().putBoolean("pinned_$kind", true).apply()
         if (!quiet) hud.show("Pinned · drag it by its top strip")
         if (gallery != null) fp.visibility = View.GONE
@@ -1469,6 +1485,96 @@ class MainActivity : Activity(), CanvasView.Listener {
             true
         }
         return v
+    }
+
+    private fun referenceWindow(): ReferenceWindow? {
+        val p = pinned["reference"] ?: return null
+        for (i in 0 until p.childCount) (p.getChildAt(i) as? ReferenceWindow)?.let { return it }
+        return null
+    }
+
+    /** the reference window shows the photo that was saved with the artwork on the canvas */
+    private fun loadReference() {
+        val w = referenceWindow() ?: return
+        val id = cv.doc.galleryId
+        w.setImage(null)
+        if (id == null) return
+        saver.execute {
+            val bmp = Gallery.loadRef(applicationContext, id)
+            main.post { if (bmp != null && cv.isDocReady() && cv.doc.galleryId == id) referenceWindow()?.setImage(bmp) }
+        }
+    }
+
+    // ---------- Snapshots ----------
+
+    private fun saveSnapshot(auto: Boolean, then: (Boolean) -> Unit) {
+        val doc = cv.doc
+        val id = doc.galleryId ?: Gallery.newId().also { doc.galleryId = it }
+        val thumb = try { Gallery.makeThumb(doc) } catch (e: OutOfMemoryError) { null }
+        val snap = try { ProjectIO.snapshot(doc) } catch (e: OutOfMemoryError) { null }
+        if (snap == null) { thumb?.recycle(); toast("Not enough memory for this right now"); then(false); return }
+        hud.show("Saving…", sticky = true)
+        saver.execute {
+            val ok = runCatching { Gallery.saveSnapshot(applicationContext, id, snap, thumb, auto) }.isSuccess
+            thumb?.recycle()
+            snap.layers.forEach { it.bitmap.recycle() }
+            main.post { hud.hideSoon(); then(ok) }
+        }
+    }
+
+    private fun showSnapshots() {
+        if (!cv.isDocReady() || busy()) return
+        val id = cv.doc.galleryId ?: Gallery.newId().also { cv.doc.galleryId = it }
+        val list = Gallery.snapshots(this, id)
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(16.dp, 8.dp, 16.dp, 8.dp) }
+        var dialog: AlertDialog? = null
+        col.addView(Ui.text(this, "A snapshot keeps the artwork as it is now. Inkora keeps the newest twelve.", 13f, Ui.TEXT_DIM))
+        col.addView(Ui.button(this, "Take a snapshot now") {
+            dialog?.dismiss()
+            saveSnapshot(false) { ok -> if (ok) { hud.show("Snapshot saved"); showSnapshots() } else toast("Could not save the snapshot") }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp; bottomMargin = 6.dp })
+        if (list.isEmpty()) col.addView(Ui.text(this, "No snapshots yet", 14f, Ui.TEXT_DIM).apply { gravity = Gravity.CENTER; setPadding(0, 18.dp, 0, 18.dp) })
+        val fmt = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+        for (s in list) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 6.dp, 0, 6.dp) }
+            val iv = android.widget.ImageView(this).apply {
+                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
+                background = Ui.rounded(0xFF14151A.toInt(), 8f)
+                clipToOutline = true
+                runCatching { setImageBitmap(android.graphics.BitmapFactory.decodeFile(s.thumb.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 })) }
+            }
+            row.addView(iv, LinearLayout.LayoutParams(64.dp, 64.dp))
+            val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            texts.addView(android.widget.TextView(this).apply { text = fmt.format(java.util.Date(s.time)); textSize = 14f; setTextColor(Ui.TEXT) })
+            if (s.auto) texts.addView(Ui.text(this, "Made before going back", 12f, Ui.TEXT_DIM))
+            row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = 12.dp; rightMargin = 8.dp })
+            row.addView(Ui.button(this, "Go back") { dialog?.dismiss(); confirmRestore(s) })
+            row.addView(Ui.button(this, "Delete") { Gallery.deleteSnapshot(s); dialog?.dismiss(); showSnapshots() }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 6.dp })
+            col.addView(row, LinearLayout.LayoutParams(-1, -2))
+        }
+        dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Snapshots"))
+            .setView(ScrollView(this).apply { addView(col) })
+            .setNegativeButton(L10n.tr("Close"), null).show()
+    }
+
+    private fun confirmRestore(s: Gallery.Snap) {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Go back to this snapshot?"))
+            .setMessage(L10n.tr("The artwork as it is now is kept as a snapshot first, so you can return. Undo history starts fresh."))
+            .setPositiveButton(L10n.tr("Go back")) { _, _ ->
+                saveSnapshot(true) { ok ->
+                    if (!ok) { toast("Could not save the snapshot"); return@saveSnapshot }
+                    val old = cv.doc
+                    val d = try { Gallery.loadSnapshot(s) } catch (e: OutOfMemoryError) { null }
+                    if (d == null) { toast("Could not open that snapshot"); return@saveSnapshot }
+                    d.galleryId = old.galleryId; d.title = old.title; d.origin = old.origin
+                    openDocument(d)
+                    autosave(force = true)
+                    hud.show("Back at the snapshot")
+                }
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null).show()
     }
 
     private fun unpinView(kind: String) {
@@ -1946,6 +2052,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         override var watercolorDrying: Boolean
             get() = cv.watercolorDrying
             set(v) { cv.watercolorDrying = v; prefs.edit().putBoolean("watercolorDrying", v).apply() }
+        override var wetBleed: Boolean
+            get() = cv.wetBleed
+            set(v) { cv.wetBleed = v; prefs.edit().putBoolean("wetBleed", v).apply() }
         override var brushCursor: Boolean
             get() = cv.showBrushCursor
             set(v) { cv.showBrushCursor = v; prefs.edit().putBoolean("brushCursor", v).apply() }
@@ -1978,6 +2087,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         override fun openShortcuts() { popup?.dismiss(); showShortcuts() }
         override fun showTips() { popup?.dismiss(); this@MainActivity.showTips() }
         override fun openGuide() { popup?.dismiss(); showGuidePage() }
+        override fun openSnapshots() { popup?.dismiss(); showSnapshots() }
+        override fun comicPanels() { popup?.dismiss(); panelsDialog() }
+        override fun speechBubble() { popup?.dismiss(); bubbleDialog() }
     }
 
     private fun pickBrushFiles() {
@@ -2111,7 +2223,12 @@ class MainActivity : Activity(), CanvasView.Listener {
             REQ_REF_IMAGE -> {
                 val bmp = runCatching { ProjectIO.decodeImage(this, uri, 2048, 2048) }.getOrNull()
                 if (bmp == null) toast("Could not open that image")
-                else (pinned["reference"]?.getChildAt(1) as? ReferenceWindow)?.setImage(bmp)
+                else {
+                    referenceWindow()?.setImage(bmp)
+                    // the photo stays with this artwork
+                    val id = cv.doc.galleryId ?: Gallery.newId().also { cv.doc.galleryId = it }
+                    saver.execute { Gallery.saveRef(applicationContext, id, bmp) }
+                }
             }
         }
     }
@@ -2610,6 +2727,53 @@ class MainActivity : Activity(), CanvasView.Listener {
                 hud.show(L10n.tr(done) + " · ${d.width} × ${d.height}")
             }
         }
+    }
+
+    // ---------- Gradient ----------
+
+    private var gradientSecond = 0xFFFFFFFF.toInt()
+
+    private fun enterGradient() {
+        popup?.dismiss()
+        if (cv.doc.active.vector != null) { hud.show("On a vector layer use Style › Fill for gradients"); return }
+        if (cv.interaction == Interaction.SELECT) hideBottomBar()
+        cv.fillMode = false
+        cv.interaction = Interaction.GRADIENT
+        // the second color starts as the one you used before this one
+        recentColors.firstOrNull { (it or 0xFF000000.toInt()) != (cv.color or 0xFF000000.toInt()) }?.let { gradientSecond = it or 0xFF000000.toInt() }
+        showGradientBar()
+        refreshAll()
+        hud.show("Gradient: drag across the canvas, from your color")
+    }
+
+    private fun showGradientBar() {
+        val bar = barRow()
+        GradientKind.values().forEach { k ->
+            bar.addBar(barButton(k.label, cv.gradientKind == k) { cv.gradientKind = k; showGradientBar() })
+        }
+        bar.addBar(barButton("Fade out", cv.gradientTo == 0) { cv.gradientTo = 0; showGradientBar() })
+        bar.addBar(barButton("Two colors", cv.gradientTo != 0) { cv.gradientTo = gradientSecond; showGradientBar() })
+        if (cv.gradientTo != 0) {
+            val sw = ColorSwatchView(this)
+            sw.color = gradientSecond
+            sw.setOnClickListener {
+                pickColor(sw, gradientSecond) { c ->
+                    gradientSecond = c or 0xFF000000.toInt()
+                    cv.gradientTo = gradientSecond
+                    sw.color = gradientSecond
+                }
+            }
+            bar.addView(sw, LinearLayout.LayoutParams(40.dp, 40.dp))
+        }
+        bar.addBar(barButton("Reverse", cv.gradientReverse) { cv.gradientReverse = !cv.gradientReverse; showGradientBar() })
+        bar.addBar(barButton("Done", true) { leaveGradient() })
+        showBottomBar(bar)
+    }
+
+    private fun leaveGradient() {
+        if (cv.interaction == Interaction.GRADIENT) cv.interaction = Interaction.PAINT
+        hideBottomBar()
+        refreshAll()
     }
 
     // ---------- Liquify ----------
@@ -3150,6 +3314,116 @@ class MainActivity : Activity(), CanvasView.Listener {
             .setPositiveButton(L10n.tr("Add")) { _, _ -> addText(input.text.toString(), font, sizePx, align) }
             .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
+    }
+
+    // ---------- Comics ----------
+
+    private fun panelsDialog() {
+        val doc = cv.doc
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24.dp, 8.dp, 24.dp, 0) }
+        var layout = Comics.layouts[3]
+        var gutter = 0.3f; var border = 0.3f; var margin = 0.3f
+        val short = min(doc.width, doc.height).toFloat()
+        fun gutterPx() = short * (0.005f + gutter * 0.05f)
+        fun borderPx() = max(1f, short * (0.001f + border * 0.012f))
+        fun marginPx() = short * margin * 0.12f
+        val preview = object : View(this) {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG)
+            override fun onDraw(c: Canvas) {
+                val s = min(width / doc.width.toFloat(), height / doc.height.toFloat())
+                c.translate((width - doc.width * s) / 2f, (height - doc.height * s) / 2f)
+                c.scale(s, s)
+                p.style = Paint.Style.FILL; p.color = Color.WHITE
+                c.drawRect(0f, 0f, doc.width.toFloat(), doc.height.toFloat(), p)
+                Comics.drawPanels(c, Comics.rects(layout, doc.width, doc.height, marginPx(), gutterPx()), max(borderPx(), 1.5f / s), Color.BLACK)
+            }
+        }
+        box.addView(preview, LinearLayout.LayoutParams(-1, 190.dp))
+        val layoutBtn = Ui.button(this, layout.label) {}
+        layoutBtn.setOnClickListener {
+            val pm = PopupMenu(this, layoutBtn)
+            Comics.layouts.forEachIndexed { i, l -> pm.menu.add(0, i, i, l.label) }
+            pm.setOnMenuItemClickListener { layout = Comics.layouts[it.itemId]; layoutBtn.text = L10n.tr(layout.label); preview.invalidate(); true }
+            L10n.menu(pm.menu); pm.show()
+        }
+        box.addView(layoutBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
+        box.addView(Ui.sliderRow(this, "Space between", gutter, { "${gutterPx().roundToInt()} px" }) { gutter = it; preview.invalidate() })
+        box.addView(Ui.sliderRow(this, "Line", border, { "${borderPx().roundToInt()} px" }) { border = it; preview.invalidate() })
+        box.addView(Ui.sliderRow(this, "Page margin", margin, { "${marginPx().roundToInt()} px" }) { margin = it; preview.invalidate() })
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Comic panels"))
+            .setView(ScrollView(this).apply { addView(box) })
+            .setPositiveButton(L10n.tr("Add")) { _, _ ->
+                if (doc.layers.size >= doc.maxLayers()) { toast("Layer limit reached"); return@setPositiveButton }
+                val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) { toast("Not enough memory for this right now"); return@setPositiveButton }
+                layer.name = "Panels"
+                Comics.drawPanels(Canvas(layer.bitmap), Comics.rects(layout, doc.width, doc.height, marginPx(), gutterPx()), borderPx(), Color.BLACK)
+                // on top of everything, so the frames stay over the drawing
+                val cmd = AddLayerCmd(layer, doc.layers.size, doc.activeIndex)
+                cmd.redo(doc)
+                cv.pushCommand(cmd)
+                refreshAll()
+                hud.show("Panels added on a new layer")
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null).show()
+    }
+
+    private fun bubbleDialog() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24.dp, 8.dp, 24.dp, 0) }
+        val input = EditText(this).apply {
+            hint = "Type your text (any language)"
+            minLines = 2
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        box.addView(input, LinearLayout.LayoutParams(-1, -2))
+        var kind = Comics.Bubble.SPEECH
+        val kindBtn = Ui.button(this, kind.label) {}
+        kindBtn.setOnClickListener {
+            val pm = PopupMenu(this, kindBtn)
+            Comics.Bubble.values().forEachIndexed { i, k -> pm.menu.add(0, i, i, k.label) }
+            pm.setOnMenuItemClickListener { kind = Comics.Bubble.values()[it.itemId]; kindBtn.text = L10n.tr(kind.label); true }
+            L10n.menu(pm.menu); pm.show()
+        }
+        box.addView(kindBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
+        var font = TextFont.SANS_BOLD
+        val fontBtn = Ui.button(this, "Font: ${font.label}") {}
+        fontBtn.setOnClickListener {
+            val pm = PopupMenu(this, fontBtn)
+            TextFont.values().forEachIndexed { i, f -> pm.menu.add(0, i, i, f.label) }
+            pm.setOnMenuItemClickListener { font = TextFont.values()[it.itemId]; fontBtn.text = "Font: ${font.label}"; true }
+            L10n.menu(pm.menu); pm.show()
+        }
+        box.addView(fontBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 6.dp })
+        var sizePx = cv.doc.height * (0.012f + 0.25f * 0.1f)
+        box.addView(Ui.sliderRow(this, "Size", 0.25f, { "${(cv.doc.height * (0.012f + it * 0.1f)).roundToInt()} px" }) {
+            sizePx = cv.doc.height * (0.012f + it * 0.1f)
+        })
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Speech bubble"))
+            .setView(box)
+            .setPositiveButton(L10n.tr("Add")) { _, _ -> addBubble(input.text.toString(), kind, font, sizePx) }
+            .setNegativeButton(L10n.tr("Cancel"), null).show()
+    }
+
+    private fun addBubble(text: String, kind: Comics.Bubble, font: TextFont, sizePx: Float) {
+        val doc = cv.doc
+        if (text.isBlank()) return
+        if (doc.layers.size >= doc.maxLayers()) { toast("Layer limit reached"); return }
+        val txt = TextTool.render(text, font, sizePx, Color.BLACK, android.text.Layout.Alignment.ALIGN_CENTER,
+            (doc.width * 0.55f).toInt(), (doc.height * 0.55f).toInt()) ?: return
+        val bmp = Comics.bubble(txt, kind, max(2f, sizePx * 0.07f))
+        txt.recycle()
+        if (bmp == null) { toast("Not enough memory for this right now"); return }
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) { bmp.recycle(); toast("Not enough memory for this right now"); return }
+        layer.name = "Bubble: " + text.trim().take(18)
+        Canvas(layer.bitmap).drawBitmap(bmp, (doc.width - bmp.width) / 2f, (doc.height - bmp.height) / 2f, null)
+        bmp.recycle()
+        val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
+        cmd.redo(doc)
+        cv.pushCommand(cmd)
+        cv.selection = null
+        // place it right away
+        enterTransform()
     }
 
     private fun addText(text: String, font: TextFont, sizePx: Float, align: android.text.Layout.Alignment) {

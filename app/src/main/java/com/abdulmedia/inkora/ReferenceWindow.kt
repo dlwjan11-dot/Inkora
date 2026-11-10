@@ -16,6 +16,7 @@ import kotlin.math.hypot
 class ReferenceWindow(
     context: Context,
     private val onImport: () -> Unit,
+    private val onRemove: () -> Unit,
     private val onColorPicked: (Int) -> Unit
 ) : LinearLayout(context) {
 
@@ -31,6 +32,7 @@ class ReferenceWindow(
             gravity = Gravity.CENTER_VERTICAL
         }
         val importBtn = Ui.button(context, "Import") { onImport() }
+        importBtn.setOnLongClickListener { if (bitmap != null) { onRemove(); true } else false }
         val flipBtn = Ui.button(context, "Flip") { imgView.flipHorizontal() }
         val fitBtn = Ui.button(context, "Fit") { imgView.resetTransform() }
 
@@ -42,10 +44,12 @@ class ReferenceWindow(
         addView(imgView, LayoutParams(220.dp, 220.dp).apply { topMargin = 6.dp })
     }
 
-    fun setImage(bmp: Bitmap) {
+    fun setImage(bmp: Bitmap?) {
         bitmap = bmp
         imgView.setBitmap(bmp)
     }
+
+    val hasImage get() = bitmap != null
 
     private inner class ReferenceImageView(context: Context) : View(context) {
         private var bmp: Bitmap? = null
@@ -67,9 +71,9 @@ class ReferenceWindow(
             textPaint.textSize = 12f * resources.displayMetrics.density
         }
 
-        fun setBitmap(b: Bitmap) {
+        fun setBitmap(b: Bitmap?) {
             bmp = b
-            resetTransform()
+            if (b == null) invalidate() else resetTransform()
         }
 
         fun resetTransform() {

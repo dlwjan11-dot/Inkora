@@ -28,7 +28,9 @@ import android.graphics.RectF
 enum class Tool { BRUSH, SMUDGE, ERASER }
 
 /** What touches on the canvas do right now. */
-enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR, LIQUIFY }
+enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR, LIQUIFY, GRADIENT }
+
+enum class GradientKind(val label: String) { LINEAR("Linear"), RADIAL("Radial") }
 
 @SuppressLint("ViewConstructor")
 class CanvasView(context: Context) : View(context) {
@@ -172,7 +174,7 @@ class CanvasView(context: Context) : View(context) {
     private val loupePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // ---- input state ----
-    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG }
+    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG, GRADIENT_DRAG }
 
     // ---- vector layers ----
     val vectorEditor: VectorEditor by lazy {
@@ -552,6 +554,17 @@ class CanvasView(context: Context) : View(context) {
                     c.restoreToCount(s)
                 }
             })
+        } else if (interaction == Interaction.GRADIENT && gradientShader() != null) {
+            // the gradient as it will be, on the layer, while the finger drags
+            val sh = gradientShader()
+            val sel = selection
+            doc.draw(canvas, filter, { c ->
+                val s = c.saveLayer(doc.bounds, null)
+                gradPaint.shader = sh
+                c.drawRect(doc.bounds, gradPaint)
+                if (sel != null) c.drawBitmap(sel.mask, 0f, 0f, Selections.dstIn)
+                c.restoreToCount(s)
+            })
         } else if (t != null) {
             val ov = HashMap<Layer, ActiveOverlay>()
             ov[t.layer] = ActiveOverlay { c -> c.drawBitmap(t.floating, t.matrix, transformPaint) }
@@ -600,6 +613,7 @@ class CanvasView(context: Context) : View(context) {
             }
         }
 
+        drawGradientLine(canvas)
         if (mode == Mode.PICK) drawLoupe(canvas)
         drawLiquifyBrush(canvas)
     }
@@ -909,6 +923,7 @@ class CanvasView(context: Context) : View(context) {
                 if (strokeActive) cancelStroke()
                 if (mode == Mode.VECTOR_DRAG) vectorEditor.onCancel()
                 selDrawing = false
+                gradA = null; gradB = null
                 removeCallbacks(fingerHoldRunnable)
                 removeCallbacks(rapidRunnable)
                 mode = Mode.NONE
@@ -947,6 +962,12 @@ class CanvasView(context: Context) : View(context) {
                 return
             }
             Interaction.LIQUIFY -> { startLiquify(e); return }
+            Interaction.GRADIENT -> {
+                mode = Mode.GRADIENT_DRAG
+                downTime = e.eventTime
+                gradA = toDoc(e.x, e.y); gradB = null
+                return
+            }
             Interaction.PAINT -> {}
         }
         val tt = e.getToolType(0)
@@ -1037,6 +1058,11 @@ class CanvasView(context: Context) : View(context) {
                 } else startGesture(e, -1, keepTapInfo = true)
             }
             Mode.LIQUIFY_DRAG -> startGesture(e, -1)
+            Mode.GRADIENT_DRAG -> if (e.eventTime - downTime < 300) {
+                // a second finger right away: zoom or move the view instead
+                gradA = null; gradB = null
+                startGesture(e, -1)
+            }
             Mode.SELECT_DRAW -> {
                 // second finger right away = zoom / pan instead of selecting
                 if (e.eventTime - downTime < 300) {
@@ -1122,6 +1148,7 @@ class CanvasView(context: Context) : View(context) {
             }
             Mode.SELECT_DRAW -> moveSelect(e)
             Mode.LIQUIFY_DRAG -> moveLiquify(e)
+            Mode.GRADIENT_DRAG -> { gradB = toDoc(e.x, e.y); invalidate() }
             Mode.VECTOR_DRAG -> vectorEditor.onMove(e.x, e.y)
             Mode.TRANSFORM_DRAG -> updateTransformDrag(e)
             Mode.TRANSFORM_PINCH -> updateTransformPinch(e)
@@ -1172,6 +1199,7 @@ class CanvasView(context: Context) : View(context) {
             }
             Mode.VP_DRAG -> doc.revision++
             Mode.SELECT_DRAW -> finishSelect()
+            Mode.GRADIENT_DRAG -> commitGradient()
             Mode.VECTOR_DRAG -> vectorEditor.onUp(e.x, e.y)
             else -> {}
         }
@@ -1517,6 +1545,131 @@ class CanvasView(context: Context) : View(context) {
         return grainDstIn
     }
 
+    /** wet paint runs into wet paint (Preferences can turn it off) */
+    var wetBleed = true
+    private val bleedOut = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_OUT }
+    private val bleedIn = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_IN }
+    private val bleedPlus = Paint().apply { blendMode = BlendMode.PLUS }
+    private val bleedSoft = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    /**
+     * Notes where this stroke left wet paint and, when it touched paint that was still wet, returns
+     * how much each spot should run (a small alpha map over [r], which grows by a margin). Null: nothing to do.
+     */
+    private fun wetBleedMask(sb: Bitmap, r: Rect, layer: Layer): Bitmap? {
+        val dyn = engine.brush.dyn
+        var small: Bitmap? = null
+        try {
+            if (wetMaps.size > 6) wetMaps.keys.retainAll(doc.layers.map { it.id }.toSet())
+            val wm = wetMaps.getOrPut(layer.id) { WetMap(doc.width, doc.height) }
+            val now = android.os.SystemClock.uptimeMillis()
+            val grown = Rect(r)
+            val margin = (engine.brush.size * 0.5f).toInt().coerceIn(6, 70)
+            grown.inset(-margin, -margin)
+            if (!grown.intersect(0, 0, doc.width, doc.height)) return null
+            val w = grown.width(); val h = grown.height()
+            val k = max(2f, kotlin.math.sqrt(w.toFloat() * h / 160_000f))
+            val lw = (w / k).toInt().coerceAtLeast(2); val lh = (h / k).toInt().coerceAtLeast(2)
+            small = Bitmap.createBitmap(lw, lh, Bitmap.Config.ARGB_8888)
+            Canvas(small).drawBitmap(sb, grown, Rect(0, 0, lw, lh), bleedSoft)
+            val px = IntArray(lw * lh)
+            small.getPixels(px, 0, lw, 0, 0, lw, lh)
+            val a = FloatArray(lw * lh) { (px[it] ushr 24) / 255f }
+            val sx = w / lw.toFloat(); val sy = h / lh.toFloat()
+            var m: FloatArray? = null
+            val bloom = if (wetBleed) max(dyn.bloom, 0f) else 0f
+            if (bloom > 0f && !layer.alphaLock) {
+                // the stroke's reach: its own shape, spread out a little
+                val rad = (margin / k).toInt().coerceIn(1, 24)
+                val spread = boxBlur(boxBlur(a, lw, lh, rad), lw, lh, rad)
+                var any = false
+                val mm = FloatArray(lw * lh)
+                val ns = 9f / max(lw, lh)
+                for (y in 0 until lh) for (x in 0 until lw) {
+                    val i = y * lw + x
+                    val reach = (spread[i] * 2.2f).coerceAtMost(1f)
+                    if (reach < 0.02f) continue
+                    val wet = wm.wetness(grown.left + (x * sx).toInt(), grown.top + (y * sy).toInt(), now)
+                    if (wet <= 0f) continue
+                    // it creeps unevenly, as water does
+                    val n = 0.45f + 0.75f * Watercolor.pnoise(x * ns * 6f, y * ns * 6f, shapeSeed, 4096)
+                    val v = (reach * wet * bloom * n * 0.85f).coerceIn(0f, 0.6f)
+                    if (v > 0.03f) any = true
+                    mm[i] = v
+                }
+                if (any) m = boxBlur(mm, lw, lh, 1)
+            }
+            wm.paintScaled(grown.left, grown.top, w, h, lw, lh, a, now)
+            if (m == null) return null
+            r.set(grown)
+            for (i in px.indices) px[i] = (m[i] * 255f).toInt().coerceIn(0, 255) shl 24
+            small.setPixels(px, 0, lw, 0, 0, lw, lh)
+            val out = small
+            small = null
+            return out
+        } catch (e: OutOfMemoryError) {
+            return null
+        } finally {
+            small?.recycle()
+        }
+    }
+
+    private fun boxBlur(src: FloatArray, w: Int, h: Int, rad: Int): FloatArray {
+        val tmp = FloatArray(w * h); val out = FloatArray(w * h)
+        val n = 2 * rad + 1
+        for (y in 0 until h) {
+            var acc = 0f
+            for (x in -rad..rad) acc += src[y * w + x.coerceIn(0, w - 1)]
+            for (x in 0 until w) {
+                tmp[y * w + x] = acc / n
+                acc += src[y * w + (x + rad + 1).coerceAtMost(w - 1)] - src[y * w + (x - rad).coerceAtLeast(0)]
+            }
+        }
+        for (x in 0 until w) {
+            var acc = 0f
+            for (y in -rad..rad) acc += tmp[y.coerceIn(0, h - 1) * w + x]
+            for (y in 0 until h) {
+                out[y * w + x] = acc / n
+                acc += tmp[(y + rad + 1).coerceAtMost(h - 1) * w + x] - tmp[(y - rad).coerceAtLeast(0) * w + x]
+            }
+        }
+        return out
+    }
+
+    /** the layer inside [r] turns, by [mask], into a soft, run-together copy of itself */
+    private fun bleedInto(layer: Layer, r: Rect, mask: Bitmap, sel: Selection?) {
+        var soft: Bitmap? = null
+        try {
+            val w = r.width(); val h = r.height()
+            // softened by going small and back: the smaller, the further the paint runs
+            val f = (engine.brush.size * 0.16f).coerceIn(3f, 14f)
+            val sw = (w / f).toInt().coerceAtLeast(2); val sh = (h / f).toInt().coerceAtLeast(2)
+            soft = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888)
+            Canvas(soft).drawBitmap(layer.bitmap, r, Rect(0, 0, sw, sh), bleedSoft)
+            val lc = Canvas(layer.bitmap)
+            val rf = RectF(r)
+            lc.save()
+            lc.clipRect(rf)
+            if (sel != null) {
+                // only inside the selection
+                val s = lc.saveLayer(rf, bleedOut)
+                lc.drawBitmap(mask, null, rf, bleedSoft)
+                lc.drawBitmap(sel.mask, r, r, Selections.dstIn)
+                lc.restoreToCount(s)
+            } else lc.drawBitmap(mask, null, rf, bleedOut)
+            val s = lc.saveLayer(rf, bleedPlus)
+            lc.drawBitmap(soft, null, rf, bleedSoft)
+            lc.drawBitmap(mask, null, rf, bleedIn)
+            if (sel != null) lc.drawBitmap(sel.mask, r, r, Selections.dstIn)
+            lc.restoreToCount(s)
+            lc.restore()
+        } catch (e: OutOfMemoryError) {
+            // no memory to let it run: the stroke stays as painted
+        } finally {
+            soft?.recycle()
+        }
+    }
+
     private fun commitStroke() {
         val sb = strokeBitmap ?: return
         val r = Rect()
@@ -1524,7 +1677,11 @@ class CanvasView(context: Context) : View(context) {
         if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
         val layer = doc.active
         if (watercolorDrying && engine.brush.dyn.watercolor > 0f && !strokeErasing && !layer.isLayerMask) dryWatercolor(sb, r, layer)
-        val before = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
+        // paint put down on paint that is still wet runs into it
+        val bleed = if (!watercolorDrying && !strokeErasing && !smudging && !layer.isLayerMask &&
+            (engine.brush.dyn.bloom > 0f || engine.brush.dyn.watercolor > 0f)) wetBleedMask(sb, r, layer) else null
+        val before = try { Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height()) }
+            catch (e: OutOfMemoryError) { bleed?.recycle(); sb.eraseColor(0); listener?.onMessage("Not enough memory for this right now"); return }
         commitPaint.alpha = (engine.brush.opacity * 255).toInt().coerceIn(0, 255)
         commitPaint.blendMode = strokeBlend()
         val lc = Canvas(layer.bitmap)
@@ -1546,6 +1703,7 @@ class CanvasView(context: Context) : View(context) {
             if (sel != null) lc.drawBitmap(sel.mask, r, r, Selections.dstIn)
             lc.restoreToCount(s)
         }
+        if (bleed != null) { bleedInto(layer, r, bleed, sel); bleed.recycle() }
         val after = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
         val cmd = PixelEdit(layer, Rect(r), before, after)
         history.push(cmd, doc)
@@ -1888,6 +2046,75 @@ class CanvasView(context: Context) : View(context) {
         // the brush adds to what is there unless you chose Subtract
         val mode = if (selectShape == SelectShape.BRUSH && selectCombine == SelectCombine.NEW && selection != null) SelectCombine.ADD else selectCombine
         selection = Selections.combine(selection, fresh, mode, doc.width, doc.height)
+    }
+
+    // ---------------- Gradient ----------------
+
+    var gradientKind = GradientKind.LINEAR
+    /** the color the gradient ends in; 0 = it fades out to nothing */
+    var gradientTo = 0
+    var gradientReverse = false
+    private var gradA: PointF? = null
+    private var gradB: PointF? = null
+    private val gradPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.DITHER_FLAG)
+
+    /** the gradient between the two points being dragged, or null when there is none yet */
+    private fun gradientShader(): Shader? {
+        val a = gradA ?: return null
+        val b = gradB ?: return null
+        val d = hypot(b.x - a.x, b.y - a.y)
+        if (d < 3f) return null
+        val from = color or 0xFF000000.toInt()
+        // fading out keeps the color and only lets go of its strength (no grey fringe)
+        val to = if (gradientTo == 0) from and 0x00FFFFFF else gradientTo or 0xFF000000.toInt()
+        val c0 = if (gradientReverse) to else from
+        val c1 = if (gradientReverse) from else to
+        return when (gradientKind) {
+            GradientKind.LINEAR -> android.graphics.LinearGradient(a.x, a.y, b.x, b.y, c0, c1, Shader.TileMode.CLAMP)
+            GradientKind.RADIAL -> android.graphics.RadialGradient(a.x, a.y, d, c0, c1, Shader.TileMode.CLAMP)
+        }
+    }
+
+    private fun drawGradientLine(canvas: Canvas) {
+        if (interaction != Interaction.GRADIENT) return
+        val a = gradA ?: return
+        val b = gradB ?: return
+        val p = floatArrayOf(a.x, a.y, b.x, b.y)
+        viewMatrix.mapPoints(p)
+        handlePaint.style = Paint.Style.STROKE
+        handlePaint.strokeWidth = 3f * density
+        handlePaint.color = 0x88000000.toInt()
+        canvas.drawLine(p[0], p[1], p[2], p[3], handlePaint)
+        handlePaint.strokeWidth = 1.5f * density
+        handlePaint.color = Color.WHITE
+        canvas.drawLine(p[0], p[1], p[2], p[3], handlePaint)
+        handlePaint.style = Paint.Style.FILL
+        canvas.drawCircle(p[0], p[1], 6f * density, handlePaint)
+        canvas.drawCircle(p[2], p[3], 4f * density, handlePaint)
+    }
+
+    /** the dragged gradient goes onto the active layer (inside the selection when there is one) */
+    private fun commitGradient() {
+        val sh = gradientShader()
+        gradA = null; gradB = null
+        if (sh == null) { invalidate(); return }
+        val layer = doc.active
+        if (!layer.visible) { listener?.onMessage("This layer is hidden"); return }
+        if (!plainLayer(layer)) return
+        val sel = selection
+        val r = if (sel != null) Rect(sel.bounds) else Rect(0, 0, doc.width, doc.height)
+        if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
+        val before = try { Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height()) } catch (e: OutOfMemoryError) { null }
+        if (before == null) { listener?.onMessage("Not enough memory for this right now"); return }
+        val c = Canvas(layer.bitmap)
+        // on a mask the gradient is the mask itself: from "show" to "hide"
+        val lp = Paint().apply { blendMode = if (layer.alphaLock) BlendMode.SRC_ATOP else BlendMode.SRC_OVER }
+        val s = c.saveLayer(RectF(r), lp)
+        gradPaint.shader = sh
+        c.drawRect(RectF(r), gradPaint)
+        if (sel != null) c.drawBitmap(sel.mask, 0f, 0f, Selections.dstIn)
+        c.restoreToCount(s)
+        pushPixelEdit(layer, r, before)
     }
 
     // ---------------- Liquify ----------------

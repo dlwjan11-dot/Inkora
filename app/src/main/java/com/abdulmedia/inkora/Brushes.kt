@@ -135,12 +135,12 @@ object Brushes {
         name: String, tip: TipShape, spacing: Float, minSize: Float, minFlow: Float, flow: Float, size: Float, opacity: Float,
         granulation: Float, grainScale: Float = 1.5f, depth: Float = 0.75f, scatter: Float = 0f,
         rotation: RotationMode = RotationMode.NONE, taper: Float = 0f, pull: Float = 0.25f, dilution: Float = 0.15f,
-        sizeJitter: Float = 0f, flowNoise: Float = 0.3f, streamline: Float = 0.25f, wetEdge: Float = 0.45f
+        sizeJitter: Float = 0f, flowNoise: Float = 0.3f, streamline: Float = 0.25f, wetEdge: Float = 0.45f, bloom: Float = 0.5f
     ) = BrushPreset(name, AQUARELLE, tip, spacing, minSize, minFlow, flow, streamline, size, opacity, scatter, rotation,
         taper = taper, grain = GrainType.COLD_PRESS, grainScale = grainScale,
         dynamics = BrushDynamics(taperLength = taper, grainDepth = depth, blend = LayerBlend.MULTIPLY,
             wetDilution = dilution, wetPull = pull, wetCharge = 1f, sizeJitter = sizeJitter, flowNoise = flowNoise,
-            granulation = granulation, wetEdge = wetEdge))
+            granulation = granulation, wetEdge = wetEdge, bloom = bloom))
 
     const val AQUARELLE = "Aquarelle"
 

@@ -201,7 +201,7 @@ object Watercolor {
     const val GRAIN_TILE = 308
 
     /** [noise] that repeats every [period] cells */
-    private fun pnoise(x: Float, y: Float, s: Int, period: Int): Float {
+    fun pnoise(x: Float, y: Float, s: Int, period: Int): Float {
         val x0 = floor(x).toInt(); val y0 = floor(y).toInt()
         val fx = x - x0; val fy = y - y0
         val ux = fx * fx * (3 - 2 * fx); val uy = fy * fy * (3 - 2 * fy)

@@ -41,6 +41,7 @@ interface ActionsHost {
     var brushCursor: Boolean
     /** watercolor strokes dry (crisp edge, pigment line, blots) when the pen lifts */
     var watercolorDrying: Boolean
+    var wetBleed: Boolean
     // Share
     fun export(kind: String)
     // Video
@@ -55,6 +56,9 @@ interface ActionsHost {
     fun showTips()
     /** the guide: every feature and gesture on one screen */
     fun openGuide()
+    fun openSnapshots()
+    fun comicPanels()
+    fun speechBubble()
 }
 
 /**
@@ -209,6 +213,10 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             row("Open a project file", ".inkora from Inkora, or .psd from Photoshop") { host.openProjectFile() }
         )
         group(
+            row("Comic panels…", "Frames for a comic page, on a new layer") { host.comicPanels() },
+            row("Speech bubble…", "Speech, thought, shout or a caption box") { host.speechBubble() }
+        )
+        group(
             row("Import brushes…", "Procreate .brush and .brushset, .zip, or PNG stamps") { host.importBrushes() },
             row("Import brushes from a link…", "Google Drive and Dropbox links work too") { host.importBrushesFromLink() }
         )
@@ -227,7 +235,8 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         group(row("Crop & Resize", "Canvas size, resize, crop, rotate") { host.cropResize() })
         group(
             row("New canvas…") { host.newCanvas() },
-            row("Rename artwork…", d.title.ifBlank { L10n.tr("Untitled Artwork") }) { host.renameArtwork() }
+            row("Rename artwork…", d.title.ifBlank { L10n.tr("Untitled Artwork") }) { host.renameArtwork() },
+            row("Snapshots", "Keep this moment of the artwork, and come back to it later") { host.openSnapshots() }
         )
         group(
             switchRow("Drawing guide", "Grids and perspective", g.type != GuideType.OFF) { on ->
@@ -308,6 +317,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             },
             switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor) { host.brushCursor = it },
             switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying) { host.watercolorDrying = it },
+            switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed) { host.wetBleed = it },
             switchRow("Size & Opacity sidebar", null, host.sidebarShown) { host.sidebarShown = it }
         )
         group(
