@@ -482,7 +482,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (busy()) return@setOnClickListener
             if (cv.tool == Tool.BRUSH && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.BRUSH) else selectTool(Tool.BRUSH)
         }
-        brushBtn.setOnLongClickListener { if (!busy()) { selectTool(Tool.BRUSH); showBrushes(Tool.BRUSH) }; true }
+        brushBtn.setOnLongClickListener { carryBrush(Tool.BRUSH); true }
         tools.addView(brushBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
 
         smudgeBtn = IconView(this, Icon.SMUDGE).apply { contentDescription = "Smudge" }
@@ -490,7 +490,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (busy()) return@setOnClickListener
             if (cv.tool == Tool.SMUDGE && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.SMUDGE) else selectTool(Tool.SMUDGE)
         }
-        smudgeBtn.setOnLongClickListener { if (!busy()) { selectTool(Tool.SMUDGE); showBrushes(Tool.SMUDGE) }; true }
+        smudgeBtn.setOnLongClickListener { carryBrush(Tool.SMUDGE); true }
         tools.addView(smudgeBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
 
         eraserBtn = IconView(this, Icon.ERASER).apply { contentDescription = "Eraser" }
@@ -498,7 +498,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (busy()) return@setOnClickListener
             if (cv.tool == Tool.ERASER && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.ERASER) else selectTool(Tool.ERASER)
         }
-        eraserBtn.setOnLongClickListener { if (!busy()) { selectTool(Tool.ERASER); showBrushes(Tool.ERASER) }; true }
+        eraserBtn.setOnLongClickListener { carryBrush(Tool.ERASER); true }
         tools.addView(eraserBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
         bar.addView(tools, LinearLayout.LayoutParams(-2, 44.dp))
 
@@ -1038,6 +1038,40 @@ class MainActivity : Activity(), CanvasView.Listener {
         recentTools.removeAll { it.first == entry.first && it.second === entry.second }
         recentTools.add(0, entry)
         while (recentTools.size > 4) recentTools.removeAt(recentTools.size - 1)
+        BrushPanel.noteRecent(this, entry.second.preset.id)
+    }
+
+    /**
+     * Holding Brush, Smudge or Eraser: that tool takes the brush you have in hand right now, with
+     * the same size, opacity and settings (erase or smudge with the brush you were painting with).
+     */
+    private fun carryBrush(target: Tool) {
+        if (busy()) return
+        val from = cv.tool
+        val src = cv.currentBrush
+        if (from == target) { showBrushes(target); return }
+        val nb = brushListFor(target).firstOrNull { it.preset === src.preset }
+        if (nb == null) { selectTool(target); return }
+        BrushSettings.apply(nb, BrushSettings.toJson(src))
+        nb.size = src.size
+        nb.opacity = src.opacity
+        when (target) {
+            Tool.ERASER -> cv.eraserBrush = nb
+            Tool.SMUDGE -> cv.smudgeBrush = nb
+            Tool.BRUSH -> cv.paintBrush = nb
+        }
+        selectTool(target)
+        hud.show(L10n.tr("Same brush") + " · " + L10n.tr(toolPrefix(target).removeSuffix(" · ").ifEmpty { "Brush" }) + " · " + nb.preset.name)
+    }
+
+    /** a brush's settings go back to how it came (the brush library's Reset) */
+    private fun resetBrush(tool: Tool, b: Brush) {
+        b.resetSettings()
+        if (tool == Tool.BRUSH) { b.size = b.preset.defaultSize; b.opacity = b.preset.defaultOpacity }
+        BrushSettings.forget(prefs, tool, b)
+        BrushPanel.forget(b.preset.id)
+        refreshAll()
+        hud.show("Brush reset")
     }
 
     private fun useBrush(tool: Tool, b: Brush) {
@@ -1314,7 +1348,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             onDeleteSet = { set, list -> confirmDeleteSet(set, list) },
             onEdit = { b -> popup?.dismiss(); openStudio(tool, b) },
             onNewBrush = { popup?.dismiss(); duplicateBrush(tool, current) },
-            onExportSet = { set, list -> popup?.dismiss(); exportBrushSet(set, list) })
+            onExportSet = { set, list -> popup?.dismiss(); exportBrushSet(set, list) },
+            onDuplicate = { b -> popup?.dismiss(); duplicateBrush(tool, b) },
+            onReset = { b -> resetBrush(tool, b) })
     }
 
     // ---------- pinned panels ----------

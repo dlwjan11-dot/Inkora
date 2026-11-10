@@ -97,15 +97,22 @@ class BrushPanel(
     /** opens the Brush Studio for the brush */
     private val onEdit: (Brush) -> Unit = {},
     private val onNewBrush: (() -> Unit)? = null,
-    private val onExportSet: ((String, List<Brush>) -> Unit)? = null
+    private val onExportSet: ((String, List<Brush>) -> Unit)? = null,
+    /** a copy of the brush as one of the user's own */
+    private val onDuplicate: ((Brush) -> Unit)? = null,
+    /** the brush's settings go back to how it came */
+    private val onReset: ((Brush) -> Unit)? = null
 ) : LinearLayout(context) {
 
     private val setsColumn = LinearLayout(context)
     private val list = LinearLayout(context)
     private val listScroll = ScrollView(context)
     private var currentSet: String = selected.preset.category
+    /** the brush whose actions (pin, duplicate, reset) are showing */
+    private var openActions: String? = null
 
     init {
+        loadLists(context)
         orientation = VERTICAL
         setPadding(14.dp, 14.dp, 14.dp, 14.dp)
         background = Ui.rounded(Ui.PANEL, 22f, 0x14FFFFFF, 1)
@@ -117,14 +124,25 @@ class BrushPanel(
         rebuild()
     }
 
+    /** the brushes of a set; Pinned and Recent are made from the lists kept between runs */
+    private fun itemsOf(set: String): List<Brush> = when (set) {
+        PINNED -> brushes.filter { it.preset.id in pins }
+        RECENT -> recents.mapNotNull { id -> brushes.firstOrNull { it.preset.id == id } }
+        else -> brushes.filter { it.preset.category == set }
+    }
+
     private fun sets(): List<String> {
         val seen = LinkedHashSet<String>()
+        if (brushes.any { it.preset.id in pins }) seen.add(PINNED)
+        if (recents.any { id -> brushes.any { it.preset.id == id } }) seen.add(RECENT)
         for (b in brushes) if (!b.preset.imported) seen.add(b.preset.category)
         for (b in brushes) if (b.preset.imported) seen.add(b.preset.category)
         return seen.toList()
     }
 
     private fun iconFor(set: String, imported: Boolean): Icon = when {
+        set == PINNED -> Icon.PIN
+        set == RECENT -> Icon.CLOCK
         imported -> Icon.FOLDER
         set.startsWith("Ink") -> Icon.INK
         set.startsWith("Callig") -> Icon.NIB
@@ -194,18 +212,19 @@ class BrushPanel(
         val all = sets()
         if (currentSet !in all) currentSet = all.firstOrNull() ?: ""
         for (set in all) {
-            val imported = brushes.any { it.preset.category == set && it.preset.imported } && brushes.none { it.preset.category == set && !it.preset.imported }
+            val virtual = set == PINNED || set == RECENT
+            val imported = !virtual && brushes.any { it.preset.category == set && it.preset.imported } && brushes.none { it.preset.category == set && !it.preset.imported }
             val on = set == currentSet
-            val hasSelected = selected.preset.category == set
+            val hasSelected = !virtual && selected.preset.category == set
             val item = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(10.dp, 0, 8.dp, 0)
                 background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
-                setOnClickListener { currentSet = set; buildList(); refreshSets() }
+                setOnClickListener { currentSet = set; openActions = null; buildList(); refreshSets() }
                 // long-press a set: export it (any set), or delete it (yours)
                 setOnLongClickListener { v ->
-                    val list = brushes.filter { it.preset.category == set }
+                    val list = itemsOf(set)
                     val pm = android.widget.PopupMenu(context, v)
                     if (onExportSet != null) pm.menu.add(0, 1, 1, "Export set (.brushset)…")
                     if (imported && onDeleteSet != null) pm.menu.add(0, 2, 2, "Delete set")
@@ -248,7 +267,7 @@ class BrushPanel(
 
     private fun buildList() {
         list.removeAllViews()
-        val items = brushes.filter { it.preset.category == currentSet }
+        val items = itemsOf(currentSet)
         for (b in items) {
             val on = b === selected
             val card = LinearLayout(context).apply {
@@ -276,19 +295,108 @@ class BrushPanel(
                 }
             }
             if (b.preset.imported) card.setOnLongClickListener { onDelete(b); true }
+            card.foreground = Ui.ripple(14f)
+            sideSwipe(card) {
+                openActions = if (openActions == b.preset.id) null else b.preset.id
+                buildList()
+            }
+            if (openActions == b.preset.id) card.addView(actionsFor(b), LayoutParams(-1, -2).apply { topMargin = 4.dp; bottomMargin = 6.dp })
             list.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 2.dp })
         }
         val hint = when {
             brushes.none { it.preset.imported } ->
                 "Tap + to import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
-            items.any { it.preset.imported } -> "Long-press a brush to delete it. Long-press the set to export or delete it."
-            else -> "Tap the brush you're using again to change its settings."
+            items.any { it.preset.imported } -> "Swipe a brush sideways to pin, duplicate or delete it. Long-press the set to export or delete it."
+            else -> "Swipe a brush sideways to pin, duplicate or reset it. Tap the brush you're using again to change its settings."
         }
         list.addView(Ui.text(context, hint, 12f, Ui.TEXT_DIM).apply { setPadding(14.dp, 10.dp, 8.dp, 8.dp) })
     }
 
+    /** Pin, Duplicate and Reset (or Delete for a brush of your own), shown under a brush that was swiped */
+    private fun actionsFor(b: Brush): LinearLayout {
+        val row = LinearLayout(context).apply { orientation = HORIZONTAL }
+        fun add(label: String, danger: Boolean = false, run: () -> Unit) {
+            row.addView(Ui.pill(context, label) { run() }.apply {
+                textSize = 12.5f
+                background = Ui.rounded(0xFF30333A.toInt(), 18f)
+                if (danger) setTextColor(Ui.DANGER)
+            }, LayoutParams(0, -2, 1f).apply { marginEnd = 6.dp })
+        }
+        val pinned = b.preset.id in pins
+        add(if (pinned) "Unpin" else "Pin") {
+            if (pinned) pins.remove(b.preset.id) else pins.add(b.preset.id)
+            saveLists(context)
+            openActions = null
+            rebuild()
+        }
+        if (onDuplicate != null && b.preset.living == null) add("Duplicate") { openActions = null; onDuplicate.invoke(b) }
+        if (b.preset.imported) add("Delete", danger = true) { openActions = null; onDelete(b) }
+        else if (onReset != null) add("Reset") {
+            onReset.invoke(b)
+            openActions = null
+            buildList()
+        }
+        return row
+    }
+
+    /** a sideways swipe on a brush (either way); taps and long presses go on as before */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun sideSwipe(v: View, onSwipe: () -> Unit) {
+        val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+        var x0 = 0f; var y0 = 0f; var done = false
+        v.setOnTouchListener { view, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> { x0 = e.rawX; y0 = e.rawY; done = false }
+                android.view.MotionEvent.ACTION_MOVE -> {
+                    val ax = kotlin.math.abs(e.rawX - x0); val ay = kotlin.math.abs(e.rawY - y0)
+                    if (!done && ax > slop / 2f && ax > ay) view.parent?.requestDisallowInterceptTouchEvent(true)
+                    if (!done && ax > 26.dp && ay < ax * 0.7f) {
+                        done = true
+                        view.cancelLongPress()
+                        view.isPressed = false
+                        post { onSwipe() }
+                    }
+                }
+            }
+            // once it is a swipe, the rest of the gesture is not a tap
+            done
+        }
+    }
+
     companion object {
         private val cache = HashMap<String, Bitmap>()
+
+        const val PINNED = "Pinned"
+        const val RECENT = "Recent"
+        private const val MAX_RECENT = 12
+        /** ids of the pinned brushes, and of the last brushes used (newest first), kept between runs */
+        private val pins = LinkedHashSet<String>()
+        private val recents = ArrayList<String>()
+        private var listsLoaded = false
+
+        private fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences("inkora", Context.MODE_PRIVATE)
+
+        private fun loadLists(ctx: Context) {
+            if (listsLoaded) return
+            listsLoaded = true
+            val p = prefs(ctx)
+            p.getString("brush_pins", "")!!.split('\n').filter { it.isNotBlank() }.forEach { pins.add(it) }
+            p.getString("brush_recent", "")!!.split('\n').filter { it.isNotBlank() }.forEach { recents.add(it) }
+        }
+
+        private fun saveLists(ctx: Context) {
+            prefs(ctx).edit().putString("brush_pins", pins.joinToString("\n")).putString("brush_recent", recents.joinToString("\n")).apply()
+        }
+
+        /** the brush that was just taken in hand goes to the top of Recent */
+        fun noteRecent(ctx: Context, id: String) {
+            loadLists(ctx)
+            if (recents.firstOrNull() == id) return
+            recents.remove(id)
+            recents.add(0, id)
+            while (recents.size > MAX_RECENT) recents.removeAt(recents.size - 1)
+            saveLists(ctx)
+        }
 
         /** the brush's stroke as it is set now (a changed setting draws a new one) */
         fun preview(b: Brush): Bitmap {
