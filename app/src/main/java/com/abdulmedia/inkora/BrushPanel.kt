@@ -267,13 +267,15 @@ class BrushPanel(
 
     private fun buildList() {
         list.removeAllViews()
+        openCard = null
         val items = itemsOf(currentSet)
         for (b in items) {
             val on = b === selected
             val card = LinearLayout(context).apply {
                 orientation = VERTICAL
                 setPadding(14.dp, 9.dp, 12.dp, 4.dp)
-                background = Ui.rounded(if (on) Ui.ACCENT else 0, 14f)
+                // solid, so the buttons behind it show only where it has slid away
+                background = Ui.rounded(if (on) Ui.ACCENT else 0xFF1E1F25.toInt(), 14f)
             }
             card.addView(Ui.text(context, b.preset.name, 14.5f, if (on) 0xFFFFFFFF.toInt() else Ui.TEXT, on).apply {
                 maxLines = 1
@@ -296,70 +298,108 @@ class BrushPanel(
             }
             if (b.preset.imported) card.setOnLongClickListener { onDelete(b); true }
             card.foreground = Ui.ripple(14f)
-            sideSwipe(card) {
-                openActions = if (openActions == b.preset.id) null else b.preset.id
-                buildList()
+            // the brush slides to the left and its buttons show where it was
+            val actions = actionsFor(b)
+            val reach = actions.second.toFloat()
+            val wrap = android.widget.FrameLayout(context)
+            wrap.addView(actions.first, android.widget.FrameLayout.LayoutParams(actions.second, -1, Gravity.RIGHT))
+            wrap.addView(card, android.widget.FrameLayout.LayoutParams(-1, -2))
+            val open = openActions == b.preset.id
+            actions.first.visibility = if (open) View.VISIBLE else View.INVISIBLE
+            card.translationX = if (open) -reach else 0f
+            if (open) openCard = card to actions.first
+            slide(card, actions.first, reach) { nowOpen ->
+                if (nowOpen) {
+                    // one brush open at a time
+                    openCard?.let { (c, a) -> if (c !== card) close(c, a) }
+                    openCard = card to actions.first
+                    openActions = b.preset.id
+                } else if (openActions == b.preset.id) { openActions = null; openCard = null }
             }
-            if (openActions == b.preset.id) card.addView(actionsFor(b), LayoutParams(-1, -2).apply { topMargin = 4.dp; bottomMargin = 6.dp })
-            list.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 2.dp })
+            list.addView(wrap, LayoutParams(-1, -2).apply { bottomMargin = 2.dp })
         }
         val hint = when {
             brushes.none { it.preset.imported } ->
                 "Tap + to import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
-            items.any { it.preset.imported } -> "Swipe a brush sideways to pin, duplicate or delete it. Long-press the set to export or delete it."
-            else -> "Swipe a brush sideways to pin, duplicate or reset it. Tap the brush you're using again to change its settings."
+            items.any { it.preset.imported } -> "Slide a brush to the left to pin, duplicate or delete it. Long-press the set to export or delete it."
+            else -> "Slide a brush to the left to pin, duplicate or reset it. Tap the brush you're using again to change its settings."
         }
         list.addView(Ui.text(context, hint, 12f, Ui.TEXT_DIM).apply { setPadding(14.dp, 10.dp, 8.dp, 8.dp) })
     }
 
-    /** Pin, Duplicate and Reset (or Delete for a brush of your own), shown under a brush that was swiped */
-    private fun actionsFor(b: Brush): LinearLayout {
-        val row = LinearLayout(context).apply { orientation = HORIZONTAL }
-        fun add(label: String, danger: Boolean = false, run: () -> Unit) {
-            row.addView(Ui.pill(context, label) { run() }.apply {
-                textSize = 12.5f
-                background = Ui.rounded(0xFF30333A.toInt(), 18f)
-                if (danger) setTextColor(Ui.DANGER)
-            }, LayoutParams(0, -2, 1f).apply { marginEnd = 6.dp })
+    /** the brush that is slid open, and its buttons */
+    private var openCard: Pair<View, View>? = null
+
+    private fun close(card: View, actions: View) {
+        card.animate().translationX(0f).setDuration(140).withEndAction { actions.visibility = View.INVISIBLE }.start()
+    }
+
+    /**
+     * Pin, Duplicate and Reset (or Delete for a brush of your own): the buttons behind a brush,
+     * and how wide they are together.
+     */
+    private fun actionsFor(b: Brush): Pair<LinearLayout, Int> {
+        val row = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; layoutDirection = View.LAYOUT_DIRECTION_LTR }
+        val tile = 66.dp
+        var n = 0
+        fun add(label: String, color: Int, run: () -> Unit) {
+            row.addView(Ui.text(context, label, 11.5f, 0xFFFFFFFF.toInt(), true).apply {
+                gravity = Gravity.CENTER
+                maxLines = 2
+                background = Ui.rounded(color, 12f)
+                foreground = Ui.ripple(12f)
+                setOnClickListener { run() }
+            }, LayoutParams(tile - 6.dp, -1).apply { leftMargin = 6.dp; topMargin = 3.dp; bottomMargin = 3.dp })
+            n++
         }
         val pinned = b.preset.id in pins
-        add(if (pinned) "Unpin" else "Pin") {
+        add(if (pinned) "Unpin" else "Pin", 0xFF4C7BD9.toInt()) {
             if (pinned) pins.remove(b.preset.id) else pins.add(b.preset.id)
             saveLists(context)
             openActions = null
             rebuild()
         }
-        if (onDuplicate != null && b.preset.living == null) add("Duplicate") { openActions = null; onDuplicate.invoke(b) }
-        if (b.preset.imported) add("Delete", danger = true) { openActions = null; onDelete(b) }
-        else if (onReset != null) add("Reset") {
+        if (onDuplicate != null && b.preset.living == null) add("Duplicate", 0xFF4A4D57.toInt()) { openActions = null; onDuplicate.invoke(b) }
+        if (b.preset.imported) add("Delete", 0xFFD9534F.toInt()) { openActions = null; onDelete(b) }
+        else if (onReset != null) add("Reset", 0xFF8A6D3B.toInt()) {
             onReset.invoke(b)
             openActions = null
             buildList()
         }
-        return row
+        return row to n * tile
     }
 
-    /** a sideways swipe on a brush (either way); taps and long presses go on as before */
+    /**
+     * Sliding a brush sideways with the finger: it follows, and when let go it stays open (its
+     * buttons showing, [reach] wide) or goes back. Taps and long presses go on as before.
+     */
     @SuppressLint("ClickableViewAccessibility")
-    private fun sideSwipe(v: View, onSwipe: () -> Unit) {
+    private fun slide(card: View, actions: View, reach: Float, onState: (Boolean) -> Unit) {
         val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
-        var x0 = 0f; var y0 = 0f; var done = false
-        v.setOnTouchListener { view, e ->
+        var x0 = 0f; var y0 = 0f; var base = 0f; var dragging = false
+        card.setOnTouchListener { view, e ->
             when (e.actionMasked) {
-                android.view.MotionEvent.ACTION_DOWN -> { x0 = e.rawX; y0 = e.rawY; done = false }
+                android.view.MotionEvent.ACTION_DOWN -> { x0 = e.rawX; y0 = e.rawY; base = view.translationX; dragging = false }
                 android.view.MotionEvent.ACTION_MOVE -> {
-                    val ax = kotlin.math.abs(e.rawX - x0); val ay = kotlin.math.abs(e.rawY - y0)
-                    if (!done && ax > slop / 2f && ax > ay) view.parent?.requestDisallowInterceptTouchEvent(true)
-                    if (!done && ax > 26.dp && ay < ax * 0.7f) {
-                        done = true
+                    val dx = e.rawX - x0
+                    val ax = kotlin.math.abs(dx); val ay = kotlin.math.abs(e.rawY - y0)
+                    if (!dragging && ax > slop && ax > ay * 1.3f) {
+                        dragging = true
+                        view.parent?.requestDisallowInterceptTouchEvent(true)
                         view.cancelLongPress()
                         view.isPressed = false
-                        post { onSwipe() }
+                        actions.visibility = View.VISIBLE
                     }
+                    if (dragging) view.translationX = (base + dx).coerceIn(-reach, 0f)
+                }
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> if (dragging) {
+                    val open = view.translationX < -reach * 0.4f
+                    if (open) view.animate().translationX(-reach).setDuration(140).start() else close(view, actions)
+                    onState(open)
                 }
             }
-            // once it is a swipe, the rest of the gesture is not a tap
-            done
+            // once it is a slide, the rest of the gesture is not a tap
+            dragging
         }
     }
 
