@@ -239,6 +239,18 @@ class VerticalSlider(context: Context) : View(context) {
     /** a mark was added (true) or removed (false) */
     var onPins: ((Boolean) -> Unit)? = null
     private val pinPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    /** the handle was held still: ask for an exact number */
+    var onExact: (() -> Unit)? = null
+    private var snapped: Float? = null
+    private var held = false
+    private val holdRun = Runnable {
+        if (!moved && onExact != null) {
+            held = true
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            onDragState?.invoke(false)
+            onExact?.invoke()
+        }
+    }
 
     private fun yOf(v: Float): Float {
         val top = 19f.dp
@@ -301,27 +313,35 @@ class VerticalSlider(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
                 lastY = e.y; downX = e.x; downY = e.y; downAt = e.eventTime
-                moved = false
+                moved = false; held = false; snapped = null
                 raw = value
                 onDragState?.invoke(true)
+                if (kotlin.math.abs(e.y - thumbY()) < 16f.dp) postDelayed(holdRun, 550)
             }
             MotionEvent.ACTION_MOVE -> {
-                if (!moved && kotlin.math.hypot(e.x - downX, e.y - downY) > 8f.dp) { moved = true; lastY = e.y }
+                if (held) return true
+                if (!moved && kotlin.math.hypot(e.x - downX, e.y - downY) > 8f.dp) { moved = true; lastY = e.y; removeCallbacks(holdRun) }
                 if (moved) {
                     // slide sideways, away from the bar, and it moves slower: fine control
                     val away = max(0f, max(-e.x, e.x - width))
                     val speed = (1f / (1f + away / 45f.dp)).coerceAtLeast(0.06f)
                     raw = (raw - (e.y - lastY) / usable * speed).coerceIn(0f, 1f)
                     lastY = e.y
-                    value = raw
+                    // near a mark the handle catches on it (less so in fine control, where you want every step)
+                    val near = pins.minByOrNull { kotlin.math.abs(it - raw) }?.takeIf { kotlin.math.abs(it - raw) < 0.022f * speed }
+                    if (near != null && near != snapped) performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                    snapped = near
+                    value = near ?: raw
                     onChange?.invoke(value)
                 }
             }
             MotionEvent.ACTION_UP -> {
+                removeCallbacks(holdRun)
+                if (held) return true
                 if (!moved && e.eventTime - downAt < 350) tapped(e.y, e.eventTime)
                 onDragState?.invoke(false)
             }
-            MotionEvent.ACTION_CANCEL -> onDragState?.invoke(false)
+            MotionEvent.ACTION_CANCEL -> { removeCallbacks(holdRun); if (!held) onDragState?.invoke(false) }
         }
         return true
     }

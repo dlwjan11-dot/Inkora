@@ -554,6 +554,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         sizeSlider.onDragState = { dragging -> if (dragging) showSizeHud(true) else hud.hideSoon() }
         sliderPins(sizeSlider, "size_pins")
+        sizeSlider.onExact = { exactValue(true) }
         side.addView(sizeSlider, LinearLayout.LayoutParams(44.dp, 180.dp))
 
         // the □ modify button: tapped, it does what "Tap □" is set to (the eyedropper at first);
@@ -597,6 +598,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (dragging) hud.show("Opacity ${(cv.currentBrush.opacity * 100).roundToInt()}%", sticky = true) else hud.hideSoon()
         }
         sliderPins(opacitySlider, "opacity_pins")
+        opacitySlider.onExact = { exactValue(false) }
         side.addView(opacitySlider, LinearLayout.LayoutParams(44.dp, 180.dp))
         opacityLabel = Ui.text(this, "100%", 10f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER }
         side.addView(opacityLabel, LinearLayout.LayoutParams(-1, -2))
@@ -686,11 +688,50 @@ class MainActivity : Activity(), CanvasView.Listener {
     /** sliders on one side, toolbar on the other (swapped for left-handed people or customized placement) */
     /** the marks on a slider are remembered */
     private fun sliderPins(s: VerticalSlider, key: String) {
-        prefs.getString(key, "")!!.split(',').mapNotNull { it.toFloatOrNull() }.forEach { s.pins.add(it.coerceIn(0f, 1f)) }
         s.onPins = { added ->
-            prefs.edit().putString(key, s.pins.joinToString(",")).apply()
+            prefs.edit().putString(key + "_" + pinsBrush, s.pins.joinToString(",")).apply()
             hud.show(if (added) "Marked · tap the mark to come back to it" else "Mark removed")
         }
+    }
+
+    /** the brush whose marks the sliders show: every brush keeps its own */
+    private var pinsBrush = ""
+
+    private fun loadSliderPins() {
+        val key = cv.tool.name + ":" + cv.currentBrush.preset.id
+        if (key == pinsBrush) return
+        pinsBrush = key
+        for ((s, k) in listOf(sizeSlider to "size_pins", opacitySlider to "opacity_pins")) {
+            s.pins.clear()
+            prefs.getString(k + "_" + key, "")!!.split(',').mapNotNull { it.toFloatOrNull() }.forEach { s.pins.add(it.coerceIn(0f, 1f)) }
+            s.invalidate()
+        }
+    }
+
+    /** holding a slider's handle: type the exact size (px) or opacity (%) */
+    private fun exactValue(size: Boolean) {
+        val b = cv.currentBrush
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(if (size) (if (b.size < 10) String.format(java.util.Locale.US, "%.1f", b.size) else b.size.roundToInt().toString())
+                else (b.opacity * 100).roundToInt().toString())
+            selectAll()
+        }
+        val box = FrameLayout(this).apply { setPadding(24.dp, 8.dp, 24.dp, 0); addView(input) }
+        val d = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr(if (size) "Size (px)" else "Opacity (%)"))
+            .setView(box)
+            .setPositiveButton(L10n.tr("OK")) { _, _ ->
+                val v = input.text.toString().replace(',', '.').toFloatOrNull() ?: return@setPositiveButton
+                if (size) b.size = v.coerceIn(Brushes.MIN_SIZE, Brushes.MAX_SIZE)
+                else b.opacity = (v / 100f).coerceIn(0.01f, 1f)
+                refreshAll()
+                if (size) showSizeHud(false) else hud.show("Opacity ${(b.opacity * 100).roundToInt()}%")
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null).create()
+        d.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        d.show()
+        input.requestFocus()
     }
 
     private lateinit var homeBtn: android.widget.TextView
@@ -1284,6 +1325,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         colorBtn.color = cv.color
         sizeSlider.value = Brushes.sliderFromSize(cv.currentBrush.size)
         opacitySlider.value = cv.currentBrush.opacity
+        loadSliderPins()
         if (cv.fillMode) { brushBtn.active = false; smudgeBtn.active = false; eraserBtn.active = false }
         if (::dock.isInitialized) dock.refresh()
         if (::titleView.isInitialized && cv.isDocReady()) titleView.text = cv.doc.title
