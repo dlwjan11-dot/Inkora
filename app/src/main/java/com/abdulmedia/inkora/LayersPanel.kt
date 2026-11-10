@@ -286,17 +286,47 @@ class LayersPanel(
                 MotionEvent.ACTION_MOVE -> if (on) {
                     row.translationY = e.rawY - y0
                     if (kotlin.math.abs(e.rawY - y0) > slop) moved = true
+                    if (moved) showDropLine(row, row.translationY)
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (on) {
                     on = false
                     row.elevation = 0f
                     row.alpha = 1f
+                    hideDropLine()
                     if (e.actionMasked != MotionEvent.ACTION_UP || !moved || !dropRow(row, layer, row.translationY))
                         row.animate().translationY(0f).setDuration(120).start()
                 }
             }
             true
         }
+    }
+
+    // the accent line that shows where the dragged layer will land
+    private val dropLine = android.graphics.drawable.GradientDrawable().apply {
+        setColor(Ui.ACCENT); cornerRadius = 2f.dp
+    }
+    private var dropLineShown = false
+
+    private fun layerRows() = (0 until list.childCount).map { list.getChildAt(it) }.filter { it.tag is Layer }
+
+    /** draws a line in the gap the dragged [row] currently points at */
+    private fun showDropLine(row: View, dy: Float) {
+        val rows = layerRows()
+        val others = rows.filter { it !== row }
+        if (others.isEmpty()) return
+        val center = row.top + row.height / 2f + dy
+        val q = others.count { it.top + it.height / 2f < center }
+        // the boundary: top edge of the first row when at the very top, otherwise the bottom edge of the row above
+        val yMid = if (q == 0) others.first().top.toFloat() else others[q - 1].bottom.toFloat()
+        val half = 1.5f.dp.toInt()
+        val x0 = 2.dp; val x1 = list.width - 2.dp
+        dropLine.setBounds(x0, (yMid - half).toInt(), x1, (yMid + half).toInt())
+        if (!dropLineShown) { list.overlay.add(dropLine); dropLineShown = true }
+        else list.invalidate()
+    }
+
+    private fun hideDropLine() {
+        if (dropLineShown) { list.overlay.remove(dropLine); dropLineShown = false }
     }
 
     /** puts [layer] where its row was dropped; false when that is where it already is */
