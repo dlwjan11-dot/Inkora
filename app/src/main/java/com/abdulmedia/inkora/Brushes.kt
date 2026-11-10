@@ -23,7 +23,9 @@ enum class TipShape {
 }
 
 /** Paper texture that shows through a stroke (applied in canvas space). */
-enum class GrainType(val label: String) { NONE("None"), PAPER("Paper"), CANVAS("Canvas"), ROUGH("Rough"), CUSTOM("Imported") }
+enum class GrainType(val label: String) { NONE("None"), PAPER("Paper"), CANVAS("Canvas"), ROUGH("Rough"), CUSTOM("Imported"),
+    /** watercolor paper: a fine, sandy tooth */
+    COLD_PRESS("Cold press") }
 
 enum class RotationMode(val label: String) { NONE("None"), RANDOM("Random"), FOLLOW("Follow stroke"), FIXED("Fixed angle") }
 
@@ -124,13 +126,31 @@ object Brushes {
     ) = BrushPreset(name, cat, tip, spacing, minSize, minFlow, flow, streamline, size, opacity, scatter,
         rotation, angle, taper, tilt, curve, grain, grainScale)
 
+    /**
+     * An Aquarelle brush: watercolor that catches on the paper's tooth while you draw. A light
+     * touch leaves a sandy, broken wash; pressing fills it in; one wash over another gets deeper.
+     * Nothing changes when the pen lifts.
+     */
+    private fun aq(
+        name: String, tip: TipShape, spacing: Float, minSize: Float, minFlow: Float, flow: Float, size: Float, opacity: Float,
+        granulation: Float, grainScale: Float = 1.5f, depth: Float = 0.75f, scatter: Float = 0f,
+        rotation: RotationMode = RotationMode.NONE, taper: Float = 0f, pull: Float = 0.25f, dilution: Float = 0.15f,
+        sizeJitter: Float = 0f, flowNoise: Float = 0.3f, streamline: Float = 0.25f
+    ) = BrushPreset(name, AQUARELLE, tip, spacing, minSize, minFlow, flow, streamline, size, opacity, scatter, rotation,
+        taper = taper, grain = GrainType.COLD_PRESS, grainScale = grainScale,
+        dynamics = BrushDynamics(taperLength = taper, grainDepth = depth, blend = LayerBlend.MULTIPLY,
+            wetDilution = dilution, wetPull = pull, wetCharge = 1f, sizeJitter = sizeJitter, flowNoise = flowNoise,
+            granulation = granulation))
+
+    const val AQUARELLE = "Aquarelle"
+
     /** a living brush: painted by the MyPaint engine, the paint stays wet and mixes as you draw */
     private fun lv(name: String, file: String, size: Float, opacity: Float = 1f) =
         BrushPreset(name, LIVING, TipShape.SOFT, 0.1f, 0.4f, 0.4f, 1f, 0f, size, opacity, living = file)
 
     const val LIVING = "Living Paint"
 
-    private val categoryOrder = listOf(LIVING, "Sketching", "Inking", "Drawing", "Painting", "Artistic", "Calligraphy",
+    private val categoryOrder = listOf(LIVING, AQUARELLE, "Sketching", "Inking", "Drawing", "Painting", "Artistic", "Calligraphy",
         "Airbrushing", "Textures & Elements", "Abstract", "Charcoals", "Elements", "Spraypaints", "Touchups",
         "Vintage", "Luminance", "Industrial", "Organic", "Water", "Watercolor", "Materials", "Retro", "Effects", "Pixel Art")
 
@@ -222,6 +242,18 @@ object Brushes {
         p("Canvas Builder", "Painting", TipShape.DRY, 0.03f, 0.85f, 0.6f, 0.9f, 0.2f, 70f, grain = GrainType.CANVAS, grainScale = 1.8f),
         p("Wet Blending Oil", "Painting", TipShape.SOFT, 0.04f, 0.6f, 0.2f, 0.45f, 0.25f, 45f),
         p("Glaze Oil", "Painting", TipShape.MARKER, 0.05f, 0.9f, 0.2f, 0.4f, 0.2f, 50f, opacity = 0.45f),
+
+        // ---- Aquarelle: watercolor on cold-press paper, grainy while you draw ----
+        aq("Round Grain", TipShape.SOFT, 0.06f, 0.35f, 0.10f, 0.30f, 70f, 0.85f, granulation = 1f),
+        aq("Soft Wash", TipShape.SOFT, 0.07f, 0.8f, 0.06f, 0.16f, 160f, 0.7f, granulation = 0.7f, grainScale = 1.8f, pull = 0.3f, dilution = 0.3f),
+        aq("Dry Round", TipShape.SOFT, 0.06f, 0.4f, 0.05f, 0.14f, 60f, 0.9f, granulation = 1f, grainScale = 1.3f, depth = 0.9f, pull = 0.1f, dilution = 0.05f),
+        aq("Sandy Flat", TipShape.FLAT, 0.05f, 0.6f, 0.12f, 0.34f, 80f, 0.85f, granulation = 1f, rotation = RotationMode.FOLLOW),
+        aq("Mop", TipShape.CLOUD, 0.12f, 0.75f, 0.08f, 0.22f, 190f, 0.65f, granulation = 0.8f, grainScale = 2f, rotation = RotationMode.RANDOM, pull = 0.35f, dilution = 0.3f, sizeJitter = 0.1f),
+        aq("Detail Round", TipShape.SOFT, 0.05f, 0.2f, 0.25f, 0.6f, 18f, 0.9f, granulation = 0.6f, grainScale = 1.1f, taper = 1.5f, streamline = 0.4f),
+        aq("Grain Glaze", TipShape.SOFT, 0.07f, 0.7f, 0.05f, 0.12f, 120f, 0.5f, granulation = 0.5f, grainScale = 1.6f, depth = 0.6f, pull = 0.05f, dilution = 0.1f),
+        aq("Bristle Wash", TipShape.BRISTLE, 0.05f, 0.5f, 0.12f, 0.4f, 90f, 0.8f, granulation = 0.9f, rotation = RotationMode.FOLLOW, pull = 0.2f),
+        aq("Speckle", TipShape.SPRAY, 0.25f, 0.6f, 0.2f, 0.6f, 110f, 0.8f, granulation = 1f, grainScale = 1.2f, scatter = 0.5f, rotation = RotationMode.RANDOM, pull = 0f, dilution = 0f),
+        aq("Edge Bloom", TipShape.RING, 0.08f, 0.7f, 0.1f, 0.3f, 90f, 0.75f, granulation = 0.8f, rotation = RotationMode.RANDOM, pull = 0.3f, dilution = 0.25f, sizeJitter = 0.15f),
 
         // ---- Watercolor (14 Brushes) ----
         p("Watercolor Wash", "Watercolor", TipShape.SOFT, 0.05f, 0.8f, 0.2f, 0.35f, 0.3f, 80f, opacity = 0.6f, grain = GrainType.PAPER, grainScale = 1.6f),
@@ -675,6 +707,17 @@ object Brushes {
                     val speck = rnd.nextFloat()
                     f[i] = if (speck < 0.12f) 0f else (0.3f + 0.9f * n[i]).coerceIn(0f, 1f)
                 }
+            }
+            GrainType.COLD_PRESS -> {
+                // small bumps with a finer tooth on them and a little sand
+                val a = valueNoise(rnd, 52, G, true)
+                val b = valueNoise(rnd, 120, G, true)
+                val c = valueNoise(rnd, 18, G, true)
+                val raw = FloatArray(G * G) { 0.26f * a[it] + 0.34f * b[it] + 0.10f * c[it] + rnd.nextFloat() * 0.30f }
+                // the values are spread evenly from 0 to 1, so how much paper shows follows the
+                // pressure smoothly (as many high points as low ones)
+                val order = raw.indices.sortedBy { raw[it] }
+                for ((rank, i) in order.withIndex()) f[i] = rank / (G * G - 1f)
             }
             else -> {}
         }

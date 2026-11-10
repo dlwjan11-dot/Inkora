@@ -144,6 +144,8 @@ class CanvasView(context: Context) : View(context) {
     private val plainBitmapPaint = Paint(Paint.FILTER_BITMAP_FLAG)
     /** texture paint (DST_IN) for the current stroke, null = no grain */
     private var strokeGrain: Paint? = null
+    /** the current stroke catches on the paper's grain (null: plain grain, or none) */
+    private var strokeGran: Granulation? = null
 
     /** 1 = linear; <1 = soft pen (less force needed); >1 = firm */
     var pressureGamma = 1f
@@ -531,6 +533,7 @@ class CanvasView(context: Context) : View(context) {
             overlayPaint.blendMode = strokeBlend()
             overlayPaint.isFilterBitmap = filter
             val grain = strokeGrain
+            val gran = if (grain != null) strokeGran else null
             val sel = selection
             val mask = strokeMask
             doc.draw(canvas, filter, { c ->
@@ -538,9 +541,11 @@ class CanvasView(context: Context) : View(context) {
                 else {
                     // stroke × dual brush × paper texture × selection, then blended into the layer
                     val s = c.saveLayer(doc.bounds, overlayPaint)
+                    val gi = if (gran != null) c.saveLayer(doc.bounds, gran.layer) else -1
                     c.drawBitmap(sb, 0f, 0f, plainBitmapPaint)
                     if (mask != null) c.drawBitmap(mask, 0f, 0f, maskDstIn)
                     if (grain != null) c.drawRect(doc.bounds, grain)
+                    if (gran != null) { c.restoreToCount(gi); c.drawBitmap(sb, 0f, 0f, gran.tone) }
                     if (sel != null) c.drawBitmap(sel.mask, 0f, 0f, Selections.dstIn)
                     c.restoreToCount(s)
                 }
@@ -1242,6 +1247,7 @@ class CanvasView(context: Context) : View(context) {
         // on a layer mask any paint means "show": it is painted white
         engine.color = if (strokeErasing) Color.BLACK else if (layer.isLayerMask) Color.WHITE else color
         strokeGrain = if (smudging) null else grainPaintFor(engine.brush)
+        strokeGran = if (strokeGrain == null) null else granulationFor(engine.brush)
         if (smudging) {
             // smudge works directly on the layer; keep a copy for undo
             val copy = try { layer.bitmap.copy(Bitmap.Config.ARGB_8888, false) } catch (e: OutOfMemoryError) { null }
@@ -1273,6 +1279,7 @@ class CanvasView(context: Context) : View(context) {
         if (livingStroke) {
             living.viewZoom = zoom()
             strokeGrain = null
+            strokeGran = null
             strokeMask = null
             engine.wetSource = null
         }
@@ -1520,15 +1527,18 @@ class CanvasView(context: Context) : View(context) {
         commitPaint.blendMode = strokeBlend()
         val lc = Canvas(layer.bitmap)
         val grain = strokeGrain
+        val gran = if (grain != null) strokeGran else null
         val sel = selection
         val mask = strokeMask
         if (grain == null && sel == null && mask == null) lc.drawBitmap(sb, r, r, commitPaint)
         else {
             val rf = RectF(r)
             val s = lc.saveLayer(rf, commitPaint)
+            val gi = if (gran != null) lc.saveLayer(rf, gran.layer) else -1
             lc.drawBitmap(sb, r, r, null)
             if (mask != null) lc.drawBitmap(mask, r, r, maskDstIn)
             if (grain != null) lc.drawRect(rf, grain)
+            if (gran != null) { lc.restoreToCount(gi); lc.drawBitmap(sb, r, r, gran.tone) }
             if (sel != null) lc.drawBitmap(sel.mask, r, r, Selections.dstIn)
             lc.restoreToCount(s)
         }
@@ -1570,6 +1580,7 @@ class CanvasView(context: Context) : View(context) {
         val wasErasing = strokeErasing
         strokeErasing = ls.erasing
         strokeGrain = ls.grain
+        strokeGran = if (ls.grain == null) null else granulationFor(ls.brush)
         val pressure = ls.points.map { it.pressure }.average().toFloat().coerceIn(0.2f, 1f)
         engine.renderPoints(sb, QuickShape.toPoints(detected), pressure, ls.seed)
         commitStroke()

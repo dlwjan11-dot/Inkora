@@ -54,7 +54,12 @@ class BrushDynamics(
     var watercolor: Float = 0f,         // 0..1: the stroke dries like watercolor (dark rims, uneven wash, granulation)
     var bloom: Float = 0f,              // 0..1: on paint that is still wet, the stroke bleeds out
     var speedSize: Float = 0f,          // 0..1: a fast stroke gets thinner, like ink
-    var flowNoise: Float = 0f           // 0..1: the paint comes out a little uneven along the stroke
+    var flowNoise: Float = 0f,          // 0..1: the paint comes out a little uneven along the stroke
+    /**
+     * 0..1: the paint catches on the paper's grain as you draw. A light touch leaves specks on
+     * the high points of the paper only; pressing fills it in. Needs a grain.
+     */
+    var granulation: Float = 0f
 ) {
     fun copy() = BrushDynamics().also { it.read(toJson()) }
 
@@ -79,6 +84,7 @@ class BrushDynamics(
         put("dualOn", dualOn); put("dualShape", dualShape); put("dualSize", dualSize.toDouble()); put("dualScatter", dualScatter.toDouble())
         put("watercolor", watercolor.toDouble()); put("bloom", bloom.toDouble())
         put("speedSize", speedSize.toDouble()); put("flowNoise", flowNoise.toDouble())
+        put("granulation", granulation.toDouble())
     }
 
     /** Reads what the JSON has; anything missing keeps its value. */
@@ -118,6 +124,7 @@ class BrushDynamics(
         bloom = f("bloom", bloom).coerceIn(0f, 1f)
         speedSize = f("speedSize", speedSize).coerceIn(0f, 1f)
         flowNoise = f("flowNoise", flowNoise).coerceIn(0f, 1f)
+        granulation = f("granulation", granulation).coerceIn(0f, 1f)
     }
 
     companion object {

@@ -338,6 +338,7 @@ class BrushStudioView(
             switch("Grain", brush.grainOn) { brush.grainOn = it }
             slider("Scale", brush.grainScale, 0.2f, 4f, { String.format(Locale.US, "%.1f×", it) }) { brush.grainScale = it }
             slider("Depth", brush.dyn.grainDepth, 0f, 1f) { brush.dyn.grainDepth = it }
+            slider("Granulation", brush.dyn.granulation, 0f, 1f) { brush.dyn.granulation = it }
         }
         if (own) body.addView(Ui.pill(context, "Change the grain image…") { host.pickImage(brush, "grain.png") },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = 4.dp })
@@ -591,11 +592,15 @@ class DrawingPad(context: Context, private val brush: Brush, private val colorOf
         commitPaint.alpha = (brush.opacity * 255).roundToInt().coerceIn(0, 255)
         commitPaint.blendMode = brush.dyn.blend.mode
         val grain = grainPaintFor(brush)
+        val gran = if (grain != null) granulationFor(brush) else null
         val m = engine.maskTarget
-        val s = c.saveLayer(RectF(0f, 0f, l.width.toFloat(), l.height.toFloat()), commitPaint)
+        val all = RectF(0f, 0f, l.width.toFloat(), l.height.toFloat())
+        val s = c.saveLayer(all, commitPaint)
+        val gi = if (gran != null) c.saveLayer(all, gran.layer) else -1
         c.drawBitmap(sb, 0f, 0f, null)
         if (m != null) c.drawBitmap(m, 0f, 0f, maskDstIn)
         if (grain != null) c.drawRect(0f, 0f, l.width.toFloat(), l.height.toFloat(), grain)
+        if (gran != null) { c.restoreToCount(gi); c.drawBitmap(sb, 0f, 0f, gran.tone) }
         c.restoreToCount(s)
         sb.eraseColor(0)
     }

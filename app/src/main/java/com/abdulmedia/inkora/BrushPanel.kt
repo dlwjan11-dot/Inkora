@@ -41,6 +41,39 @@ fun grainPaintFor(b: Brush): Paint? {
 }
 
 /**
+ * Granulation: the stroke through the grain is pushed to "paint or paper" (the paint catches on
+ * the paper's high points first), then light pressure is kept lighter.
+ * [layer] is the paint of the layer the stroke and its grain are drawn into; [tone] then draws
+ * the stroke once more.
+ */
+class Granulation(val layer: Paint, val tone: Paint)
+
+fun granulationFor(b: Brush): Granulation? {
+    val gr = b.dyn.granulation.coerceIn(0f, 1f)
+    if (gr < 0.01f || b.grain() == null) return null
+    // alpha' = gain × alpha − cut: with a deep grain a full stroke is solid, a faint one only
+    // reaches the paper's high points
+    val gain = 1f + 4f * gr
+    val cut = 0.05f * gr * gain * 255f
+    val layer = Paint().apply {
+        colorFilter = android.graphics.ColorMatrixColorFilter(floatArrayOf(
+            1f, 0f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f, 0f,
+            0f, 0f, 1f, 0f, 0f,
+            0f, 0f, 0f, gain, -cut))
+    }
+    val tone = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+        blendMode = BlendMode.DST_IN
+        colorFilter = android.graphics.ColorMatrixColorFilter(floatArrayOf(
+            1f, 0f, 0f, 0f, 0f,
+            0f, 1f, 0f, 0f, 0f,
+            0f, 0f, 1f, 0f, 0f,
+            0f, 0f, 0f, 0.5f, 127.5f))
+    }
+    return Granulation(layer, tone)
+}
+
+/**
  * Brush library: the sets down the side (each with its icon), the chosen set's brushes beside it,
  * each with a stroke drawn by the brush itself. Tap a brush to paint with it; tap it again to
  * open the Brush Studio. Imported sets are listed after Inkora's own.
@@ -94,7 +127,7 @@ class BrushPanel(
         set.startsWith("Sketch") -> Icon.PENCIL
         set.startsWith("Paint") -> Icon.PALETTE
         set.startsWith("Living") -> Icon.PALETTE
-        set.startsWith("Water") -> Icon.DROP
+        set.startsWith("Water") || set.startsWith("Aquarelle") -> Icon.DROP
         set.startsWith("Air") -> Icon.SPRAY
         set.startsWith("Textur") -> Icon.TEXTURE
         set.startsWith("Effect") -> Icon.SPARKLE
@@ -300,8 +333,22 @@ class BrushPanel(
             }
             engine.renderPressurePoints(bmp, pts, 7)
             if (mask != null) { StrokeEngine.applyMask(bmp, mask); mask.recycle() }
-            grainPaintFor(brush)?.let { Canvas(bmp).drawRect(0f, 0f, w.toFloat(), h.toFloat(), it) }
-            return bmp
+            val grain = grainPaintFor(brush) ?: return bmp
+            val gran = granulationFor(brush)
+            if (gran == null) {
+                Canvas(bmp).drawRect(0f, 0f, w.toFloat(), h.toFloat(), grain)
+                return bmp
+            }
+            // a granulating brush shows its sandy stroke in the library too
+            val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val c = Canvas(out)
+            val i = c.saveLayer(0f, 0f, w.toFloat(), h.toFloat(), gran.layer)
+            c.drawBitmap(bmp, 0f, 0f, null)
+            c.drawRect(0f, 0f, w.toFloat(), h.toFloat(), grain)
+            c.restoreToCount(i)
+            c.drawBitmap(bmp, 0f, 0f, gran.tone)
+            bmp.recycle()
+            return out
         }
     }
 }
