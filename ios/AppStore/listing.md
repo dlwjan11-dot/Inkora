@@ -14,7 +14,7 @@ language in App Store Connect: App Information › Localizable Information › +
 | Bundle ID | com.abdulmedia.inkora (or the one you set in Xcode) |
 | Price | Free |
 | Age rating | 4+ (answer "No" to every question) |
-| Copyright | 2026 Abdulmedia |
+| Copyright | 2026 Inkora |
 | Support URL | https://dlwjan11-dot.github.io/Inkora/ |
 | Marketing URL | https://dlwjan11-dot.github.io/Inkora/ |
 | Privacy Policy URL | https://dlwjan11-dot.github.io/Inkora/privacy.html |

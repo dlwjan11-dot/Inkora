@@ -402,6 +402,6 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         }
         body.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 10.dp })
         val ver = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
-        note("Inkora $ver · Abdulmedia")
+        note("Inkora $ver")
     }
 }

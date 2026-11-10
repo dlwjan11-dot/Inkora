@@ -28,7 +28,7 @@
 
 **Inkora is a free drawing and painting app for Android tablets.** Nothing like Procreate existed on Android, so this is an attempt at one: pressure-sensitive brushes, layers and masks, perspective and fisheye grids, vector shapes for logos and comics, posable 3D figures, and a color wheel that opens right under your pen.
 
-By [Abdulmedia](https://github.com/dlwjan11-dot). Plain Kotlin on the Android framework, with no outside libraries; every line of code and every icon is drawn for Inkora.
+Plain Kotlin on the Android framework, with no outside libraries; every line of code and every icon is drawn for Inkora.
 
 > **Trademark note:** "Procreate" is a registered trademark of Savage Interactive. Inkora is an independent app with its own name, design and code, and is not affiliated with or endorsed by Savage Interactive or any other company.
 
@@ -424,5 +424,5 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 ---
 
 <p align="center">
-  Made by <a href="https://abdulmedia.com"><b>Abdulmedia</b></a> &nbsp;|&nbsp; <a href="https://dlwjan11-dot.github.io/Inkora/">dlwjan11-dot.github.io/Inkora</a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/">dlwjan11-dot.github.io/Inkora</a>
 </p>
