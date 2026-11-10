@@ -118,10 +118,8 @@ class ToolsPanel(
         rebuild()
     }
 
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        exec.shutdownNow()
-    }
+    // the preview worker is shared by every panel, so it is never shut down here (a terminated
+    // one would reject the next panel's previews — a crash); stale previews are dropped at post time
 
     private fun cats() = if (creative) creativeCats else editingCats
     private fun currentCat(): String {
