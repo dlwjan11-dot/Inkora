@@ -39,6 +39,13 @@ class GalleryView(
 
     private enum class Filter(val label: String) { ALL("All"), DRAWN("My drawings"), IMPORTED("Imported") }
 
+    companion object {
+        /** decoded thumbnails, by file and the time it was written (about 40 MB at most) */
+        private val thumbCache = object : android.util.LruCache<String, android.graphics.Bitmap>(40 * 1024 * 1024) {
+            override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.byteCount
+        }
+    }
+
     private var filter = Filter.ALL
     private var query = ""
     /** the stack being looked into (null: the whole gallery) */
@@ -231,6 +238,7 @@ class GalleryView(
         row.addView(Ui.text(context, name, 15f, bold = true).apply { maxLines = 1; setPadding(6.dp, 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
         card.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
         card.addView(Ui.text(context, L10n.tr("Stack") + " · ${list.size}", 11.5f, Ui.TEXT_DIM).apply { setPadding(2.dp, 2.dp, 2.dp, 0) })
+        card.foreground = Ui.ripple(14f)
         card.setOnClickListener { openStack = name; render() }
         card.setOnLongClickListener {
             val pm = PopupMenu(context, card)
@@ -281,7 +289,9 @@ class GalleryView(
     private fun thumb(e: Gallery.Entry) = ImageView(context).apply {
         scaleType = ImageView.ScaleType.FIT_CENTER
         background = Ui.rounded(0xFF1B1B20.toInt(), 10f)
-        runCatching { BitmapFactory.decodeFile(e.thumb.absolutePath) }.getOrNull()?.let { setImageBitmap(it) }
+        val key = e.thumb.absolutePath + ":" + e.thumb.lastModified()
+        val bmp = thumbCache.get(key) ?: runCatching { BitmapFactory.decodeFile(e.thumb.absolutePath) }.getOrNull()?.also { thumbCache.put(key, it) }
+        bmp?.let { setImageBitmap(it) }
     }
 
     private fun badge(e: Gallery.Entry): TextView = Ui.text(context, if (e.imported) "IMPORTED" else "DRAWN", 10f,
@@ -314,6 +324,7 @@ class GalleryView(
             textSize = 15f
         }, LinearLayout.LayoutParams(-2, -2))
         row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
+        row.foreground = Ui.ripple(18f)
         row.setOnClickListener { onOpen(e.id) }
         row.setOnLongClickListener { menu(row, e); true }
         return row
@@ -331,6 +342,7 @@ class GalleryView(
         card.addView(frame, LinearLayout.LayoutParams(-1, (w * 0.7f).toInt()))
         card.addView(Ui.text(context, e.title, 15f, bold = true).apply { maxLines = 1; setPadding(2.dp, 8.dp, 2.dp, 0) })
         card.addView(Ui.text(context, subtitle(e), 11.5f, Ui.TEXT_DIM).apply { maxLines = 1; setPadding(2.dp, 2.dp, 2.dp, 0) })
+        card.foreground = Ui.ripple(14f)
         card.setOnClickListener { onOpen(e.id) }
         card.setOnLongClickListener { menu(card, e); true }
         return card

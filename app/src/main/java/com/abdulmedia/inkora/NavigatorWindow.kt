@@ -28,9 +28,24 @@ class NavigatorWindow(
         navView.invalidate()
     }
 
+    // what the picture was last drawn from: it is drawn again only when one of these changed
+    private var seenDoc: Document? = null
+    private var seenRevision = -1
+    private val seenView = FloatArray(9)
+    private val nowView = FloatArray(9)
+
     private val tick = object : Runnable {
         override fun run() {
-            navView.invalidate()
+            if (cv.isDocReady()) {
+                cv.viewMatrix.getValues(nowView)
+                val d = cv.doc
+                if (d !== seenDoc || d.revision != seenRevision || !nowView.contentEquals(seenView)) {
+                    if (d !== seenDoc || d.revision != seenRevision) navView.dropPicture()
+                    seenDoc = d; seenRevision = d.revision
+                    nowView.copyInto(seenView)
+                    navView.invalidate()
+                }
+            }
             postDelayed(this, 300)
         }
     }
@@ -60,6 +75,15 @@ class NavigatorWindow(
         private val screenRect = RectF()
         private val navMatrix = Matrix()
         private val invMatrix = Matrix()
+        private var picture: android.graphics.Bitmap? = null
+        private val picPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+        fun dropPicture() { picture?.recycle(); picture = null }
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            dropPicture()
+        }
 
         init {
             background = Ui.rounded(0xFF14151A.toInt(), 10f)
@@ -81,11 +105,22 @@ class NavigatorWindow(
             navMatrix.postScale(scale, scale)
             navMatrix.postTranslate(dx, dy)
 
-            val s = canvas.save()
-            canvas.concat(navMatrix)
-            // draw document preview
-            doc.draw(canvas, true, null, true)
-            canvas.restoreToCount(s)
+            // the artwork as a small picture, kept until the artwork changes (drawing every layer
+            // at full size several times a second would slow the brush down)
+            var pic = picture
+            if (pic == null || pic.isRecycled) {
+                val pw = (doc.width * scale).toInt().coerceAtLeast(1)
+                val ph = (doc.height * scale).toInt().coerceAtLeast(1)
+                pic = try {
+                    android.graphics.Bitmap.createBitmap(pw, ph, android.graphics.Bitmap.Config.ARGB_8888).also { b ->
+                        val pc = Canvas(b)
+                        pc.scale(pw / doc.width.toFloat(), ph / doc.height.toFloat())
+                        doc.draw(pc, true, null, true)
+                    }
+                } catch (e: OutOfMemoryError) { null }
+                picture = pic
+            }
+            if (pic != null) canvas.drawBitmap(pic, null, RectF(dx, dy, dx + doc.width * scale, dy + doc.height * scale), picPaint)
 
             // calculate visible viewport rectangle
             if (cv.viewMatrix.invert(invMatrix)) {
@@ -119,21 +154,13 @@ class NavigatorWindow(
             val docX = (nx - dx) / scale
             val docY = (ny - dy) / scale
 
-            // Center canvas on docX, docY
-            val z = cv.zoom()
-            val targetScreenX = cv.width / 2f
-            val targetScreenY = cv.height / 2f
-
-            if (cv.viewMatrix.invert(invMatrix)) {
-                val screenCenter = floatArrayOf(targetScreenX, targetScreenY)
-                invMatrix.mapPoints(screenCenter)
-                val deltaDocX = docX - screenCenter[0]
-                val deltaDocY = docY - screenCenter[1]
-
-                cv.viewMatrix.postTranslate(-deltaDocX * z, -deltaDocY * z)
-                cv.invalidate()
-                invalidate()
-            }
+            // bring that point of the artwork to the middle of the screen (right for a turned
+            // or mirrored canvas too)
+            val p = floatArrayOf(docX, docY)
+            cv.viewMatrix.mapPoints(p)
+            cv.viewMatrix.postTranslate(cv.width / 2f - p[0], cv.height / 2f - p[1])
+            cv.invalidate()
+            invalidate()
         }
     }
 }

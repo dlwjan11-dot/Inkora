@@ -104,7 +104,7 @@ class LayersPanel(
         }
 
         if (doc.layers.size > 1 && targets.size == 1)
-            list.addView(Ui.text(context, "Swipe a layer to the right to pick several", 11f, Ui.TEXT_DIM).apply {
+            list.addView(Ui.text(context, "Swipe a layer sideways (or hold it) to pick several", 11f, Ui.TEXT_DIM).apply {
                 setPadding(6.dp, 2.dp, 6.dp, 4.dp)
             })
 
@@ -154,7 +154,7 @@ class LayersPanel(
         row.addView(img, LayoutParams(64.dp, 44.dp))
 
         val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(10.dp, 0, 0, 0) }
-        val displayName = when {
+        val displayName = (if (isPicked) "✓ " else "") + when {
             layer.isLayerMask -> "◐ ${L10n.tr(layer.name)}"
             layer.isClippingMask -> "↳ ${layer.name}"
             else -> layer.name
@@ -198,7 +198,7 @@ class LayersPanel(
                 if (!picked.remove(layer)) picked.add(layer)
                 expanded = false; expandedGroup = null
                 rebuild(); onChanged()
-            }
+            } else cv.listener?.onMessage("This layer is selected already: swipe another layer to add it")
         }, onTap = {
             if (isActive && picked.isEmpty()) expanded = !expanded else {
                 doc.activeIndex = i
@@ -213,34 +213,63 @@ class LayersPanel(
         if (isActive && expanded && picked.isEmpty()) list.addView(options(layer, i), LayoutParams(-1, -2).apply { bottomMargin = 8.dp })
     }
 
-    /** a tap, or a swipe to the right (Procreate's way to pick several layers) */
+    /**
+     * A tap, or "pick this one too": a swipe to the side (Procreate's way to pick several layers)
+     * or a long press. The swipe works in both directions, so it feels the same in Arabic.
+     */
     @SuppressLint("ClickableViewAccessibility")
     private fun swipeable(row: View, onSwipe: () -> Unit, onTap: () -> Unit) {
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         var x0 = 0f; var y0 = 0f; var done = false
+        row.foreground = Ui.ripple(10f)
+        val hold = Runnable {
+            if (!done) {
+                done = true
+                row.isPressed = false
+                row.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                onSwipe()
+            }
+        }
         row.setOnTouchListener { v, e ->
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { x0 = e.rawX; y0 = e.rawY; done = false; v.isPressed = true }
+                MotionEvent.ACTION_DOWN -> {
+                    x0 = e.rawX; y0 = e.rawY; done = false; v.isPressed = true
+                    v.removeCallbacks(hold)
+                    v.postDelayed(hold, 480)
+                }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = e.rawX - x0; val dy = e.rawY - y0
-                    if (!done && dx > 34.dp && kotlin.math.abs(dy) < dx / 2) {
+                    val ax = kotlin.math.abs(e.rawX - x0); val ay = kotlin.math.abs(e.rawY - y0)
+                    if (ax > slop || ay > slop) v.removeCallbacks(hold)
+                    // a sideways drag: the list must not take it for scrolling
+                    if (!done && ax > slop / 2f && ax > ay) v.parent?.requestDisallowInterceptTouchEvent(true)
+                    if (!done && ax > 26.dp && ay < ax * 0.7f) {
                         done = true
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
                         v.isPressed = false
                         post { onSwipe() }
-                    } else if (!done && kotlin.math.abs(dx) > slop && kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
-                        // a sideways drag: keep the list from scrolling
-                        v.parent?.requestDisallowInterceptTouchEvent(true)
                     }
                 }
                 MotionEvent.ACTION_UP -> {
+                    v.removeCallbacks(hold)
                     v.isPressed = false
                     if (!done && kotlin.math.abs(e.rawX - x0) < slop * 2 && kotlin.math.abs(e.rawY - y0) < slop * 2) post { onTap() }
                 }
-                MotionEvent.ACTION_CANCEL -> v.isPressed = false
+                MotionEvent.ACTION_CANCEL -> { v.removeCallbacks(hold); v.isPressed = false }
             }
             true
         }
+    }
+
+    /** true (with a message) while a transform, an adjustment or liquify is open */
+    private fun blocked(): Boolean {
+        if (cv.isEditing) { cv.listener?.onMessage("Finish or cancel the current edit first"); return true }
+        return false
+    }
+
+    /** [list] and the layer masks of its layers, bottom first: a layer and its mask stay together */
+    private fun withMasks(list: Collection<Layer>): List<Layer> {
+        val set = list.toHashSet()
+        doc.layers.forEachIndexed { i, l -> if (l in list && doc.hasMask(i)) set.add(doc.layers[i + 1]) }
+        return doc.layers.filter { it in set }
     }
 
     // ---------- groups ----------
@@ -387,6 +416,7 @@ class LayersPanel(
 
     /** records a change of the layer stack as one undo step */
     private inline fun structural(label: String, block: () -> Boolean) {
+        if (blocked()) return
         val before = LayerState(doc)
         if (!block()) return
         doc.normalizeGroups()
@@ -396,7 +426,8 @@ class LayersPanel(
     }
 
     private fun groupTargets() {
-        val t = cv.targetLayers()
+        if (blocked()) return
+        val t = withMasks(cv.targetLayers())
         val keepActive = doc.active
         var made: LayerGroup? = null
         structural("group") {
@@ -419,15 +450,18 @@ class LayersPanel(
     }
 
     private fun mergeInto(t: List<Layer>, name: String, label: String, setup: (Layer) -> Unit = {}) {
+        if (blocked()) return
         if (t.size < 2 && label != "merge group") { cv.listener?.onMessage("Pick at least two layers"); return }
         val merged = try { doc.compose(t) } catch (e: OutOfMemoryError) { null }
             ?: run { cv.listener?.onMessage("Not enough memory for this right now"); return }
         structural(label) {
-            val set = t.toHashSet()
+            // the layers' masks are part of the merged picture: they go with them
+            val all = withMasks(t)
+            val set = all.toHashSet()
             val nl = Layer(merged, name)
             nl.groupId = t.map { it.groupId }.distinct().singleOrNull()
             setup(nl)
-            val at = doc.layers.subList(0, doc.layers.indexOf(t.last()) + 1).count { it !in set }
+            val at = doc.layers.subList(0, doc.layers.indexOf(all.last()) + 1).count { it !in set }
             doc.layers.removeAll(set)
             doc.layers.add(at.coerceIn(0, doc.layers.size), nl)
             doc.activeIndex = doc.layers.indexOf(nl)
@@ -444,7 +478,7 @@ class LayersPanel(
     }
 
     private fun deleteTargets() {
-        val t = cv.targetLayers()
+        val t = withMasks(cv.targetLayers())
         if (t.size >= doc.layers.size) { cv.listener?.onMessage("A canvas needs at least one layer"); return }
         structural("deleted layer") {
             val lowest = doc.layers.indexOf(t.first())
@@ -639,6 +673,13 @@ class LayersPanel(
     }
 
     private fun thumbnail(layer: Layer): Bitmap {
+        val bg = if (doc.backgroundVisible) doc.backgroundColor else 0xFFFFFFFF.toInt()
+        val key = longArrayOf(layer.bitmap.generationId.toLong(), System.identityHashCode(layer.bitmap).toLong(), bg.toLong())
+        thumbs[layer]?.let { if (it.first.contentEquals(key) && !it.second.isRecycled) return it.second }
+        return makeThumbnail(layer).also { thumbs[layer] = key to it }
+    }
+
+    private fun makeThumbnail(layer: Layer): Bitmap {
         val tw = 128
         val th = 88
         val out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888)
@@ -658,6 +699,7 @@ class LayersPanel(
     // ---------- actions ----------
 
     private fun addLayer() {
+        if (blocked()) return
         if (doc.layers.size >= doc.maxLayers()) {
             cv.listener?.onMessage("Layer limit reached for this canvas size")
             return
@@ -674,25 +716,38 @@ class LayersPanel(
     }
 
     private fun duplicate(src: Layer, index: Int) {
-        if (doc.layers.size >= doc.maxLayers()) {
+        if (blocked()) return
+        val mask = if (doc.hasMask(index)) doc.layers[index + 1] else null
+        if (doc.layers.size + (if (mask != null) 2 else 1) > doc.maxLayers()) {
             cv.listener?.onMessage("Layer limit reached for this canvas size")
             return
         }
-        val copy = try { src.bitmap.copy(Bitmap.Config.ARGB_8888, true) } catch (e: OutOfMemoryError) { null }
-        if (copy == null) { cv.listener?.onMessage("Not enough memory for another layer right now"); return }
-        val l = Layer(copy, src.name + " copy")
-        l.copySettingsFrom(src)
-        l.vector = src.vector?.copy()
+        val l = try { copyOf(src) } catch (e: OutOfMemoryError) { null }
+        if (l == null) { cv.listener?.onMessage("Not enough memory for another layer right now"); return }
+        l.name = src.name + " copy"
         l.groupId = src.groupId
-        val cmd = AddLayerCmd(l, index + 1, index)
-        cmd.redo(doc)
-        cv.pushCommand(cmd)
-        changed()
+        if (mask == null) {
+            val cmd = AddLayerCmd(l, index + 1, index)
+            cmd.redo(doc)
+            cv.pushCommand(cmd)
+            changed()
+            return
+        }
+        // a masked layer is copied with its mask, above the pair
+        val m = try { copyOf(mask) } catch (e: OutOfMemoryError) { null }
+        if (m == null) { l.bitmap.recycle(); cv.listener?.onMessage("Not enough memory for another layer right now"); return }
+        m.groupId = src.groupId
+        structural("new layer") {
+            doc.layers.addAll(index + 2, listOf(l, m))
+            doc.activeIndex = doc.layers.indexOf(l)
+            true
+        }
     }
 
     // ---------- layer masks ----------
 
     private fun addMask(layer: Layer, index: Int) {
+        if (blocked()) return
         if (doc.layers.size >= doc.maxLayers()) { cv.listener?.onMessage("Layer limit reached for this canvas size"); return }
         val bmp = try { doc.newLayerBitmap() } catch (e: OutOfMemoryError) { null }
         if (bmp == null) { cv.listener?.onMessage("Not enough memory for another layer right now"); return }
@@ -710,13 +765,20 @@ class LayersPanel(
 
     /** the mask at [index] is cut into the layer below it and removed */
     private fun applyMask(index: Int) {
-        if (index <= 0) return
+        if (index <= 0 || blocked()) return
         val mask = doc.layers[index]
         val base = doc.layers[index - 1]
         if (base.vector != null) { cv.listener?.onMessage("Can't merge into a vector layer (rasterize it first)"); return }
-        val before = base.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        if (base.scene != null) { cv.listener?.onMessage("Can't merge into a 3D layer (rasterize it first)"); return }
+        if (base.isLayerMask || base.groupId != mask.groupId) { cv.listener?.onMessage("This mask has no layer under it"); return }
+        val before = copyOrNull(base.bitmap) ?: return
         if (mask.visible) Canvas(base.bitmap).drawBitmap(mask.bitmap, 0f, 0f, Paint().apply { blendMode = BlendMode.DST_IN })
-        val after = base.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val after = copyOrNull(base.bitmap) ?: run {
+            // not enough memory to keep an undo step: put the layer back and leave the mask
+            Canvas(base.bitmap).drawBitmap(before, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC })
+            before.recycle()
+            return
+        }
         doc.layers.remove(mask)
         doc.activeIndex = index - 1
         cv.pushCommand(MergeDownCmd(mask, index, base, before, after))
@@ -726,8 +788,11 @@ class LayersPanel(
 
     /** what was hidden shows, what showed is hidden */
     private fun invertMask(mask: Layer) {
-        val before = mask.bitmap.copy(Bitmap.Config.ARGB_8888, false)
-        val inv = doc.newLayerBitmap()
+        if (blocked()) return
+        val before = copyOrNull(mask.bitmap) ?: return
+        val inv = try { doc.newLayerBitmap() } catch (e: OutOfMemoryError) {
+            before.recycle(); cv.listener?.onMessage("Not enough memory for this right now"); return
+        }
         inv.eraseColor(0xFFFFFFFF.toInt())
         Canvas(inv).drawBitmap(mask.bitmap, 0f, 0f, Paint().apply { blendMode = BlendMode.DST_OUT })
         mask.bitmap.eraseColor(0)
@@ -738,13 +803,20 @@ class LayersPanel(
     }
 
     private fun fillWhite(mask: Layer) {
-        val before = mask.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        if (blocked()) return
+        val before = copyOrNull(mask.bitmap) ?: return
         mask.bitmap.eraseColor(0xFFFFFFFF.toInt())
         cv.pushPixelEdit(mask, Rect(0, 0, doc.width, doc.height), before)
         changed()
     }
 
+    /** an unchangeable copy of [b] for undo, or null (with a message) when memory is short */
+    private fun copyOrNull(b: Bitmap): Bitmap? =
+        (try { b.copy(Bitmap.Config.ARGB_8888, false) } catch (e: OutOfMemoryError) { null })
+            ?: run { cv.listener?.onMessage("Not enough memory for this right now"); null }
+
     private fun mergeDown(index: Int) {
+        if (blocked()) return
         if (index <= 0) {
             cv.listener?.onMessage("Nothing below to merge into")
             return
@@ -755,7 +827,16 @@ class LayersPanel(
             cv.listener?.onMessage("Can't merge into a vector layer (rasterize it first)")
             return
         }
-        val before = lower.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        if (lower.scene != null) {
+            cv.listener?.onMessage("Can't merge into a 3D layer (rasterize it first)")
+            return
+        }
+        // masks: merging across one would change what it hides
+        if (lower.isLayerMask || doc.hasMask(index)) {
+            cv.listener?.onMessage("Apply the layer mask first (tap the mask › Apply mask)")
+            return
+        }
+        val before = copyOrNull(lower.bitmap) ?: return
         if (upper.visible) {
             val p = Paint(Paint.FILTER_BITMAP_FLAG).apply {
                 alpha = (upper.opacity * 255).roundToInt()
@@ -763,7 +844,11 @@ class LayersPanel(
             }
             Canvas(lower.bitmap).drawBitmap(upper.bitmap, 0f, 0f, p)
         }
-        val after = lower.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val after = copyOrNull(lower.bitmap) ?: run {
+            Canvas(lower.bitmap).drawBitmap(before, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC })
+            before.recycle()
+            return
+        }
         doc.layers.remove(upper)
         doc.activeIndex = index - 1
         cv.pushCommand(MergeDownCmd(upper, index, lower, before, after))
@@ -772,6 +857,7 @@ class LayersPanel(
     }
 
     private fun clear(layer: Layer) {
+        if (blocked()) return
         layer.vector?.let { v ->
             val before = v.copyShapes()
             v.shapes.clear()
@@ -782,15 +868,16 @@ class LayersPanel(
             return
         }
         val r = Rect(0, 0, doc.width, doc.height)
-        val before = layer.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val before = copyOrNull(layer.bitmap) ?: return
         layer.bitmap.eraseColor(0)
         cv.pushPixelEdit(layer, r, before)
         changed()
     }
 
     private fun fillLayer(layer: Layer) {
+        if (blocked()) return
         val r = Rect(0, 0, doc.width, doc.height)
-        val before = layer.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        val before = copyOrNull(layer.bitmap) ?: return
         val p = Paint().apply {
             color = currentColor() or 0xFF000000.toInt()
             blendMode = if (layer.alphaLock) BlendMode.SRC_ATOP else BlendMode.SRC_OVER
@@ -808,35 +895,61 @@ class LayersPanel(
         return l
     }
 
-    /** takes [layer] out of its group: it goes just above (or below) the group's other layers */
+    /** [layer] and, when it has one, its mask */
+    private fun unitOf(layer: Layer): List<Layer> {
+        val i = doc.layers.indexOf(layer)
+        return if (i >= 0 && doc.hasMask(i)) listOf(layer, doc.layers[i + 1]) else listOf(layer)
+    }
+
+    /** takes [layer] (with its mask) out of its group: it goes just above the group's other layers */
     private fun leaveGroup(layer: Layer) {
         val id = layer.groupId ?: return
         val r = doc.rangeOf(id) ?: return
-        doc.layers.remove(layer)
-        layer.groupId = null
-        doc.layers.add(r.last.coerceIn(0, doc.layers.size), layer) // r.last is now just above the group
+        val unit = unitOf(layer)
+        doc.layers.removeAll(unit.toHashSet())
+        for (l in unit) l.groupId = null
+        doc.layers.addAll((r.last + 1 - unit.size).coerceIn(0, doc.layers.size), unit) // just above the group
         doc.activeIndex = doc.layers.indexOf(layer)
         if (doc.members(id).isEmpty()) doc.groups.remove(id)
     }
 
     /**
-     * Moves a layer one step. At the edge of a group it steps out of it first; next to a group it
-     * steps into it (like Procreate), so a group's layers always stay together.
+     * Moves a layer one step (its mask goes with it). At the edge of a group it steps out of it
+     * first; next to a group it steps into it (like Procreate), so a group's layers always stay
+     * together.
      */
     private fun move(from: Int, to: Int) {
         if (from !in doc.layers.indices) return
         val l = doc.layers[from]
-        if (to < 0 || to >= doc.layers.size) {
-            if (l.groupId == null) return
-            structural("layer order") { l.groupId = null; true }
+        if (l.isLayerMask && from > 0 && doc.hasMask(from - 1)) {
+            cv.listener?.onMessage("A mask moves with its layer")
             return
         }
-        val n = doc.layers[to]
+        val unit = unitOf(l)
+        val up = to > from
+        // the layer (or layer + mask) it would pass
+        val n = if (up) from + unit.size else from - 1
+        if (n < 0 || n >= doc.layers.size) {
+            if (l.groupId == null) return
+            structural("layer order") { for (u in unit) u.groupId = null; true }
+            return
+        }
+        val neighbor = doc.layers[n]
         structural("layer order") {
             when {
-                l.groupId != null && n.groupId != l.groupId -> l.groupId = null
-                l.groupId == null && n.groupId != null -> l.groupId = n.groupId
-                else -> { doc.layers.removeAt(from); doc.layers.add(to, l) }
+                l.groupId != null && neighbor.groupId != l.groupId -> for (u in unit) u.groupId = null
+                l.groupId == null && neighbor.groupId != null -> for (u in unit) u.groupId = neighbor.groupId
+                else -> {
+                    // how many layers it passes: the neighbor, and the neighbor's mask or masked layer
+                    val pass = when {
+                        up && doc.hasMask(n) -> 2
+                        !up && neighbor.isLayerMask && n > 0 && doc.hasMask(n - 1) -> 2
+                        else -> 1
+                    }
+                    doc.layers.removeAll(unit.toHashSet())
+                    val at = if (up) from + pass else from - pass
+                    doc.layers.addAll(at.coerceIn(0, doc.layers.size), unit)
+                }
             }
             doc.activeIndex = doc.layers.indexOf(l)
             true
@@ -844,8 +957,20 @@ class LayersPanel(
     }
 
     private fun delete(layer: Layer, index: Int) {
+        if (blocked()) return
         if (doc.layers.size <= 1) {
             cv.listener?.onMessage("A canvas needs at least one layer")
+            return
+        }
+        if (doc.hasMask(index)) {
+            // its mask goes with it (left behind, it would hide parts of the layer below)
+            if (doc.layers.size <= 2) { cv.listener?.onMessage("A canvas needs at least one layer"); return }
+            structural("deleted layer") {
+                doc.layers.removeAll(unitOf(layer).toHashSet())
+                doc.activeIndex = (index - 1).coerceAtLeast(0)
+                true
+            }
+            expanded = false
             return
         }
         val cmd = DeleteLayerCmd(layer, index)
@@ -856,6 +981,7 @@ class LayersPanel(
     }
 
     private fun rasterize(layer: Layer) {
+        if (blocked()) return
         val v = layer.vector ?: return
         layer.vector = null
         cv.vectorEditor.reset()
@@ -883,6 +1009,8 @@ class LayersPanel(
     }
 
     companion object {
+        /** layer thumbnails, kept until the layer's pixels change (or the layer is gone) */
+        private val thumbs = java.util.WeakHashMap<Layer, Pair<LongArray, Bitmap>>()
         private const val PICKED = 0xFF35507A.toInt()
         private const val GROUP_ROW = 0xFF2F2F37.toInt()
         private const val GROUP_HAS_ACTIVE = 0xFF2B3446.toInt()

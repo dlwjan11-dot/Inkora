@@ -61,7 +61,7 @@ object Gallery {
     }
 
     /** Writes an artwork. Call on a background thread with a snapshot. */
-    fun save(ctx: Context, id: String, title: String, snap: ProjectIO.Snapshot, thumb: Bitmap, origin: String = "drawn") {
+    fun save(ctx: Context, id: String, title: String, snap: ProjectIO.Snapshot, thumb: Bitmap?, origin: String = "drawn") {
         val tmp = File(dir(ctx), "$id.tmp")
         tmp.outputStream().use { ProjectIO.write(snap, it) }
         val dst = projectFile(ctx, id)
@@ -69,7 +69,7 @@ object Gallery {
             tmp.copyTo(dst, overwrite = true)
             tmp.delete()
         }
-        thumbFile(ctx, id).outputStream().use { thumb.compress(Bitmap.CompressFormat.PNG, 90, it) }
+        if (thumb != null) thumbFile(ctx, id).outputStream().use { thumb.compress(Bitmap.CompressFormat.PNG, 90, it) }
         writeMeta(ctx, id, title, snap.width, snap.height, origin)
     }
 

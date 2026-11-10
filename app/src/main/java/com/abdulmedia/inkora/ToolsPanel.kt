@@ -76,7 +76,6 @@ class ToolsPanel(
     private val content = LinearLayout(context)
     private val scroll = ScrollView(context)
     private val main = Handler(Looper.getMainLooper())
-    private val exec = Executors.newSingleThreadExecutor()
     private var thumb: Bitmap? = null
     private var thumbDone = false
 
@@ -168,7 +167,7 @@ class ToolsPanel(
         }
         // content
         content.removeAllViews()
-        val cat = cats().first { it.key == cur }
+        val cat = cats().firstOrNull { it.key == cur } ?: cats().first()
         content.addView(Ui.text(context, cat.label, 20f, bold = true))
         content.addView(Ui.text(context, cat.hint, 12.5f, Ui.TEXT_DIM).apply { setPadding(0, 2.dp, 0, 12.dp) })
         when (cur) {
@@ -212,6 +211,7 @@ class ToolsPanel(
             background = Ui.rounded(if (active) Ui.PANEL_ROW_ACTIVE else Ui.CARD, 14f, if (active) Ui.ACCENT else 0x0FFFFFFF, 1)
             setPadding(6.dp, 6.dp, 6.dp, 9.dp)
             isClickable = true
+            foreground = Ui.ripple(14f)
             setOnClickListener { onClick() }
         }
         val top = FrameLayout(context).apply {
@@ -443,6 +443,8 @@ class ToolsPanel(
     }
 
     companion object {
+        /** one worker for the adjustment previews of every panel (a new one each time would never end) */
+        private val exec = Executors.newSingleThreadExecutor { r -> Thread(r, "inkora-previews").apply { isDaemon = true } }
         private var lastCreative = "create"
         private var lastEditing = "select"
 

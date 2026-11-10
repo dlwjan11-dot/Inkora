@@ -42,6 +42,13 @@ object Ui {
         if (strokeDp > 0) setStroke(strokeDp.dp, strokeColor)
     }
 
+    /**
+     * The soft flash a button gives when it is touched, as a foreground: it stays when the
+     * button's background is changed later (accent buttons, chips).
+     */
+    fun ripple(radiusDp: Float = 10f) = android.graphics.drawable.RippleDrawable(
+        ColorStateList.valueOf(0x30FFFFFF), null, rounded(0xFFFFFFFF.toInt(), radiusDp))
+
     fun text(ctx: Context, s: String, sp: Float = 15f, color: Int = TEXT, bold: Boolean = false) = TextView(ctx).apply {
         text = L10n.tr(s)
         textSize = sp
@@ -56,6 +63,7 @@ object Ui {
         gravity = Gravity.CENTER
         setPadding(12.dp, 8.dp, 12.dp, 8.dp)
         background = rounded(PANEL_ROW, 10f)
+        foreground = ripple(10f)
         setOnClickListener { onClick() }
     }
 
@@ -87,6 +95,7 @@ object Ui {
         textSize = 13f
         setPadding(14.dp, 8.dp, 14.dp, 8.dp)
         background = rounded(if (primary) ACCENT else PANEL_ROW, 18f)
+        foreground = ripple(18f)
     }
 
     /** "Label ......... [slider]" row with a live value. */
@@ -272,7 +281,8 @@ class HudView(context: Context) : View(context) {
         message = L10n.tr(text)
         circle = circleDiameterPx
         removeCallbacks(hide)
-        if (!sticky) postDelayed(hide, 1100)
+        // a short word goes quickly; a sentence stays long enough to read
+        if (!sticky) postDelayed(hide, (1100L + 38L * (message?.length ?: 0)).coerceAtMost(4200L))
         invalidate()
     }
 
@@ -283,7 +293,14 @@ class HudView(context: Context) : View(context) {
 
     override fun onDraw(canvas: Canvas) {
         val m = message ?: return
-        val tw = textPaint.measureText(m)
+        // a long message gets smaller letters rather than running off the screen
+        textPaint.textSize = 15f.dp
+        val room = width - 64f.dp
+        var tw = textPaint.measureText(m)
+        if (tw > room && room > 0f) {
+            textPaint.textSize = (15f.dp * room / tw).coerceAtLeast(10f.dp)
+            tw = textPaint.measureText(m)
+        }
         val cx = width / 2f
         val top = 76f.dp
         canvas.drawRoundRect(RectF(cx - tw / 2 - 16f.dp, top, cx + tw / 2 + 16f.dp, top + 36f.dp), 18f.dp, 18f.dp, pill)

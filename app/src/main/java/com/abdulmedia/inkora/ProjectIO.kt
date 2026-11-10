@@ -96,13 +96,18 @@ object ProjectIO {
         val mask: Boolean = false
     )
 
-    fun snapshot(doc: Document): Snapshot {
+    /**
+     * [copy] false = the snapshot shares the layers' own pixels (no extra memory): only for writing
+     * right away while nothing can paint, and its bitmaps must never be recycled.
+     */
+    fun snapshot(doc: Document, copy: Boolean = true): Snapshot {
         doc.normalizeGroups()
         val used = doc.layers.mapNotNull { it.groupId }.toSet()
         return Snapshot(
             doc.width, doc.height, doc.backgroundColor, doc.backgroundVisible, doc.activeIndex,
             doc.layers.map {
-                LayerSnap(it.name, it.visible, it.opacity, it.blend.name, it.alphaLock, it.bitmap.copy(Bitmap.Config.ARGB_8888, false),
+                LayerSnap(it.name, it.visible, it.opacity, it.blend.name, it.alphaLock,
+                    if (copy) it.bitmap.copy(Bitmap.Config.ARGB_8888, false) else it.bitmap,
                     it.vector?.let { v -> VGeom.toJson(v).toString() }, it.isClippingMask, it.groupId,
                     it.shadow, it.scene?.toJson()?.toString(), it.reference, it.isLayerMask)
             },

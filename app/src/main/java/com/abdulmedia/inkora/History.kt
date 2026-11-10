@@ -41,7 +41,8 @@ class Scene3DCmd(
     override fun redo(doc: Document) { paste(layer.bitmap, afterBmp, 0, 0); layer.scene = afterScene; layer.shadow = afterShadow }
 }
 
-class AddLayerCmd(private val layer: Layer, private val index: Int, private val prevActive: Int) : Command {
+class AddLayerCmd(private val layer: Layer, index: Int, private val prevActive: Int) : Command {
+    private var index = index
     override val bytes: Long = layer.bitmap.byteCount.toLong()
     override fun undo(doc: Document) {
         doc.layers.remove(layer)
@@ -49,9 +50,12 @@ class AddLayerCmd(private val layer: Layer, private val index: Int, private val 
         doc.clampActive()
     }
     override fun redo(doc: Document) {
-        val at = index.coerceIn(0, doc.layers.size)
-        // a new layer added above a layer of a group joins that group
+        var at = index.coerceIn(0, doc.layers.size)
         if (firstAdd) {
+            // a layer and its mask stay together: the new layer goes above the mask, not between them
+            if (!layer.isLayerMask && at > 0 && doc.hasMask(at - 1)) at++
+            index = at
+            // a new layer added above a layer of a group joins that group
             if (layer.groupId == null && at > 0) layer.groupId = doc.layers[at - 1].groupId
             firstAdd = false
         }

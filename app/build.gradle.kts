@@ -13,8 +13,8 @@ android {
         applicationId = "com.abdulmedia.inkora"
         minSdk = 29
         targetSdk = 36
-        versionCode = 31
-        versionName = "0.18.1"
+        versionCode = 32
+        versionName = "0.18.2"
 
         // the living brushes' engine (MyPaint) is native code, built for tablets/phones (arm64)
         // and the Android Studio emulator (x86_64)

@@ -182,11 +182,15 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun openDocument(d: Document) {
         if (cv.transform != null) cv.finishTransform(false)
         if (adjustKind != null) endAdjust(false)
+        if (cv.liquify != null) cv.endLiquify(false)
+        if (cv.editingGuide) { cv.editingGuide = false; doneBtn.visibility = View.GONE }
         cv.selection = null
         cv.interaction = Interaction.PAINT
         hideBottomBar()
         if (d.galleryId == null) d.galleryId = Gallery.newId()
         cv.setDocument(d)
+        // opening an artwork is not a step of its time-lapse
+        lapseDoc = d; lapseRevision = d.revision
         prefs.edit().putString("current", d.galleryId).apply()
         refreshAll()
     }
@@ -201,6 +205,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             colorWheel.isOpen -> colorWheel.close()
             adjustKind != null -> endAdjust(false)
             cv.transform != null -> leaveTransform(false)
+            cv.isDocReady() && cv.liquify != null -> leaveLiquify(false)
+            cv.editingGuide -> finishGuideEdit()
             cv.interaction == Interaction.SELECT -> { cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll() }
             gallery != null && galleryFromCanvas -> closeGallery()
             else -> {
@@ -261,28 +267,70 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     override fun onPause() {
         super.onPause()
+        main.removeCallbacks(periodicSave)
         autosave()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        main.removeCallbacks(periodicSave)
+        main.postDelayed(periodicSave, SAVE_EVERY_MS)
+    }
+
+    private var drawingNow = false
+    private var lastDrawEnd = 0L
+
+    /**
+     * Saves now and then while you work, so a crash or a dead battery costs minutes, not the
+     * session. Waits for a pause in the drawing; very heavy artworks (which would need a lot of
+     * memory for the copy) are still saved when you leave the canvas or the app.
+     */
+    private val periodicSave = object : Runnable {
+        override fun run() {
+            val idle = !drawingNow && android.os.SystemClock.uptimeMillis() - lastDrawEnd > 2500
+            if (!idle) { main.postDelayed(this, 3000); return }
+            if (cv.isDocReady() && gallery == null && !cv.isEditing) {
+                val d = cv.doc
+                val bytes = d.layers.size.toLong() * d.width * d.height * 4
+                if (bytes <= 700_000_000L) autosave(lastResort = false)
+            }
+            main.postDelayed(this, SAVE_EVERY_MS)
+        }
     }
 
     private var savedDoc: Document? = null
 
     /** Saves the current artwork into the gallery (in the background) if it changed. */
-    private fun autosave(force: Boolean = false) {
+    private fun autosave(force: Boolean = false, lastResort: Boolean = true) {
         if (!cv.isDocReady()) return
         // never save half-finished edits
         if (cv.transform != null || adjustKind != null) return
         val doc = cv.doc
         if (!force && doc === savedDoc && doc.revision == savedRevision) return
         val id = doc.galleryId ?: Gallery.newId().also { doc.galleryId = it }
-        val snap = ProjectIO.snapshot(doc)
-        val thumb = Gallery.makeThumb(doc)
         val title = doc.title
         val origin = doc.origin
         val rev = doc.revision
+        val thumb = try { Gallery.makeThumb(doc) } catch (e: OutOfMemoryError) { null }
+        val snap = try { ProjectIO.snapshot(doc) } catch (e: OutOfMemoryError) { null }
+        if (snap == null) {
+            // no memory for a copy of every layer: write straight from the layers, waiting here
+            // until it is done (nothing can paint meanwhile). Slower, but the work is not lost.
+            if (!lastResort) { thumb?.recycle(); return }
+            hud.show("Saving…", sticky = true)
+            val live = ProjectIO.snapshot(doc, copy = false)
+            val ok = runCatching { saver.submit { Gallery.save(applicationContext, id, title, live, thumb, origin) }.get() }.isSuccess
+            thumb?.recycle()
+            hud.hideSoon()
+            if (ok) { savedDoc = doc; savedRevision = rev } else toast("Could not save the artwork: not enough memory or storage")
+            return
+        }
         saver.execute {
             runCatching { Gallery.save(applicationContext, id, title, snap, thumb, origin) }
                 .onSuccess { main.post { savedDoc = doc; savedRevision = rev } }
-            thumb.recycle()
+                .onFailure { main.post { toast("Could not save the artwork: not enough memory or storage") } }
+            thumb?.recycle()
+            snap.layers.forEach { it.bitmap.recycle() }
         }
     }
 
@@ -749,7 +797,9 @@ class MainActivity : Activity(), CanvasView.Listener {
     /** runs a tool from the toolbar or the Creative / Editing panel */
     private fun runTool(id: String, anchor: View? = null) {
         if (!cv.isDocReady()) return
-        if (id !in setOf("fit", "flip", "focus", "actual_size") && busy()) return
+        // looking around is always fine; "liquify" itself is how you leave liquify
+        val free = id in setOf("fit", "flip", "focus", "actual_size") || (id == "liquify" && cv.liquify != null)
+        if (!free && busy()) return
         val isVector = cv.doc.active.vector != null
         when {
             id in setOf("sel_free", "sel_rect", "sel_ellipse", "sel_wand", "sel_color", "sel_brush") -> {
@@ -1107,7 +1157,7 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     /** true (and a message) while a transform or adjustment is open */
     private fun busy(): Boolean {
-        if (cv.isDocReady() && (cv.transform != null || adjustKind != null)) {
+        if (cv.isDocReady() && (cv.transform != null || adjustKind != null || cv.liquify != null)) {
             hud.show("Tap Done or Cancel first")
             return true
         }
@@ -1404,6 +1454,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     override fun onDrawingChanged(drawing: Boolean) {
+        drawingNow = drawing
+        if (!drawing) lastDrawEnd = android.os.SystemClock.uptimeMillis()
         pinned.values.forEach { it.setDrawing(drawing) }
     }
 
@@ -1680,6 +1732,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun showLayers() {
+        if (busy()) return
         val panel = LayersPanel(this, cv, { cv.color }, onAddVector = { popup?.dismiss(); addVectorLayer() }, onPin = { popup?.dismiss(); pinPanel("layers") },
             onEdit3D = { popup?.dismiss(); open3D(it) }) { onHistoryChanged() }
         showPanel(layersBtn, panel, 360, 600)
@@ -1906,7 +1959,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "Custom size…"
         )
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle(L10n.tr("New canvas (current artwork will be replaced)"))
+            .setTitle(L10n.tr("New canvas"))
             .setItems(options) { _, which ->
                 when (which) {
                     0 -> newCanvas(sw, sh)
@@ -1950,8 +2003,10 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun exportImage(jpeg: Boolean, share: Boolean) {
+        if (busy()) return
+        val bmp = try { cv.doc.flatten(withBackground = true, forceOpaque = jpeg) } catch (e: OutOfMemoryError) { null }
+        if (bmp == null) { toast("Not enough memory to export it"); return }
         toast("Exporting…")
-        val bmp = cv.doc.flatten(withBackground = true, forceOpaque = jpeg)
         thread(name = "inkora-export") {
             val uri = ProjectIO.exportToGallery(applicationContext, bmp, jpeg)
             bmp.recycle()
@@ -2012,12 +2067,14 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun saveProject(uri: Uri) {
-        val snap = ProjectIO.snapshot(cv.doc)
+        val snap = try { ProjectIO.snapshot(cv.doc) } catch (e: OutOfMemoryError) { null }
+        if (snap == null) { toast("Not enough memory to export it"); return }
         toast("Saving…")
         thread(name = "inkora-save") {
             val ok = runCatching {
                 contentResolver.openOutputStream(uri, "wt")?.use { ProjectIO.write(snap, it) } != null
             }.getOrDefault(false)
+            snap.layers.forEach { it.bitmap.recycle() }
             main.post { toast(if (ok) "Project saved" else "Could not save the project") }
         }
     }
@@ -2168,7 +2225,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             toast("Could not open that image")
             return
         }
-        val layer = doc.createLayer()
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) {
+            img.recycle(); toast("Not enough memory for another layer right now"); return
+        }
         layer.name = if (shadow) "Shadow photo" else "Photo"
         layer.shadow = shadow
         if (shadow) layer.opacity = 0.6f
@@ -2487,12 +2546,15 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     /** builds the changed document in the background, then shows it (undo history starts again) */
     private fun runCanvasOp(done: String, make: () -> Document) {
+        if (busy()) return
         hud.show("Working…", sticky = true)
+        val was = cv.interaction
+        cv.interaction = Interaction.LOCKED
         thread(name = "inkora-canvas") {
             val d = try { make() } catch (e: OutOfMemoryError) { null } catch (e: Exception) { null }
             main.post {
                 hud.hideSoon()
-                if (d == null) { toast("Not enough memory for this right now"); return@post }
+                if (d == null) { cv.interaction = was; toast("Not enough memory for this right now"); return@post }
                 openDocument(d)
                 d.revision++
                 hud.show(L10n.tr(done) + " · ${d.width} × ${d.height}")
@@ -3063,8 +3125,12 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun showGallery(fromCanvas: Boolean = true) {
         popup?.dismiss()
         quickMenu.close()
+        val unsaved = cv.isDocReady() && !(cv.doc === savedDoc && cv.doc.revision == savedRevision)
         autosave()
+        // a big artwork takes a moment to write: say so instead of looking stuck
+        if (unsaved) hud.show("Saving…", sticky = true)
         afterSaves {
+            if (unsaved) hud.hideSoon()
             if (gallery != null) return@afterSaves
             galleryFromCanvas = fromCanvas
             val g = GalleryView(this, if (cv.isDocReady()) cv.doc.galleryId else null, fromCanvas,
@@ -3122,7 +3188,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (wasOpen && !prefs.getBoolean("tips_done", false)) root.post { showTips() }
         if (!focusMode) {
             topBar.visibility = View.VISIBLE
-            sideBar.visibility = View.VISIBLE
+            // the size and opacity sliders stay hidden when they were turned off in Prefs
+            sideBar.visibility = if (prefs.getBoolean("sidebar", true)) View.VISIBLE else View.GONE
             dock.visibility = View.VISIBLE
             pinned.values.forEach { it.visibility = View.VISIBLE }
         }
@@ -3225,9 +3292,17 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (timeLapseOn && cv.history.canUndo) main.postDelayed(captureFrame, 450)
     }
 
+    private var lapseDoc: Document? = null
+    private var lapseRevision = -1
+
     private val captureFrame = Runnable {
-        if (cv.isDocReady() && cv.transform == null && adjustKind == null && gallery == null) {
-            runCatching { TimeLapse.capture(this, cv.doc) }
+        if (cv.isDocReady() && !cv.isEditing && adjustKind == null && gallery == null) {
+            val d = cv.doc
+            // only when the artwork changed since the last frame
+            if (d !== lapseDoc || d.revision != lapseRevision) {
+                lapseDoc = d; lapseRevision = d.revision
+                try { TimeLapse.capture(this, d) } catch (e: Throwable) { /* a frame less */ }
+            }
         }
     }
 
@@ -3274,6 +3349,8 @@ class MainActivity : Activity(), CanvasView.Listener {
                 closeSettings() -> {}
                 adjustKind != null -> endAdjust(false)
                 cv.transform != null -> leaveTransform(false)
+                cv.liquify != null -> leaveLiquify(false)
+                cv.editingGuide -> finishGuideEdit()
                 else -> cv.fitToScreen() // upright and centered
             }
             return true
@@ -3297,20 +3374,20 @@ class MainActivity : Activity(), CanvasView.Listener {
             KeyEvent.KEYCODE_J -> cv.duplicateActiveLayer()
             KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_FORWARD_DEL -> if (!busy()) cv.clearActiveLayer()
             KeyEvent.KEYCODE_B -> selectTool(Tool.BRUSH)
-            KeyEvent.KEYCODE_N -> if (ctrl) newCanvasDialog() else selectTool(Tool.SMUDGE)
+            KeyEvent.KEYCODE_N -> if (ctrl) { if (!busy()) newCanvasDialog() } else selectTool(Tool.SMUDGE)
             KeyEvent.KEYCODE_E -> if (ctrl) exportImage(jpeg = false, share = false) else selectTool(Tool.ERASER)
             KeyEvent.KEYCODE_M -> cv.armEyedropper()
             KeyEvent.KEYCODE_S -> when {
-                ctrl && shift -> saveProjectAs()
+                ctrl && shift -> if (!busy()) saveProjectAs()
                 ctrl -> { autosave(force = true); hud.show("Saved") }
                 else -> runTool("sel_free")
             }
             KeyEvent.KEYCODE_F -> runTool("fill")
             KeyEvent.KEYCODE_T -> runTool("text")
             KeyEvent.KEYCODE_U -> runTool("adj_HSB")
-            KeyEvent.KEYCODE_K -> showActions(actionsBtn)
+            KeyEvent.KEYCODE_K -> if (!busy()) showActions(actionsBtn)
             KeyEvent.KEYCODE_L -> showLayers()
-            KeyEvent.KEYCODE_O -> if (ctrl) actionsHost.openProjectFile() else return false
+            KeyEvent.KEYCODE_O -> if (ctrl) { if (!busy()) actionsHost.openProjectFile() } else return false
             KeyEvent.KEYCODE_G -> if (ctrl) { cv.greyView = !cv.greyView; hud.show(if (cv.greyView) "Grey view on" else "Grey view off") } else return false
             KeyEvent.KEYCODE_0, KeyEvent.KEYCODE_NUMPAD_0 -> if (ctrl) cv.fitToScreen() else setFocus(!focusMode)
             KeyEvent.KEYCODE_EQUALS, KeyEvent.KEYCODE_PLUS, KeyEvent.KEYCODE_NUMPAD_ADD -> if (ctrl) cv.zoomViewBy(1.25f) else return false
@@ -3432,6 +3509,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     companion object {
+        /** how often the artwork is saved while you work */
+        private const val SAVE_EVERY_MS = 150_000L
         private const val REQ_OPEN = 101
         private const val REQ_SAVE = 102
         private const val REQ_IMAGE = 103

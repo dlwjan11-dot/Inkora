@@ -382,6 +382,13 @@ class CanvasView(context: Context) : View(context) {
     fun setDocument(d: Document) {
         doc = d
         pickedLayers.clear()
+        // nothing of the artwork before stays behind: an open liquify, wet paint, the last stroke
+        liquify = null
+        liqShowX = -1f
+        wetMaps.clear()
+        lastStroke = null
+        selDrawing = false
+        mode = Mode.NONE
         history = History()
         strokeBitmap?.recycle()
         strokeBitmap = Bitmap.createBitmap(d.width, d.height, Bitmap.Config.ARGB_8888)
@@ -443,8 +450,11 @@ class CanvasView(context: Context) : View(context) {
         }
     }
 
+    /** a transform, an adjustment or liquify is open: the layers must not change under it */
+    val isEditing get() = transform != null || adjustOrig != null || liquify != null
+
     private fun busy(): Boolean {
-        if (transform != null || adjustOrig != null || liquify != null) {
+        if (isEditing) {
             listener?.onMessage("Finish or cancel the current edit first")
             return true
         }
@@ -886,6 +896,8 @@ class CanvasView(context: Context) : View(context) {
             MotionEvent.ACTION_UP -> onLastUp(e)
             MotionEvent.ACTION_CANCEL -> {
                 if (strokeActive) cancelStroke()
+                if (mode == Mode.VECTOR_DRAG) vectorEditor.onCancel()
+                selDrawing = false
                 removeCallbacks(fingerHoldRunnable)
                 removeCallbacks(rapidRunnable)
                 mode = Mode.NONE
@@ -1195,6 +1207,11 @@ class CanvasView(context: Context) : View(context) {
             mode = Mode.IGNORE
             return
         }
+        if (doc.groupOf(layer)?.visible == false) {
+            listener?.onMessage("This layer's group is hidden")
+            mode = Mode.IGNORE
+            return
+        }
         if (layer.vector != null) {
             listener?.onMessage("Vector layer: use the vector tools, or pick a drawing layer")
             mode = Mode.IGNORE
@@ -1223,7 +1240,14 @@ class CanvasView(context: Context) : View(context) {
         strokeGrain = if (smudging) null else grainPaintFor(engine.brush)
         if (smudging) {
             // smudge works directly on the layer; keep a copy for undo
-            smudgeBefore = layer.bitmap.copy(Bitmap.Config.ARGB_8888, false)
+            val copy = try { layer.bitmap.copy(Bitmap.Config.ARGB_8888, false) } catch (e: OutOfMemoryError) { null }
+            if (copy == null) {
+                listener?.onMessage("Not enough memory for this right now")
+                smudging = false
+                mode = Mode.IGNORE
+                return
+            }
+            smudgeBefore = copy
             val sm = Smudger(layer.bitmap, smudgeBrush)
             smudger = sm
             engine.dabHandler = { x, y, d, a, ang -> sm.dab(x, y, d, a, ang) }
@@ -1425,15 +1449,19 @@ class CanvasView(context: Context) : View(context) {
         if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
         val w = r.width(); val h = r.height()
         if (w.toLong() * h > 9_000_000L) return // a giant stroke stays as it is
-        val px = IntArray(w * h)
-        sb.getPixels(px, 0, w, r.left, r.top, w, h)
-        val wm = wetMaps.getOrPut(layer.id) { WetMap(doc.width, doc.height) }
-        val now = android.os.SystemClock.uptimeMillis()
-        val alpha = try {
-            Watercolor.dry(px, w, h, r.left, r.top, dyn.watercolor, dyn.bloom, size, engine.color) { x, y -> wm.wetness(x, y, now) }
-        } catch (e: OutOfMemoryError) { return }
-        sb.setPixels(px, 0, w, r.left, r.top, w, h)
-        wm.paint(r.left, r.top, w, h, alpha, now)
+        try {
+            val px = IntArray(w * h)
+            sb.getPixels(px, 0, w, r.left, r.top, w, h)
+            // wet maps of layers that are gone are let go
+            if (wetMaps.size > 6) wetMaps.keys.retainAll(doc.layers.map { it.id }.toSet())
+            val wm = wetMaps.getOrPut(layer.id) { WetMap(doc.width, doc.height) }
+            val now = android.os.SystemClock.uptimeMillis()
+            val alpha = Watercolor.dry(px, w, h, r.left, r.top, dyn.watercolor, dyn.bloom, size, engine.color) { x, y -> wm.wetness(x, y, now) }
+            sb.setPixels(px, 0, w, r.left, r.top, w, h)
+            wm.paint(r.left, r.top, w, h, alpha, now)
+        } catch (e: OutOfMemoryError) {
+            // not enough memory to dry it: the stroke stays as it was painted
+        }
     }
 
     private fun commitStroke() {
@@ -1726,10 +1754,14 @@ class CanvasView(context: Context) : View(context) {
             return false
         }
         if (layer.vector != null) return vectorEditor.dropColor(sx, sy, fillColor)
-        val ref = doc.fillReference()
-        if (layer.scene != null) { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); ref.recycle(); return false }
-        val result = FloodFill.compute(ref, x, y, if (layer.isLayerMask) Color.WHITE else fillColor, fillThreshold)
-        ref.recycle()
+        if (layer.scene != null) { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); return false }
+        val result = try {
+            val ref = doc.fillReference()
+            try { FloodFill.compute(ref, x, y, if (layer.isLayerMask) Color.WHITE else fillColor, fillThreshold) } finally { ref.recycle() }
+        } catch (e: OutOfMemoryError) {
+            listener?.onMessage("Not enough memory for this right now")
+            return false
+        }
         if (result == null) return false
         val r = result.rect
         selection?.let { Canvas(result.bitmap).drawBitmap(it.mask, r, Rect(0, 0, r.width(), r.height()), Selections.dstIn) }
@@ -1774,9 +1806,13 @@ class CanvasView(context: Context) : View(context) {
         selDrawing = false
         if (selectShape.isTap) {
             // magic wand / color range: one tap on the artwork
-            val ref = doc.flatten(withBackground = true)
-            val fresh = Selections.byColor(ref, selX1.toInt(), selY1.toInt(), wandTolerance, selectShape == SelectShape.WAND)
-            ref.recycle()
+            val fresh = try {
+                val ref = doc.flatten(withBackground = true)
+                try { Selections.byColor(ref, selX1.toInt(), selY1.toInt(), wandTolerance, selectShape == SelectShape.WAND) } finally { ref.recycle() }
+            } catch (e: OutOfMemoryError) {
+                listener?.onMessage("Not enough memory for this right now")
+                return
+            }
             if (fresh == null && selectCombine == SelectCombine.NEW) listener?.onMessage("Nothing to select there")
             selection = Selections.combine(selection, fresh, selectCombine, doc.width, doc.height)
             return
@@ -1910,7 +1946,7 @@ class CanvasView(context: Context) : View(context) {
         if (x !in 0 until doc.width || y !in 0 until doc.height) return
         for (i in doc.layers.indices.reversed()) {
             val l = doc.layers[i]
-            if (!l.visible) continue
+            if (!l.visible || l.isLayerMask || doc.groupOf(l)?.visible == false) continue
             if ((l.bitmap.getPixel(x, y) ushr 24) > 12) {
                 if (doc.activeIndex != i) {
                     doc.activeIndex = i
@@ -1967,7 +2003,8 @@ class CanvasView(context: Context) : View(context) {
         val layer = doc.active
         if (layer.vector != null) { listener?.onMessage("On a vector layer use the vector tools"); return }
         val sel = selection
-        val bmp = layer.bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val bmp = try { layer.bitmap.copy(Bitmap.Config.ARGB_8888, true) } catch (e: OutOfMemoryError) { null }
+        if (bmp == null) { listener?.onMessage("Not enough memory for this right now"); return }
         if (sel != null) Canvas(bmp).drawBitmap(sel.mask, 0f, 0f, Selections.dstIn)
         val bounds = Selections.contentBounds(bmp)
         if (bounds == null || bounds.isEmpty) { bmp.recycle(); listener?.onMessage("Nothing to copy here"); return }
@@ -2031,10 +2068,12 @@ class CanvasView(context: Context) : View(context) {
 
     /** Copies the selected pixels of the active layer onto a new layer. */
     fun copySelectionToNewLayer(): Boolean {
-        val s = selection ?: return false
+        val s = selection ?: run { listener?.onMessage("Select something first"); return false }
         if (doc.layers.size >= doc.maxLayers()) { listener?.onMessage("Layer limit reached"); return false }
         val src = doc.active
-        val layer = doc.createLayer()
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) {
+            listener?.onMessage("Not enough memory for another layer right now"); return false
+        }
         layer.name = src.name + " (copy)"
         val c = Canvas(layer.bitmap)
         c.drawBitmap(src.bitmap, 0f, 0f, null)
@@ -2046,9 +2085,17 @@ class CanvasView(context: Context) : View(context) {
         return true
     }
 
+    /** vector and 3D layers are drawn from their shapes: their pixels are not edited directly */
+    private fun plainLayer(layer: Layer): Boolean {
+        if (layer.vector != null) { listener?.onMessage("On a vector layer use the vector tools"); return false }
+        if (layer.scene != null) { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); return false }
+        return true
+    }
+
     fun clearSelection() {
-        val s = selection ?: return
+        val s = selection ?: run { listener?.onMessage("Select something first"); return }
         val layer = doc.active
+        if (!plainLayer(layer)) return
         val r = s.bounds
         val before = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
         Canvas(layer.bitmap).drawBitmap(s.mask, 0f, 0f, Selections.dstOut)
@@ -2056,8 +2103,9 @@ class CanvasView(context: Context) : View(context) {
     }
 
     fun fillSelection(fill: Int) {
-        val s = selection ?: return
+        val s = selection ?: run { listener?.onMessage("Select something first"); return }
         val layer = doc.active
+        if (!plainLayer(layer)) return
         val r = s.bounds
         val before = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
         val c = Canvas(layer.bitmap)
@@ -2113,7 +2161,7 @@ class CanvasView(context: Context) : View(context) {
 
     /** moves several layers (picked ones, or a group) together */
     private fun beginMultiTransform(targets: List<Layer>): Boolean {
-        val usable = targets.filter { it.visible && it.vector == null }
+        val usable = targets.filter { it.visible && it.vector == null && it.scene == null }
         if (usable.isEmpty()) { listener?.onMessage("These layers are hidden or vector layers"); return false }
         if (usable.size < targets.size) listener?.onMessage("Hidden and vector layers stay where they are")
         val sel = selection
@@ -2265,10 +2313,13 @@ class CanvasView(context: Context) : View(context) {
         val layer = doc.active
         if (!layer.visible) { listener?.onMessage("This layer is hidden"); return null }
         if (layer.vector != null) { listener?.onMessage("Adjustments work on drawing layers (or rasterize this vector layer)"); return null }
+        if (layer.scene != null) { listener?.onMessage("Adjustments work on drawing layers (rasterize this 3D layer first)"); return null }
         val content = Selections.contentBounds(layer.bitmap)
         if (content == null) { listener?.onMessage("This layer is empty"); return null }
         val orig = layer.bitmap
-        layer.bitmap = orig.copy(Bitmap.Config.ARGB_8888, true)
+        val work = try { orig.copy(Bitmap.Config.ARGB_8888, true) } catch (e: OutOfMemoryError) { null }
+        if (work == null) { listener?.onMessage("Not enough memory for this right now"); return null }
+        layer.bitmap = work
         adjustLayer = layer
         adjustOrig = orig
         adjustRegion = content
