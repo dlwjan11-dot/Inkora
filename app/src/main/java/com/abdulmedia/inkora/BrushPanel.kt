@@ -316,6 +316,7 @@ class BrushPanel(
                     openActions = b.preset.id
                 } else if (openActions == b.preset.id) { openActions = null; openCard = null }
             }
+            wrap.tag = b.preset.id
             list.addView(wrap, LayoutParams(-1, -2).apply { bottomMargin = 2.dp })
         }
         val hint = when {
@@ -329,6 +330,27 @@ class BrushPanel(
 
     /** the brush that is slid open, and its buttons */
     private var openCard: Pair<View, View>? = null
+
+    /** opens the set the brush belongs to, scrolls to the brush and flashes it */
+    private fun find(b: Brush) {
+        openActions = null
+        currentSet = b.preset.category
+        buildList()
+        refreshSets()
+        post {
+            (0 until setsColumn.childCount).map { setsColumn.getChildAt(it) }.firstOrNull { it.tag == currentSet }?.let { item ->
+                (setsColumn.parent as? ScrollView)?.smoothScrollTo(0, (item.top - 60.dp).coerceAtLeast(0))
+            }
+            val row = (0 until list.childCount).map { list.getChildAt(it) }.firstOrNull { it.tag == b.preset.id } ?: return@post
+            listScroll.smoothScrollTo(0, (row.top - 40.dp).coerceAtLeast(0))
+            // two soft blinks, so the eye lands on it
+            row.animate().alpha(0.25f).setDuration(160).withEndAction {
+                row.animate().alpha(1f).setDuration(160).withEndAction {
+                    row.animate().alpha(0.25f).setDuration(160).withEndAction { row.animate().alpha(1f).setDuration(200).start() }.start()
+                }.start()
+            }.start()
+        }
+    }
 
     private fun close(card: View, actions: View) {
         card.animate().translationX(0f).setDuration(140).withEndAction { actions.visibility = View.INVISIBLE }.start()
@@ -359,6 +381,8 @@ class BrushPanel(
             openActions = null
             rebuild()
         }
+        // in Pinned and Recent: where the brush lives in the library
+        if (currentSet == PINNED || currentSet == RECENT) add("Find", 0xFF3E8E6B.toInt()) { find(b) }
         if (onDuplicate != null && b.preset.living == null) add("Duplicate", 0xFF4A4D57.toInt()) { openActions = null; onDuplicate.invoke(b) }
         if (b.preset.imported) add("Delete", 0xFFD9534F.toInt()) { openActions = null; onDelete(b) }
         else if (onReset != null) add("Reset", 0xFF8A6D3B.toInt()) {
