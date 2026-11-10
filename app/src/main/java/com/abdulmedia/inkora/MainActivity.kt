@@ -1040,7 +1040,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val entry = cv.tool to cv.currentBrush
         recentTools.removeAll { it.first == entry.first && it.second === entry.second }
         recentTools.add(0, entry)
-        while (recentTools.size > 4) recentTools.removeAt(recentTools.size - 1)
+        while (recentTools.size > 7) recentTools.removeAt(recentTools.size - 1)
         BrushPanel.noteRecent(this, entry.second.preset.id)
     }
 
@@ -1108,10 +1108,15 @@ class MainActivity : Activity(), CanvasView.Listener {
         )
         // the 3 most recent brushes that are not the one in hand right now
         val current = cv.tool to cv.currentBrush
-        val recent = recentTools.filter { !(it.first == current.first && it.second === current.second) }.take(3)
-        val brushes = recent.map { (tool, b) ->
+        // your pinned brushes first (for the tool in hand), then the last ones used; the brush in
+        // hand is not repeated. The last bubble opens the whole library.
+        val pinnedIds = BrushPanel.pinnedIds(this)
+        val pinnedNow = brushListFor(cv.tool).filter { it.preset.id in pinnedIds && it !== current.second }.map { cv.tool to it }
+        val recent = recentTools.filter { !(it.first == current.first && it.second === current.second) }
+        val picks = (pinnedNow + recent).distinctBy { it.first.name + ":" + it.second.preset.id }.take(4)
+        val brushes = picks.map { (tool, b) ->
             QuickMenuView.Item(toolPrefix(tool) + b.preset.name, preview = BrushPanel.preview(b)) { useBrush(tool, b) }
-        }
+        } + QuickMenuView.Item("Brush Library", Icon.BRUSH) { if (!busy()) showBrushes(cv.tool) }
         // your saved palette, then recent colors
         val swatches = (palette() + recentColors).distinct().ifEmpty { ColorPanel.PALETTE.take(8).toList() }
 

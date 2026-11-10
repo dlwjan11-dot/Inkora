@@ -452,6 +452,9 @@ class BrushPanel(
             prefs(ctx).edit().putString("brush_pins", pins.joinToString("\n")).putString("brush_recent", recents.joinToString("\n")).apply()
         }
 
+        /** ids of the brushes pinned in the library */
+        fun pinnedIds(ctx: Context): Set<String> { loadLists(ctx); return pins }
+
         /** the brush that was just taken in hand goes to the top of Recent */
         fun noteRecent(ctx: Context, id: String) {
             loadLists(ctx)
