@@ -39,6 +39,8 @@ interface ActionsHost {
     fun openLicenses()
     var sidebarShown: Boolean
     var brushCursor: Boolean
+    /** watercolor strokes dry (crisp edge, pigment line, blots) when the pen lifts */
+    var watercolorDrying: Boolean
     // Share
     fun export(kind: String)
     // Video
@@ -303,6 +305,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
                 host.setEdges(dk, s); rebuild()
             },
             switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor) { host.brushCursor = it },
+            switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying) { host.watercolorDrying = it },
             switchRow("Size & Opacity sidebar", null, host.sidebarShown) { host.sidebarShown = it }
         )
         group(

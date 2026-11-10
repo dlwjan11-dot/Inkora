@@ -940,6 +940,9 @@ object L10n {
         "A mask moves with its layer", "القناع يتحرك مع طبقته", "ماسک لەگەڵ چینەکەی دەجووڵێت",
         "Could not save the artwork: not enough memory or storage", "تعذّر حفظ الرسمة: الذاكرة أو مساحة التخزين غير كافية", "نەتوانرا وێنەکە پاشەکەوت بکرێت: بیرگە یان شوێنی هەڵگرتن بەس نییە",
 
+        "Watercolor drying", "تجفيف المائي", "وشکبوونەوەی ئاوڕەنگ",
+        "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", "عند رفع القلم تجفّ ضربة المائي بحافة واضحة. إيقاف: تبقى كما رسمتها", "کاتێک قەڵەمەکە بەرز دەکەیتەوە، هێڵی ئاوڕەنگ بە لێوارێکی ڕوون وشک دەبێتەوە. کوژاوە: وەک ئەوەی کێشاوتە دەمێنێتەوە",
+
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

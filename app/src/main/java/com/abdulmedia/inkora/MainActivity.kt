@@ -137,6 +137,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.eraserBrush.size = 80f
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
+        cv.watercolorDrying = prefs.getBoolean("watercolorDrying", true)
         if (!prefs.getBoolean("sidebar", true)) sideBar.visibility = View.GONE
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)
@@ -1897,6 +1898,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         override var sidebarShown: Boolean
             get() = prefs.getBoolean("sidebar", true)
             set(v) { prefs.edit().putBoolean("sidebar", v).apply(); sideBar.visibility = if (v && !focusMode) View.VISIBLE else View.GONE }
+        override var watercolorDrying: Boolean
+            get() = cv.watercolorDrying
+            set(v) { cv.watercolorDrying = v; prefs.edit().putBoolean("watercolorDrying", v).apply() }
         override var brushCursor: Boolean
             get() = cv.showBrushCursor
             set(v) { cv.showBrushCursor = v; prefs.edit().putBoolean("brushCursor", v).apply() }

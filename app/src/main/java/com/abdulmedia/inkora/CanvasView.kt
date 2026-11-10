@@ -149,6 +149,8 @@ class CanvasView(context: Context) : View(context) {
     var pressureGamma = 1f
     /** the brush outline where the pen hovers (Actions › Prefs › Brush cursor) */
     var showBrushCursor = true
+    /** watercolor strokes dry when the pen lifts (Actions › Prefs › Watercolor drying) */
+    var watercolorDrying = true
     private val commitPaint = Paint()
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x66000000 }
     private val checkerPaint = Paint().apply {
@@ -1512,7 +1514,7 @@ class CanvasView(context: Context) : View(context) {
         engine.dirty.roundOut(r)
         if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
         val layer = doc.active
-        if (engine.brush.dyn.watercolor > 0f && !strokeErasing && !layer.isLayerMask) dryWatercolor(sb, r, layer)
+        if (watercolorDrying && engine.brush.dyn.watercolor > 0f && !strokeErasing && !layer.isLayerMask) dryWatercolor(sb, r, layer)
         val before = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
         commitPaint.alpha = (engine.brush.opacity * 255).toInt().coerceIn(0, 255)
         commitPaint.blendMode = strokeBlend()
