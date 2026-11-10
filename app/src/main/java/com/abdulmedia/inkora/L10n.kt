@@ -1082,6 +1082,11 @@ object L10n {
         "Actions (the wrench) › Add: comic panels and speech bubbles", "الإجراءات (المفتاح) › إضافة: إطارات كوميكس وفقاعات كلام", "کردارەکان (ئاچار) › زیادکردن: چوارچێوەی کۆمیک و بڵقی قسە",
         "Actions › Canvas › Snapshots: keep a moment of the artwork and come back to it", "الإجراءات › اللوحة › لقطات محفوظة: احفظ الرسمة متل ما هي وارجعلها بعدين", "کردارەکان › تابلۆ › وێنەگرتنەکان: ساتێکی کارەکە بپارێزە و بگەڕێوە بۆی",
         "A reference photo you import stays with its artwork", "صورة المرجع يلي بتستوردها بتضل محفوظة مع رسمتها", "وێنەی سەرچاوە کە هاوردەی دەکەیت لەگەڵ کارەکەیدا دەمێنێتەوە",
+        "Marked", "تعلّمت", "نیشانە کرا",
+        "tap the mark to come back to it", "اكبس العلامة لترجعلها", "لە نیشانەکە بدە بۆ گەڕانەوە",
+        "Mark removed", "انشالت العلامة", "نیشانەکە لابرا",
+        "Slide away from a slider while you drag it: it moves slower, for an exact size", "ابعد عن الشريط وإنت عم تسحبه: بيتحرك أبطأ، لتختار الحجم بدقة", "لە کاتی ڕاکێشاندا لە هێڵەکە دوور بکەوەرەوە: خاوتر دەجووڵێت، بۆ قەبارەی ورد",
+        "Double-tap a slider's handle to leave a mark; tap the mark to come back to that value", "اكبس مرتين على مسكة الشريط لتحط علامة؛ اكبس العلامة لترجع لنفس القيمة", "دوو جار لە دەسکی هێڵەکە بدە بۆ دانانی نیشانە؛ لە نیشانەکە بدە بۆ گەڕانەوە بۆ هەمان بەها",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

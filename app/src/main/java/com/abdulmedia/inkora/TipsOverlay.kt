@@ -42,6 +42,8 @@ object Tour {
             "Hold Eraser or Smudge: it takes the brush you are painting with"), listOf(Icon.BRUSH, Icon.SMUDGE, Icon.ERASER)),
         Page(-1, "Size, opacity and color", listOf(
             "The two sliders on the side: brush size and opacity",
+            "Slide away from a slider while you drag it: it moves slower, for an exact size",
+            "Double-tap a slider's handle to leave a mark; tap the mark to come back to that value",
             "Tap the color circle for the colors and your palettes",
             "Drag the color circle onto the canvas: fill that area",
             "Pull the little bar on top of the color panel: it stays open as a floating window",

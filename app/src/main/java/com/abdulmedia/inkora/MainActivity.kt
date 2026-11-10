@@ -553,6 +553,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             showSizeHud(true)
         }
         sizeSlider.onDragState = { dragging -> if (dragging) showSizeHud(true) else hud.hideSoon() }
+        sliderPins(sizeSlider, "size_pins")
         side.addView(sizeSlider, LinearLayout.LayoutParams(44.dp, 180.dp))
 
         // the □ modify button: tapped, it does what "Tap □" is set to (the eyedropper at first);
@@ -595,6 +596,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         opacitySlider.onDragState = { dragging ->
             if (dragging) hud.show("Opacity ${(cv.currentBrush.opacity * 100).roundToInt()}%", sticky = true) else hud.hideSoon()
         }
+        sliderPins(opacitySlider, "opacity_pins")
         side.addView(opacitySlider, LinearLayout.LayoutParams(44.dp, 180.dp))
         opacityLabel = Ui.text(this, "100%", 10f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER }
         side.addView(opacityLabel, LinearLayout.LayoutParams(-1, -2))
@@ -682,6 +684,15 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     /** sliders on one side, toolbar on the other (swapped for left-handed people or customized placement) */
+    /** the marks on a slider are remembered */
+    private fun sliderPins(s: VerticalSlider, key: String) {
+        prefs.getString(key, "")!!.split(',').mapNotNull { it.toFloatOrNull() }.forEach { s.pins.add(it.coerceIn(0f, 1f)) }
+        s.onPins = { added ->
+            prefs.edit().putString(key, s.pins.joinToString(",")).apply()
+            hud.show(if (added) "Marked · tap the mark to come back to it" else "Mark removed")
+        }
+    }
+
     private lateinit var homeBtn: android.widget.TextView
     private lateinit var moreBtn: View
 

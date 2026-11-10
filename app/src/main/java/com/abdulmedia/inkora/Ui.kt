@@ -226,8 +226,25 @@ class VerticalSlider(context: Context) : View(context) {
 
     private val track = Paint(Paint.ANTI_ALIAS_FLAG)
     private val thumb = Paint(Paint.ANTI_ALIAS_FLAG)
-    private var dragStartY = 0f
-    private var dragStartValue = 0f
+    private var lastY = 0f
+    private var downX = 0f
+    private var downY = 0f
+    private var downAt = 0L
+    private var moved = false
+    private var lastTapAt = 0L
+    private var raw = 0f
+
+    /** marks you leave on the bar (double-tap the handle): tap one to come back to that value */
+    val pins = ArrayList<Float>()
+    /** a mark was added (true) or removed (false) */
+    var onPins: ((Boolean) -> Unit)? = null
+    private val pinPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    private fun yOf(v: Float): Float {
+        val top = 19f.dp
+        val bottom = height - 19f.dp
+        return bottom - (bottom - top) * v
+    }
 
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
@@ -238,9 +255,37 @@ class VerticalSlider(context: Context) : View(context) {
         val y = thumbY()
         track.color = 0xAAFFFFFF.toInt()
         canvas.drawRoundRect(RectF(w / 2 - tw / 2, y, w / 2 + tw / 2, h - 10f.dp), tw / 2, tw / 2, track)
+        pinPaint.color = Ui.ACCENT
+        for (p in pins) {
+            val py = yOf(p)
+            canvas.drawRoundRect(RectF(w / 2 - 15f.dp, py - 2.5f.dp, w / 2 + 15f.dp, py + 2.5f.dp), 2.5f.dp, 2.5f.dp, pinPaint)
+        }
         thumb.color = Ui.TEXT
         thumb.setShadowLayer(4f.dp, 0f, 1f.dp, 0x88000000.toInt())
         canvas.drawRoundRect(RectF(w / 2 - 12f.dp, y - 9f.dp, w / 2 + 12f.dp, y + 9f.dp), 6f.dp, 6f.dp, thumb)
+    }
+
+    private fun tapped(y: Float, time: Long) {
+        val onThumb = kotlin.math.abs(y - thumbY()) < 16f.dp
+        if (onThumb && time - lastTapAt < 350) {
+            // double tap on the handle: leave a mark here, or take away the one that is here
+            lastTapAt = 0L
+            val here = pins.firstOrNull { kotlin.math.abs(it - value) < 0.02f }
+            if (here != null) pins.remove(here)
+            else { if (pins.size >= 5) pins.removeAt(0); pins.add(value) }
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            invalidate()
+            onPins?.invoke(here == null)
+            return
+        }
+        lastTapAt = if (onThumb) time else 0L
+        if (onThumb) return
+        // a tap on a mark: back to that value
+        val p = pins.minByOrNull { kotlin.math.abs(yOf(it) - y) } ?: return
+        if (kotlin.math.abs(yOf(p) - y) > 14f.dp) return
+        value = p
+        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        onChange?.invoke(value)
     }
 
     private fun thumbY(): Float {
@@ -255,15 +300,28 @@ class VerticalSlider(context: Context) : View(context) {
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 parent?.requestDisallowInterceptTouchEvent(true)
-                dragStartY = e.y
-                dragStartValue = value
+                lastY = e.y; downX = e.x; downY = e.y; downAt = e.eventTime
+                moved = false
+                raw = value
                 onDragState?.invoke(true)
             }
             MotionEvent.ACTION_MOVE -> {
-                value = dragStartValue - (e.y - dragStartY) / usable
-                onChange?.invoke(value)
+                if (!moved && kotlin.math.hypot(e.x - downX, e.y - downY) > 8f.dp) { moved = true; lastY = e.y }
+                if (moved) {
+                    // slide sideways, away from the bar, and it moves slower: fine control
+                    val away = max(0f, max(-e.x, e.x - width))
+                    val speed = (1f / (1f + away / 45f.dp)).coerceAtLeast(0.06f)
+                    raw = (raw - (e.y - lastY) / usable * speed).coerceIn(0f, 1f)
+                    lastY = e.y
+                    value = raw
+                    onChange?.invoke(value)
+                }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> onDragState?.invoke(false)
+            MotionEvent.ACTION_UP -> {
+                if (!moved && e.eventTime - downAt < 350) tapped(e.y, e.eventTime)
+                onDragState?.invoke(false)
+            }
+            MotionEvent.ACTION_CANCEL -> onDragState?.invoke(false)
         }
         return true
     }
