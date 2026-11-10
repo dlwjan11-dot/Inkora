@@ -114,7 +114,7 @@ class GalleryView(
                 }
             })
         }
-        tools.addView(search, LinearLayout.LayoutParams(240.dp, -2))
+        tools.addView(search, LinearLayout.LayoutParams(if (context.narrow) 130.dp else 240.dp, -2))
         col.addView(tools)
 
         val scroll = ScrollView(context)
@@ -206,7 +206,8 @@ class GalleryView(
     }
 
     private fun gridOf(cards: List<(Int) -> View>): View {
-        val cardW = 230.dp
+        // on a phone: two across, whatever its width
+        val cardW = if (context.narrow && width > 0) ((width - 32.dp) / 2 - 16.dp).coerceIn(120.dp, 230.dp) else 230.dp
         val cols = max(1, (width - 32.dp) / (cardW + 16.dp))
         val grid = GridLayout(context).apply { columnCount = cols }
         for (make in cards) grid.addView(make(cardW), GridLayout.LayoutParams().apply {
@@ -315,7 +316,7 @@ class GalleryView(
         val frame = FrameLayout(context)
         frame.addView(thumb(e), LayoutParams(-1, -1))
         frame.addView(badge(e), LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(8.dp, 8.dp, 0, 0) })
-        row.addView(frame, LinearLayout.LayoutParams(300.dp, 200.dp))
+        row.addView(frame, if (context.narrow) LinearLayout.LayoutParams(132.dp, 96.dp) else LinearLayout.LayoutParams(300.dp, 200.dp))
         val info = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(22.dp, 0, 0, 0) }
         info.addView(Ui.text(context, e.title, 22f, bold = true).apply { maxLines = 2 })
         info.addView(Ui.text(context, subtitle(e), 13f, Ui.TEXT_DIM).apply { setPadding(0, 6.dp, 0, 14.dp) })

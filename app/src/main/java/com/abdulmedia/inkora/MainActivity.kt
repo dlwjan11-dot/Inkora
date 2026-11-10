@@ -414,6 +414,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             setOnClickListener { if (!busy()) showGallery() }
         }
         bar.addView(homeBtn, LinearLayout.LayoutParams(-2, 48.dp))
+        this.homeBtn = homeBtn
         val actionsBtn = IconView(this, Icon.WRENCH).apply { contentDescription = "Actions" }
         actionsBtn.setOnClickListener { if (!busy()) showActions(actionsBtn) }
         bar.addView(actionsBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
@@ -476,6 +477,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         bar.addView(more, LinearLayout.LayoutParams(64.dp, 48.dp))
+        moreBtn = more
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
 
         // painting tools as one group
@@ -614,6 +616,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         dock.setTools(dockIds)
         root.addView(dock, FrameLayout.LayoutParams(-2, -2))
         applySides()
+        applyScreenSize()
 
         // focus mode: a single small button brings the interface back
         focusExit = IconView(this, Icon.FOCUS).apply {
@@ -679,6 +682,43 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     /** sliders on one side, toolbar on the other (swapped for left-handed people or customized placement) */
+    private lateinit var homeBtn: android.widget.TextView
+    private lateinit var moreBtn: View
+
+    /** Phones: a slimmer top bar when the screen is narrow, shorter sliders when it is low. */
+    private fun applyScreenSize() {
+        val n = narrow
+        // the three quick editing buttons make room; they are all under ••• › Editing tools
+        for (b in listOf(adjustBtn, selectBtn, transformBtn)) b.visibility = if (n) View.GONE else View.VISIBLE
+        if (n) { homeBtn.setPadding(4.dp, 0, 6.dp, 0); homeBtn.textSize = 14f } else { homeBtn.setPadding(10.dp, 0, 12.dp, 0); homeBtn.textSize = 16f }
+        topBar.setPadding(if (n) 4.dp else 8.dp, 0, if (n) 4.dp else 10.dp, 0)
+        (actionsBtn.layoutParams as LinearLayout.LayoutParams).width = if (n) 38.dp else 44.dp
+        (moreBtn.layoutParams as LinearLayout.LayoutParams).width = if (n) 34.dp else 64.dp
+        for (b in listOf(brushBtn, smudgeBtn, eraserBtn)) (b.layoutParams as LinearLayout.LayoutParams).width = if (n) 40.dp else 46.dp
+        (layersBtn.layoutParams as LinearLayout.LayoutParams).width = if (n) 40.dp else 44.dp
+        (colorBtn.layoutParams as LinearLayout.LayoutParams).apply { width = if (n) 44.dp else 52.dp; height = width }
+        topBar.requestLayout()
+
+        // the sliders take what height there is
+        val avail = resources.configuration.screenHeightDp - 56 - 24
+        val tight = avail < 430
+        brushDot.visibility = if (tight) View.GONE else View.VISIBLE
+        opacityLabel.visibility = if (tight) View.GONE else View.VISIBLE
+        val fixed = if (tight) 175 else 235
+        val sh = ((avail - fixed) / 2).coerceIn(56, 180)
+        (sizeSlider.layoutParams as LinearLayout.LayoutParams).height = sh.dp
+        (opacitySlider.layoutParams as LinearLayout.LayoutParams).height = sh.dp
+        sideBar.requestLayout()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!::sideBar.isInitialized) return
+        // turning the phone: panels were sized for the other way round
+        popup?.dismiss()
+        applyScreenSize()
+    }
+
     private fun applySides() {
         // sliders live on the left or right; the toolbar goes anywhere else
         val slidersEdge = slidersEdge()
@@ -1298,7 +1338,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         popup?.dismiss()
         val maxH = root.height - 80.dp
         val h = if (heightDp == null) ViewGroup.LayoutParams.WRAP_CONTENT else min(heightDp.dp, maxH)
-        val pw = PopupWindow(content, widthDp.dp, h, true)
+        // never wider than the screen (phones)
+        val w = min(widthDp.dp, root.width - 16.dp)
+        val pw = PopupWindow(content, w, h, true)
         pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         pw.isOutsideTouchable = true
         pw.elevation = 16f.dp
@@ -1307,7 +1349,6 @@ class MainActivity : Activity(), CanvasView.Listener {
         popup = pw
         // absolute position, so it is right in both left-to-right and right-to-left layouts
         val loc = IntArray(2); anchor.getLocationInWindow(loc)
-        val w = widthDp.dp
         val alignStart = alignLeft != L10n.isRtl
         val x = (if (alignStart) loc[0] else loc[0] + anchor.width - w).coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
         pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x, loc[1] + anchor.height + 6.dp)
@@ -1434,8 +1475,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         val w = when (kind) {
             "reference", "navigator", "lighting" -> 240.dp
             "brushes" -> min(470.dp, root.width - 16.dp)
-            "color" -> 340.dp
-            else -> 320.dp
+            "color" -> min(340.dp, root.width - 16.dp)
+            else -> min(320.dp, root.width - 16.dp)
         }
         val h = if (kind == "reference" || kind == "navigator" || kind == "lighting") FrameLayout.LayoutParams.WRAP_CONTENT else min(560.dp, root.height - 120.dp).coerceAtLeast(300.dp)
         val defX = if ((kind == "layers") != leftHanded) (root.width - w - 72.dp).coerceAtLeast(0) else 72.dp
@@ -2532,13 +2573,26 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun showBottomBar(v: View) {
         hideBottomBar()
         bottomBar = v
-        root.addView(v, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-            bottomMargin = 18.dp
+        // on a narrow screen a long bar slides sideways instead of being cut off
+        val wrap = android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            clipToPadding = false
+            setPadding(8.dp, 8.dp, 8.dp, 14.dp)
+            elevation = 12f.dp
+            addView(v)
+        }
+        bottomWrap = wrap
+        root.addView(wrap, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+            bottomMargin = 4.dp
         })
     }
 
+    private var bottomWrap: View? = null
+
     private fun hideBottomBar() {
-        bottomBar?.let { root.removeView(it) }
+        bottomWrap?.let { (it as? ViewGroup)?.removeAllViews(); root.removeView(it) }
+        bottomWrap = null
         bottomBar = null
     }
 
@@ -2973,7 +3027,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         category?.let { ToolsPanel.select(creative, it) }
         val panel = ToolsPanel(this, creative, toolsHost)
         popup?.dismiss()
-        val w = min(640.dp, root.width - sideBar.width - 40.dp)
+        val w = if (narrow) root.width - 16.dp else min(640.dp, root.width - sideBar.width - 40.dp)
         val h = min(600.dp, root.height - 84.dp)
         val pw = PopupWindow(panel, w, h, true)
         pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))

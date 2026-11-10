@@ -49,6 +49,7 @@ object Tour {
         Page(-1, "Layers", listOf(
             "Tap the active layer again for its options: opacity, blend mode, masks, merge",
             "Slide a layer sideways, or hold it: pick several layers",
+            "Drag a layer by the grip at its edge to move it up or down",
             "With several picked: group, merge or delete them, or move them all with Transform",
             "The checkbox hides a layer; the letter beside it is its blend mode",
             "Clipping mask, alpha lock and layer masks are in the layer's options"), listOf(Icon.LAYERS, Icon.FOLDER, Icon.EYE)),
@@ -68,14 +69,17 @@ object Tour {
             "Import Procreate brushes (.brush, .brushset) with + in the brush library"), listOf(Icon.DROP, Icon.PALETTE, Icon.LIGHTBULB)),
         Page(1, "More tools, and your own toolbar", listOf(
             "The ••• in the top bar opens Creative and Editing",
-            "Creative: text, vector shapes and pen, 3D figures to pose, photos, fill",
+            "Creative: text, vector shapes and pen, 3D figures to pose, photos, fill, gradient",
+            "Actions (the wrench) › Add: comic panels and speech bubbles",
             "Editing: liquify, canvas size and crop, filters, feather",
             "Tap ☆ on any tool to put it on your own toolbar; long-press the toolbar to arrange it")),
         Page(-1, "Your artworks", listOf(
             "Gallery (top left): all your artworks, in stacks if you like",
             "Inkora saves by itself while you work and when you leave",
             "Actions (the wrench) › Share: PNG, JPEG, Photoshop PSD, PDF, TIFF, project file",
-            "Every artwork records a time-lapse video you can export"), listOf(Icon.FOLDER, Icon.EXPORT, Icon.VIDEO)),
+            "Every artwork records a time-lapse video you can export",
+            "Actions › Canvas › Snapshots: keep a moment of the artwork and come back to it",
+            "A reference photo you import stays with its artwork"), listOf(Icon.FOLDER, Icon.EXPORT, Icon.VIDEO)),
         Page(-1, "Find all of this again", listOf(
             "Actions (the wrench) › Help › Guide: everything on these pages",
             "Gesture controls: change what each gesture and the pen button do",
@@ -295,11 +299,15 @@ class GuideView(
         val titles = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         titles.addView(Ui.text(context, "Guide", 26f, bold = true))
         titles.addView(Ui.text(context, "Everything Inkora can do, and the gestures that get you there", 13.5f, Ui.TEXT_DIM))
-        head.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
-        head.addView(Ui.pill(context, "Take the tour") { onTour() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
-        head.addView(Ui.pill(context, "Gesture controls") { onGestures() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
-        head.addView(Ui.pill(context, "Keyboard shortcuts") { onShortcuts() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
-        head.addView(Ui.pill(context, "Close", primary = true) { onClose() })
+        val narrow = context.narrow
+        if (narrow) { head.orientation = LinearLayout.VERTICAL; head.gravity = Gravity.START; head.setPadding(16.dp, 16.dp, 16.dp, 8.dp) }
+        head.addView(titles, if (narrow) LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10.dp } else LinearLayout.LayoutParams(0, -2, 1f))
+        val pills = if (narrow) LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL } else head
+        if (narrow) head.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(pills) }, LinearLayout.LayoutParams(-1, -2))
+        pills.addView(Ui.pill(context, "Take the tour") { onTour() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
+        pills.addView(Ui.pill(context, "Gesture controls") { onGestures() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
+        pills.addView(Ui.pill(context, "Keyboard shortcuts") { onShortcuts() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
+        pills.addView(Ui.pill(context, "Close", primary = true) { onClose() })
         col.addView(head)
 
         // two columns of cards, filled in turn
@@ -322,10 +330,11 @@ class GuideView(
                 setLineSpacing(4f.dp, 1f)
                 setPadding(2.dp, 10.dp, 0, 0)
             })
-            columns[i % 2].addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12.dp })
+            columns[if (narrow) 0 else i % 2].addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12.dp })
         }
         cols.addView(columns[0], LinearLayout.LayoutParams(0, -2, 1f).apply { marginEnd = 6.dp })
-        cols.addView(columns[1], LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = 6.dp })
+        if (!narrow) cols.addView(columns[1], LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = 6.dp })
+        else cols.setPadding(12.dp, 4.dp, 12.dp, 40.dp)
         val scroll = android.widget.ScrollView(context)
         scroll.addView(cols)
         col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))

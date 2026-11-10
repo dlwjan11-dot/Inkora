@@ -93,8 +93,8 @@ class ToolsPanel(
         tabs.orientation = HORIZONTAL
         tabs.background = Ui.rounded(0xFF121215.toInt(), 14f)
         tabs.setPadding(3.dp, 3.dp, 3.dp, 3.dp)
-        head.addView(tabs, LayoutParams(300.dp, 42.dp))
-        head.addView(View(context), LayoutParams(0, 1, 1f))
+        if (context.narrow) head.addView(tabs, LayoutParams(0, 42.dp, 1f))
+        else { head.addView(tabs, LayoutParams(300.dp, 42.dp)); head.addView(View(context), LayoutParams(0, 1, 1f)) }
         head.addView(IconView(context, Icon.CLOSE).apply {
             tint = Ui.TEXT_DIM
             setOnClickListener { host.close() }
@@ -106,10 +106,10 @@ class ToolsPanel(
         val body = LinearLayout(context).apply { orientation = HORIZONTAL }
         catColumn.orientation = VERTICAL
         catColumn.setPadding(8.dp, 10.dp, 8.dp, 10.dp)
-        body.addView(catColumn, LayoutParams(150.dp, -1))
+        body.addView(catColumn, LayoutParams(if (context.narrow) 104.dp else 150.dp, -1))
         body.addView(Ui.divider(context), LayoutParams(1.dp, -1))
         content.orientation = VERTICAL
-        content.setPadding(16.dp, 14.dp, 16.dp, 18.dp)
+        if (context.narrow) content.setPadding(8.dp, 10.dp, 8.dp, 14.dp) else content.setPadding(16.dp, 14.dp, 16.dp, 18.dp)
         scroll.addView(content)
         scroll.isVerticalScrollBarEnabled = false
         body.addView(scroll, LayoutParams(0, -1, 1f))
@@ -190,7 +190,7 @@ class ToolsPanel(
     // =========================================================
 
     private fun grid(cards: List<View>, columns: Int = 3) {
-        val g = GridLayout(context).apply { columnCount = columns }
+        val g = GridLayout(context).apply { columnCount = if (context.narrow) min(columns, 2) else columns }
         for (c in cards) g.addView(c, GridLayout.LayoutParams().apply {
             width = 0
             columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)

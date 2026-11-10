@@ -203,7 +203,7 @@ class BrushPanel(
         setsColumn.removeAllViews()
         (setsColumn.parent as? android.view.ViewGroup)?.removeView(setsColumn)
         setScroll.addView(setsColumn)
-        row.addView(setScroll, LayoutParams(172.dp, -1))
+        row.addView(setScroll, LayoutParams(if (context.narrow) 112.dp else 172.dp, -1))
         row.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1, -1).apply { marginStart = 8.dp; marginEnd = 8.dp })
         (listScroll.parent as? android.view.ViewGroup)?.removeView(listScroll)
         row.addView(listScroll, LayoutParams(0, -1, 1f))

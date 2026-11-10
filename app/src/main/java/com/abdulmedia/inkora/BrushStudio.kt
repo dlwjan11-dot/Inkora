@@ -83,7 +83,7 @@ class BrushStudioView(
             gravity = Gravity.CENTER_VERTICAL
             setPadding(20.dp, 10.dp, 16.dp, 10.dp)
         }
-        top.addView(Ui.text(context, "Brush Studio", 22f, bold = true))
+        if (!context.narrow) top.addView(Ui.text(context, "Brush Studio", 22f, bold = true))
         top.addView(Ui.text(context, "  ·  " + brush.preset.name, 16f, Ui.TEXT_DIM).apply { maxLines = 1 },
             LinearLayout.LayoutParams(0, -2, 1f))
         top.addView(Ui.pill(context, "Reset") { confirmReset() }, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
@@ -94,8 +94,8 @@ class BrushStudioView(
         val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val railScroll = ScrollView(context).apply { isVerticalScrollBarEnabled = false }
         railScroll.addView(rail)
-        row.addView(railScroll, LinearLayout.LayoutParams(220.dp, -1).apply { marginStart = 10.dp })
-        body.setPadding(18.dp, 4.dp, 18.dp, 40.dp)
+        row.addView(railScroll, LinearLayout.LayoutParams(if (context.narrow) 124.dp else 220.dp, -1).apply { marginStart = if (context.narrow) 4.dp else 10.dp })
+        if (context.narrow) body.setPadding(8.dp, 4.dp, 8.dp, 40.dp) else body.setPadding(18.dp, 4.dp, 18.dp, 40.dp)
         bodyScroll.addView(body)
         row.addView(bodyScroll, LinearLayout.LayoutParams(0, -1, 0.9f))
 

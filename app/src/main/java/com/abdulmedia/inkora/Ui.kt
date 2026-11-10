@@ -20,6 +20,11 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 val Int.dp: Int get() = (this * Resources.getSystem().displayMetrics.density).roundToInt()
+/** a phone held upright (or any window this narrow): panels and bars use their small layout */
+val android.content.Context.narrow: Boolean get() = resources.configuration.screenWidthDp < 600
+/** a phone on its side: not much room from top to bottom */
+val android.content.Context.short: Boolean get() = resources.configuration.screenHeightDp < 560
+
 val Float.dp: Float get() = this * Resources.getSystem().displayMetrics.density
 
 object Ui {
