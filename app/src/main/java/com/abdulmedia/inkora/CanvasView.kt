@@ -70,6 +70,23 @@ class CanvasView(context: Context) : View(context) {
     var paintBrush = Brush(Brushes.presets[1])
     var eraserBrush = Brush(Brushes.presets[9]).apply { size = 60f }
     var color = 0xFF1F2026.toInt()
+        set(v) {
+            val changed = field != v
+            field = v
+            // Recolor: the area you tapped last follows the new color
+            if (changed && recolorMode && recolorPoint != null && !recolorQueued) {
+                recolorQueued = true
+                postDelayed({ recolorQueued = false; recolorUpdate() }, 90)
+            }
+        }
+
+    /** Recolor tool: a tap fills an area, and changing the color then changes that area again */
+    var recolorMode = false
+        set(v) { field = v; if (!v) { recolorPoint = null; recolorCmd = null }; invalidate() }
+    private var recolorPoint: PointF? = null
+    private var recolorCmd: Command? = null
+    private var recolorUpdating = false
+    private var recolorQueued = false
     var symmetry = Symmetry.OFF
         set(v) { field = v; invalidate() }
     var quickShapeEnabled = true
@@ -211,7 +228,19 @@ class CanvasView(context: Context) : View(context) {
     private val antsBlack = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; color = Color.BLACK }
 
     // ---- transform ----
-    private enum class Drag { MOVE, SCALE, ROTATE }
+    private enum class Drag { MOVE, SCALE, ROTATE, SIDE, ALIGN }
+    private val tBoxStart = Matrix()
+    private var tSide = 0
+    private var tAlignStart = 0f
+    /** snap a moved piece to the canvas (center, edges) and to what is on the other layers */
+    var transformSnap = true
+    private var snapX: Float? = null
+    private var snapY: Float? = null
+    private var snapXCanvas = true
+    private var snapYCanvas = true
+    private var snapTargets: Pair<List<Float>, List<Float>>? = null
+    /** a tap (no drag) on the green dot (true) or on a corner or side (false): ask for an exact number */
+    var onTransformExact: ((angle: Boolean) -> Unit)? = null
     private var tDrag = Drag.MOVE
     private val tStart = Matrix()
     private var tDown = PointF()
@@ -388,9 +417,13 @@ class CanvasView(context: Context) : View(context) {
     // document
     // =========================================================
 
+    /** the layers' visibility before "this layer alone" (Layers: hold a checkbox), to put back */
+    var soloSaved: Map<Layer, Boolean>? = null
+
     fun setDocument(d: Document) {
         doc = d
         pickedLayers.clear()
+        soloSaved = null
         // nothing of the artwork before stays behind: an open liquify, wet paint, the last stroke
         liquify = null
         liqShowX = -1f
@@ -513,7 +546,7 @@ class CanvasView(context: Context) : View(context) {
     // =========================================================
 
     override fun onDraw(canvas: Canvas) {
-        canvas.drawColor(0xFF2A2B31.toInt())
+        canvas.drawColor(Ui.CANVAS_BG)
         if (!isDocReady()) return
         val z = zoom()
         canvas.save()
@@ -622,7 +655,19 @@ class CanvasView(context: Context) : View(context) {
         drawLiquifyBrush(canvas)
     }
 
+    /** how dark what is outside the selection looks (0 = only the marching ants) */
+    var selectionShade = 0.3f
+    private val shadePaint = Paint()
+
     private fun drawSelection(canvas: Canvas, z: Float) {
+        val sel = selection
+        if (sel != null && !selDrawing && transform == null && selectionShade > 0.01f) {
+            val s = canvas.saveLayer(doc.bounds, null)
+            shadePaint.color = Color.argb((selectionShade * 255).toInt(), 10, 12, 18)
+            canvas.drawRect(doc.bounds, shadePaint)
+            canvas.drawBitmap(sel.mask, 0f, 0f, Selections.dstOut)
+            canvas.restoreToCount(s)
+        }
         val path: android.graphics.Path? = when {
             selDrawing && selectShape == SelectShape.BRUSH -> Selections.brushPath(selPts, selectBrushPx / zoom())
             selDrawing -> Selections.shapePath(selectShape, selPts, selX0, selY0, selX1, selY1)
@@ -643,6 +688,7 @@ class CanvasView(context: Context) : View(context) {
 
     /** screen-space box with corner handles and a rotation handle */
     private fun drawTransformBox(canvas: Canvas, t: TransformSession) {
+        drawSnapGuides(canvas)
         val c = t.corners()
         viewMatrix.mapPoints(c)
         boxPaint.strokeWidth = 1.5f * density
@@ -653,7 +699,25 @@ class CanvasView(context: Context) : View(context) {
         }
         val rh = rotateHandle(c)
         canvas.drawLine((c[0] + c[2]) / 2, (c[1] + c[3]) / 2, rh.x, rh.y, boxPaint)
+        val ah = alignHandle(c)
+        canvas.drawLine((c[4] + c[6]) / 2, (c[5] + c[7]) / 2, ah.x, ah.y, boxPaint)
         handlePaint.style = Paint.Style.FILL
+        // the sides: pull one to stretch along the box
+        for (i in 0 until 4) {
+            val j = (i + 1) % 4
+            val mx = (c[i * 2] + c[j * 2]) / 2; val my = (c[i * 2 + 1] + c[j * 2 + 1]) / 2
+            val ang = Math.toDegrees(atan2((c[j * 2 + 1] - c[i * 2 + 1]).toDouble(), (c[j * 2] - c[i * 2]).toDouble())).toFloat()
+            canvas.save(); canvas.rotate(ang, mx, my)
+            handlePaint.color = Color.WHITE
+            canvas.drawRoundRect(mx - 10f * density, my - 5f * density, mx + 10f * density, my + 5f * density, 4f * density, 4f * density, handlePaint)
+            handlePaint.color = Ui.ACCENT
+            canvas.drawRoundRect(mx - 7.5f * density, my - 2.5f * density, mx + 7.5f * density, my + 2.5f * density, 2.5f * density, 2.5f * density, handlePaint)
+            canvas.restore()
+        }
+        handlePaint.color = Color.WHITE
+        canvas.drawCircle(ah.x, ah.y, 9f * density, handlePaint)
+        handlePaint.color = 0xFFFFC53D.toInt()
+        canvas.drawCircle(ah.x, ah.y, 6.5f * density, handlePaint)
         for (i in 0 until 4) {
             handlePaint.color = Color.WHITE
             canvas.drawCircle(c[i * 2], c[i * 2 + 1], 9f * density, handlePaint)
@@ -664,6 +728,36 @@ class CanvasView(context: Context) : View(context) {
         canvas.drawCircle(rh.x, rh.y, 10f * density, handlePaint)
         handlePaint.color = 0xFF2ECC71.toInt()
         canvas.drawCircle(rh.x, rh.y, 7f * density, handlePaint)
+    }
+
+    /** yellow dot below the middle of the bottom edge: turns the box only */
+    private fun alignHandle(c: FloatArray): PointF {
+        val mx = (c[4] + c[6]) / 2; val my = (c[5] + c[7]) / 2
+        val cx = (c[0] + c[4]) / 2; val cy = (c[1] + c[5]) / 2
+        var dx = mx - cx; var dy = my - cy
+        val l = max(1f, hypot(dx, dy))
+        dx /= l; dy /= l
+        return PointF(mx + dx * 34f * density, my + dy * 34f * density)
+    }
+
+    /** orange: lines up with the canvas; blue: with something on another layer */
+    private fun drawSnapGuides(canvas: Canvas) {
+        if (mode != Mode.TRANSFORM_DRAG || tDrag != Drag.MOVE) return
+        val sx = snapX; val sy = snapY
+        if (sx == null && sy == null) return
+        handlePaint.style = Paint.Style.STROKE
+        handlePaint.strokeWidth = 1.2f * density
+        if (sx != null) {
+            handlePaint.color = if (snapXCanvas) 0xFFFF9F43.toInt() else 0xFF4FC3F7.toInt()
+            val a = floatArrayOf(sx, 0f, sx, doc.height.toFloat()); viewMatrix.mapPoints(a)
+            canvas.drawLine(a[0], a[1], a[2], a[3], handlePaint)
+        }
+        if (sy != null) {
+            handlePaint.color = if (snapYCanvas) 0xFFFF9F43.toInt() else 0xFF4FC3F7.toInt()
+            val a = floatArrayOf(0f, sy, doc.width.toFloat(), sy); viewMatrix.mapPoints(a)
+            canvas.drawLine(a[0], a[1], a[2], a[3], handlePaint)
+        }
+        handlePaint.style = Paint.Style.FILL
     }
 
     /** green dot above the middle of the top edge */
@@ -1023,6 +1117,11 @@ class CanvasView(context: Context) : View(context) {
             }
             else -> { mode = Mode.IGNORE; runPurpose(purpose, e.x, e.y); return }
         }
+        if (recolorMode && (stylus || fingerDrawing)) {
+            mode = Mode.IGNORE
+            recolorAt(e.x, e.y)
+            return
+        }
         if (fillMode && (stylus || fingerDrawing)) {
             mode = Mode.IGNORE
             colorDrop(e.x, e.y, color)
@@ -1047,6 +1146,18 @@ class CanvasView(context: Context) : View(context) {
         val newIsStylus = isStylusTool(e.getToolType(idx))
         when (mode) {
             Mode.DRAW -> {
+                // QuickShape holds a shape: a finger on the screen makes it perfect (circle, square…)
+                val s = shape
+                if (s != null && !newIsStylus) {
+                    val p = s.perfected()
+                    if (p != s) {
+                        shape = p
+                        renderShape(p)
+                        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                        listener?.onMessage(when (p) { is Shape.Ellipse -> "Circle"; is Shape.Poly -> if (p.pts.size == 4) "Square" else "Even shape"; else -> "Straight line" })
+                    }
+                    return
+                }
                 if (drawIsStylus) return // palm/fingers while drawing with pen: ignore
                 if (e.eventTime - downTime < 300 || strokePoints.size < 6) {
                     cancelStroke()
@@ -1192,6 +1303,7 @@ class CanvasView(context: Context) : View(context) {
         removeCallbacks(fingerHoldRunnable)
         when (mode) {
             Mode.DRAW -> finishStroke()
+            Mode.TRANSFORM_DRAG -> endTransformDrag()
             Mode.GESTURE -> {
                 trackMove(e)
                 removeCallbacks(rapidRunnable)
@@ -1988,6 +2100,14 @@ class CanvasView(context: Context) : View(context) {
         }
         if (layer.vector != null) return vectorEditor.dropColor(sx, sy, fillColor)
         if (layer.scene != null) { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); return false }
+        if (!colorDropAt(x, y, fillColor)) return false
+        listener?.onMessage("ColorDrop")
+        return true
+    }
+
+    /** ColorDrop at a document pixel of the active (drawing) layer, as one undo step */
+    private fun colorDropAt(x: Int, y: Int, fillColor: Int): Boolean {
+        val layer = doc.active
         val result = try {
             val ref = doc.fillReference()
             try { FloodFill.compute(ref, x, y, if (layer.isLayerMask) Color.WHITE else fillColor, fillThreshold) } finally { ref.recycle() }
@@ -2003,8 +2123,37 @@ class CanvasView(context: Context) : View(context) {
         Canvas(layer.bitmap).drawBitmap(result.bitmap, r.left.toFloat(), r.top.toFloat(), paint)
         result.bitmap.recycle()
         pushPixelEdit(layer, r, before)
-        listener?.onMessage("ColorDrop")
         return true
+    }
+
+    private fun recolorAt(sx: Float, sy: Float) {
+        val p = toDoc(sx, sy)
+        val layer = doc.active
+        when {
+            p.x < 0 || p.y < 0 || p.x >= doc.width || p.y >= doc.height -> return
+            !layer.visible -> { listener?.onMessage("This layer is hidden"); return }
+            layer.vector != null || layer.scene != null -> { listener?.onMessage("Recolor works on drawing layers"); return }
+        }
+        if (colorDropAt(p.x.toInt(), p.y.toInt(), color)) {
+            recolorPoint = p
+            recolorCmd = history.top()
+            listener?.onMessage("Recolor: change the color, this area follows · tap another area to move on")
+        }
+    }
+
+    /** the color changed: the last recolored area is filled again with it (one undo step still) */
+    private fun recolorUpdate() {
+        val p = recolorPoint ?: return
+        if (recolorUpdating) return
+        if (recolorCmd == null || history.top() !== recolorCmd) { recolorPoint = null; return }
+        recolorUpdating = true
+        try {
+            history.undo(doc)
+            if (colorDropAt(p.x.toInt(), p.y.toInt(), color)) recolorCmd = history.top()
+            else { recolorPoint = null; recolorCmd = null }
+            listener?.onHistoryChanged()
+            invalidate()
+        } finally { recolorUpdating = false }
     }
 
     // =========================================================
@@ -2762,6 +2911,7 @@ class CanvasView(context: Context) : View(context) {
             for (p in all) Canvas(p.layer.bitmap).drawBitmap(p.before, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC })
         }
         transform = null
+        snapTargets = null
         for (p in all) { p.floating.recycle(); p.before.recycle() }
         interaction = Interaction.PAINT
         invalidate()
@@ -2772,31 +2922,102 @@ class CanvasView(context: Context) : View(context) {
         mode = Mode.TRANSFORM_DRAG
         downTime = e.eventTime
         tStart.set(t.matrix)
+        tBoxStart.set(t.box)
         tDown = toDoc(e.x, e.y)
+        tDownScreen = PointF(e.x, e.y)
+        tMoved = false
         val cc = t.center()
         tCenter = PointF(cc[0], cc[1])
         // which handle was touched? (screen space)
         val c = t.corners()
         viewMatrix.mapPoints(c)
         val rh = rotateHandle(c)
+        val ah = alignHandle(c)
         val reach = 28f * density
+        val side = (0 until 4).firstOrNull { i ->
+            val j = (i + 1) % 4
+            hypot(e.x - (c[i * 2] + c[j * 2]) / 2, e.y - (c[i * 2 + 1] + c[j * 2 + 1]) / 2) < reach * 0.85f
+        }
         tDrag = when {
             hypot(e.x - rh.x, e.y - rh.y) < reach -> Drag.ROTATE
+            hypot(e.x - ah.x, e.y - ah.y) < reach -> Drag.ALIGN
             (0 until 4).any { hypot(e.x - c[it * 2], e.y - c[it * 2 + 1]) < reach } -> Drag.SCALE
+            side != null -> { tSide = side; Drag.SIDE }
             else -> Drag.MOVE
         }
+        tAlignStart = t.boxAngle()
+        snapX = null; snapY = null
+        if (tDrag == Drag.MOVE && transformSnap && snapTargets == null) snapTargets = collectSnapTargets(t)
+    }
+
+    private var tDownScreen = PointF()
+    private var tMoved = false
+
+    /** where things line up: the canvas (center, edges) and the edges and middles of what is on the other visible layers */
+    private fun collectSnapTargets(t: TransformSession): Pair<List<Float>, List<Float>> {
+        val xs = ArrayList<Float>(); val ys = ArrayList<Float>()
+        val moving = setOf(t.layer) + t.extras.map { it.layer }
+        for (l in doc.layers) {
+            if (l in moving || !l.visible || l.isLayerMask || l.shadow) continue
+            val r = Selections.contentBounds(l.bitmap) ?: continue
+            if (r.width() >= doc.width - 2 && r.height() >= doc.height - 2) continue // a full background tells nothing
+            xs += listOf(r.left.toFloat(), r.exactCenterX(), r.right.toFloat())
+            ys += listOf(r.top.toFloat(), r.exactCenterY(), r.bottom.toFloat())
+        }
+        return xs to ys
     }
 
     private fun updateTransformDrag(e: MotionEvent) {
         val t = transform ?: return
+        if (!tMoved && hypot(e.x - tDownScreen.x, e.y - tDownScreen.y) > 8f * density) tMoved = true
+        if (!tMoved) return
         val p = toDoc(e.x, e.y)
         t.matrix.set(tStart)
+        t.box.set(tBoxStart)
         when (tDrag) {
-            Drag.MOVE -> t.matrix.postTranslate(p.x - tDown.x, p.y - tDown.y)
+            Drag.MOVE -> {
+                var dx = p.x - tDown.x; var dy = p.y - tDown.y
+                snapX = null; snapY = null
+                if (transformSnap) {
+                    // the piece's outline (what you see), after this move
+                    val c = t.corners()
+                    var x0 = Float.MAX_VALUE; var x1 = -Float.MAX_VALUE; var y0 = Float.MAX_VALUE; var y1 = -Float.MAX_VALUE
+                    for (i in 0 until 4) { x0 = min(x0, c[i * 2]); x1 = max(x1, c[i * 2]); y0 = min(y0, c[i * 2 + 1]); y1 = max(y1, c[i * 2 + 1]) }
+                    val reach = 8f * density / zoom()
+                    val canvasX = listOf(0f, doc.width / 2f, doc.width.toFloat())
+                    val canvasY = listOf(0f, doc.height / 2f, doc.height.toFloat())
+                    val (ox, oy) = snapTargets ?: (emptyList<Float>() to emptyList())
+                    fun best(edges: List<Float>, d: Float, canvasT: List<Float>, objT: List<Float>): Triple<Float, Float, Boolean>? {
+                        var bestD = reach; var res: Triple<Float, Float, Boolean>? = null
+                        for (ed in edges) {
+                            for (tg in canvasT) { val g = tg - (ed + d); if (abs(g) < bestD) { bestD = abs(g); res = Triple(g, tg, true) } }
+                            for (tg in objT) { val g = tg - (ed + d); if (abs(g) < bestD) { bestD = abs(g); res = Triple(g, tg, false) } }
+                        }
+                        return res
+                    }
+                    best(listOf(x0, (x0 + x1) / 2, x1), dx, canvasX, ox)?.let { (g, line, cvs) -> dx += g; snapX = line; snapXCanvas = cvs }
+                    best(listOf(y0, (y0 + y1) / 2, y1), dy, canvasY, oy)?.let { (g, line, cvs) -> dy += g; snapY = line; snapYCanvas = cvs }
+                }
+                t.apply(Matrix().apply { setTranslate(dx, dy) })
+            }
             Drag.SCALE -> {
                 val d0 = max(1f, hypot(tDown.x - tCenter.x, tDown.y - tCenter.y))
                 val s = (hypot(p.x - tCenter.x, p.y - tCenter.y) / d0).coerceIn(0.02f, 50f)
-                t.matrix.postScale(s, s, tCenter.x, tCenter.y)
+                t.apply(Matrix().apply { setScale(s, s, tCenter.x, tCenter.y) })
+            }
+            Drag.SIDE -> {
+                // in the box's own frame: pull this side, the opposite one stays
+                val inv = Matrix(); t.box.invert(inv)
+                val a = floatArrayOf(tDown.x, tDown.y, p.x, p.y); inv.mapPoints(a)
+                val bw = t.bw; val bh = t.bh
+                val m = Matrix()
+                when (tSide) {
+                    0 -> { val s = ((bh - a[3]) / max(1f, bh - a[1])).coerceIn(0.02f, 50f); m.setScale(1f, s, 0f, bh) }     // top
+                    1 -> { val s = (a[2] / max(1f, a[0])).coerceIn(0.02f, 50f); m.setScale(s, 1f, 0f, 0f) }                  // right
+                    2 -> { val s = (a[3] / max(1f, a[1])).coerceIn(0.02f, 50f); m.setScale(1f, s, 0f, 0f) }                  // bottom
+                    else -> { val s = ((bw - a[2]) / max(1f, bw - a[0])).coerceIn(0.02f, 50f); m.setScale(s, 1f, bw, 0f) }  // left
+                }
+                t.apply(t.inBox(m))
             }
             Drag.ROTATE -> {
                 val a0 = Math.toDegrees(atan2((tDown.y - tCenter.y).toDouble(), (tDown.x - tCenter.x).toDouble()))
@@ -2806,17 +3027,43 @@ class CanvasView(context: Context) : View(context) {
                 val total = a
                 val snapped = Math.round(total / 45f) * 45f
                 if (abs(total - snapped) < 3f) a = snapped
-                t.matrix.postRotate(a, tCenter.x, tCenter.y)
+                t.apply(Matrix().apply { setRotate(a, tCenter.x, tCenter.y) })
+            }
+            Drag.ALIGN -> {
+                val a0 = Math.toDegrees(atan2((tDown.y - tCenter.y).toDouble(), (tDown.x - tCenter.x).toDouble()))
+                val a1 = Math.toDegrees(atan2((p.y - tCenter.y).toDouble(), (p.x - tCenter.x).toDouble()))
+                var ang = tAlignStart + (a1 - a0).toFloat()
+                val snapped = Math.round(ang / 15f) * 15f
+                if (abs(ang - snapped) < 2.5f) ang = snapped
+                t.alignBox(ang)
             }
         }
         invalidate()
     }
+
+    /** the finger left a handle: a tap without a drag asks for an exact angle or size */
+    private fun endTransformDrag() {
+        val t = transform
+        snapX = null; snapY = null
+        if (t != null && !tMoved) when (tDrag) {
+            Drag.ROTATE -> onTransformExact?.invoke(true)
+            Drag.SCALE, Drag.SIDE -> onTransformExact?.invoke(false)
+            else -> {}
+        }
+        invalidate()
+    }
+
+    fun transformAngle(): Float = transform?.boxAngle() ?: 0f
+    fun transformSize(): Pair<Float, Float> = transform?.boxSize() ?: (0f to 0f)
+    fun setTransformAngle(deg: Float) { transform?.setAngle(deg); invalidate() }
+    fun setTransformSize(w: Float, h: Float) { transform?.setSize(w, h); invalidate() }
 
     private fun startTransformPinch(e: MotionEvent) {
         val t = transform ?: return
         if (e.pointerCount < 2) return
         mode = Mode.TRANSFORM_PINCH
         tStart.set(t.matrix)
+        tBoxStart.set(t.box)
         tP0 = toDoc(e.getX(0), e.getY(0))
         tP1 = toDoc(e.getX(1), e.getY(1))
     }
@@ -2831,10 +3078,13 @@ class CanvasView(context: Context) : View(context) {
         val a0 = atan2(tP1.y - tP0.y, tP1.x - tP0.x)
         val a1 = atan2(q1.y - q0.y, q1.x - q0.x)
         t.matrix.set(tStart)
-        t.matrix.postTranslate(-(tP0.x + tP1.x) / 2, -(tP0.y + tP1.y) / 2)
-        t.matrix.postScale(s, s)
-        t.matrix.postRotate(Math.toDegrees((a1 - a0).toDouble()).toFloat())
-        t.matrix.postTranslate((q0.x + q1.x) / 2, (q0.y + q1.y) / 2)
+        t.box.set(tBoxStart)
+        t.apply(Matrix().apply {
+            setTranslate(-(tP0.x + tP1.x) / 2, -(tP0.y + tP1.y) / 2)
+            postScale(s, s)
+            postRotate(Math.toDegrees((a1 - a0).toDouble()).toFloat())
+            postTranslate((q0.x + q1.x) / 2, (q0.y + q1.y) / 2)
+        })
         invalidate()
     }
 

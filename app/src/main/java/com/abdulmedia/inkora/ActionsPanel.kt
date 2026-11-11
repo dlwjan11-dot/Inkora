@@ -42,6 +42,7 @@ interface ActionsHost {
     /** watercolor strokes dry (crisp edge, pigment line, blots) when the pen lifts */
     var watercolorDrying: Boolean
     var wetBleed: Boolean
+    var lightInterface: Boolean
     // Share
     fun export(kind: String)
     // Video
@@ -86,7 +87,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
 
     init {
         orientation = VERTICAL
-        background = Ui.rounded(0xF51F2026.toInt(), 22f, 0x1AFFFFFF, 1)
+        background = Ui.rounded(Ui.PANEL, 22f, Ui.OUTLINE, 1)
         setPadding(14.dp, 16.dp, 14.dp, 12.dp)
         isClickable = true
         addView(Ui.text(context, "Actions", 24f, bold = true).apply { setPadding(10.dp, 0, 0, 10.dp) })
@@ -136,7 +137,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     private fun group(vararg rows: View) {
         val card = LinearLayout(context).apply {
             orientation = VERTICAL
-            background = Ui.rounded(0xFF2B2C33.toInt(), 16f)
+            background = Ui.rounded(Ui.PANEL_ROW, 16f)
         }
         rows.forEachIndexed { i, r ->
             if (i > 0) card.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) }, LayoutParams(-1, 1).apply { marginStart = 16.dp })
@@ -182,7 +183,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         r.addView(Ui.text(context, label, 16f))
         val seg = LinearLayout(context).apply {
             orientation = HORIZONTAL
-            background = Ui.rounded(0xFF1F2026.toInt(), 12f)
+            background = Ui.rounded(Ui.SUNKEN, 12f)
             setPadding(3.dp, 3.dp, 3.dp, 3.dp)
         }
         for ((key, text) in options) {
@@ -323,6 +324,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
                 val dk = if (dock == s) (if (s == "Left") "Right" else "Left") else dock
                 host.setEdges(dk, s); rebuild()
             },
+            switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface) { host.lightInterface = it },
             switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor) { host.brushCursor = it },
             switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying) { host.watercolorDrying = it },
             switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed) { host.wetBleed = it },
@@ -342,6 +344,11 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             sliderRow("ColorDrop fill sensitivity", cv.fillThreshold, { "${(it * 100).roundToInt()}%" }) { v ->
                 cv.fillThreshold = v
                 host.prefs.edit().putFloat("fillThreshold", v).apply()
+            },
+            sliderRow("Selection mask visibility", cv.selectionShade / 0.8f, { "${(it * 100).roundToInt()}%" }) { v ->
+                cv.selectionShade = v * 0.8f
+                cv.invalidate()
+                host.prefs.edit().putFloat("selectionShade", cv.selectionShade).apply()
             }
         )
         group(row("Keyboard shortcuts") { host.openShortcuts() })
@@ -397,7 +404,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         )
         val card = LinearLayout(context).apply {
             orientation = VERTICAL
-            background = Ui.rounded(0xFF2B2C33.toInt(), 16f)
+            background = Ui.rounded(Ui.PANEL_ROW, 16f)
             setPadding(16.dp, 12.dp, 16.dp, 12.dp)
         }
         card.addView(Ui.text(context, "Gestures", 16f, bold = true).apply { setPadding(0, 0, 0, 6.dp) })

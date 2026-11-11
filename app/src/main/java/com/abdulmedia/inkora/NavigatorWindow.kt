@@ -86,7 +86,7 @@ class NavigatorWindow(
         }
 
         init {
-            background = Ui.rounded(0xFF14151A.toInt(), 10f)
+            background = Ui.rounded(Ui.SUNKEN, 10f)
         }
 
         override fun onDraw(canvas: Canvas) {

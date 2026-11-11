@@ -91,7 +91,7 @@ class ToolsPanel(
             setPadding(14.dp, 12.dp, 8.dp, 10.dp)
         }
         tabs.orientation = HORIZONTAL
-        tabs.background = Ui.rounded(0xFF121215.toInt(), 14f)
+        tabs.background = Ui.rounded(Ui.SUNKEN, 14f)
         tabs.setPadding(3.dp, 3.dp, 3.dp, 3.dp)
         if (context.narrow) head.addView(tabs, LayoutParams(0, 42.dp, 1f))
         else { head.addView(tabs, LayoutParams(300.dp, 42.dp)); head.addView(View(context), LayoutParams(0, 1, 1f)) }
@@ -213,7 +213,7 @@ class ToolsPanel(
             setOnClickListener { onClick() }
         }
         val top = FrameLayout(context).apply {
-            background = Ui.rounded(if (active) 0x226E9FF5 else 0xFF1C1D22.toInt(), 10f)
+            background = Ui.rounded(if (active) Ui.ACCENT_SOFT else Ui.CARD, 10f)
         }
         if (art != null) top.addView(art, FrameLayout.LayoutParams(-1, -1))
         else if (icon != null) top.addView(IconView(context, icon).apply {
@@ -290,7 +290,7 @@ class ToolsPanel(
     // =========================================================
 
     private fun buildCreate() {
-        grid(listOf(toolCard("text"), toolCard("photo"), toolCard("vector"), toolCard("pose3d"), toolCard("shadow_photo"), toolCard("fill"), toolCard("gradient"), toolCard("eyedropper"), toolCard("palette_photo"), toolCard("measure")))
+        grid(listOf(toolCard("text"), toolCard("photo"), toolCard("vector"), toolCard("pose3d"), toolCard("shadow_photo"), toolCard("fill"), toolCard("gradient"), toolCard("recolor"), toolCard("eyedropper"), toolCard("palette_photo"), toolCard("measure")))
         content.addView(Ui.text(context, "Tip: drag the color circle (top right) onto an area to fill it with ColorDrop.", 12f, Ui.TEXT_DIM)
             .apply { setPadding(4.dp, 12.dp, 4.dp, 0) })
     }

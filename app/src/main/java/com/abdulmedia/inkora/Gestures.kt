@@ -269,13 +269,13 @@ class GestureControlsView(
     private val heading = Ui.text(context, "", 20f, bold = true)
 
     init {
-        setBackgroundColor(0xFF1A1B20.toInt())
+        setBackgroundColor(Ui.SURFACE)
         isClickable = true // nothing reaches the canvas underneath
         val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
 
         val railCard = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(0xFF242429.toInt(), 20f, 0xFF34343B.toInt(), 1)
+            background = Ui.rounded(Ui.PANEL_ROW, 20f, Ui.OUTLINE, 1)
             setPadding(8.dp, 18.dp, 8.dp, 8.dp)
         }
         railCard.addView(Ui.text(context, "Gesture controls", 22f, bold = true).apply { setPadding(14.dp, 0, 0, 14.dp) })
@@ -327,11 +327,11 @@ class GestureControlsView(
         body.removeAllViews()
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(0xFF27282F.toInt(), 22f)
+            background = Ui.rounded(Ui.CARD, 22f)
         }
         val opts = GestureSettings.OPTIONS[page].orEmpty()
         opts.forEachIndexed { i, o ->
-            if (i > 0) card.addView(View(context).apply { setBackgroundColor(0xFF1A1B20.toInt()) }, LinearLayout.LayoutParams(-1, 1.dp))
+            if (i > 0) card.addView(View(context).apply { setBackgroundColor(Ui.SURFACE) }, LinearLayout.LayoutParams(-1, 1.dp))
             val on = settings.isOn(page, o.key)
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL

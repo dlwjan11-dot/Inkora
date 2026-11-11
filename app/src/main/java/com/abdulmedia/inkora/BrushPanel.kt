@@ -275,7 +275,7 @@ class BrushPanel(
                 orientation = VERTICAL
                 setPadding(14.dp, 9.dp, 12.dp, 4.dp)
                 // solid, so the buttons behind it show only where it has slid away
-                background = Ui.rounded(if (on) Ui.ACCENT else 0xFF1E1F25.toInt(), 14f)
+                background = Ui.rounded(if (on) Ui.ACCENT else Ui.SUNKEN, 14f)
             }
             card.addView(Ui.text(context, b.preset.name, 14.5f, if (on) 0xFFFFFFFF.toInt() else Ui.TEXT, on).apply {
                 maxLines = 1

@@ -54,6 +54,33 @@ sealed class Shape {
     }
 }
 
+/**
+ * The perfect version of a shape (a finger touches the screen while QuickShape holds it):
+ * an ellipse becomes a circle, a four-sided shape a square, any closed shape a regular one,
+ * a line keeps to 15° steps.
+ */
+fun Shape.perfected(): Shape = when (this) {
+    is Shape.Ellipse -> { val r = (rx + ry) / 2f; Shape.Ellipse(cx, cy, r, r, angle) }
+    is Shape.Line -> {
+        val len = kotlin.math.hypot(b.x - a.x, b.y - a.y)
+        val ang = kotlin.math.atan2(b.y - a.y, b.x - a.x)
+        val step = (Math.PI / 12).toFloat()
+        val s = Math.round(ang / step) * step
+        Shape.Line(a, PointF(a.x + len * cos(s), a.y + len * sin(s)))
+    }
+    is Shape.Poly -> if (!closed || pts.size < 3) this else {
+        val c = center()
+        val n = pts.size
+        // same middle, same size (average distance of the corners), turned like its first corner
+        val r = pts.map { kotlin.math.hypot(it.x - c.x, it.y - c.y) }.average().toFloat()
+        val a0 = kotlin.math.atan2(pts[0].y - c.y, pts[0].x - c.x)
+        // the corners keep the way they were drawn (clockwise or not)
+        val cross = (pts[1].x - pts[0].x) * (pts[2].y - pts[0].y) - (pts[1].y - pts[0].y) * (pts[2].x - pts[0].x)
+        val dir = if (cross >= 0) 1f else -1f
+        Shape.Poly(List(n) { k -> val a = a0 + dir * 2f * Math.PI.toFloat() * k / n; PointF(c.x + r * cos(a), c.y + r * sin(a)) }, true)
+    }
+}
+
 object QuickShape {
 
     fun detect(input: List<InputPoint>): Shape? {

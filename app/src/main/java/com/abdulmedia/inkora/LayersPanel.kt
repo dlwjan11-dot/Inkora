@@ -21,6 +21,10 @@ import android.widget.ScrollView
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+private const val TWO_TAP = 0
+private const val TWO_SWIPE = 1
+private const val TWO_PINCH = 2
+
 @SuppressLint("ViewConstructor")
 class LayersPanel(
     context: Context,
@@ -28,6 +32,10 @@ class LayersPanel(
     private val currentColor: () -> Int,
     private val onAddVector: () -> Unit = {},
     private val onPin: (() -> Unit)? = null,
+    /** two fingers tapped a layer: its opacity follows a finger sliding on the screen */
+    private val onOpacityDrag: ((Layer) -> Unit)? = null,
+    /** puts a copy of the layer into another artwork of the gallery */
+    private val onCopyToArtwork: ((Layer) -> Unit)? = null,
     /** opens the 3D editor for a 3D layer */
     private val onEdit3D: ((Layer) -> Unit)? = null,
     private val onChanged: () -> Unit
@@ -41,6 +49,8 @@ class LayersPanel(
     private val doc get() = cv.doc
 
     init {
+        // two fingers on two layers reach the first one's row together: a pinch merges them
+        list.isMotionEventSplittingEnabled = false
         orientation = VERTICAL
         setPadding(14.dp, 12.dp, 14.dp, 14.dp)
         background = Ui.rounded(Ui.PANEL, 18f)
@@ -198,9 +208,24 @@ class LayersPanel(
             layer.visible = !layer.visible
             changed()
         }
+        // hold the checkbox: this layer alone; hold again: every layer back as it was
+        eye.setOnLongClickListener { solo(layer); true }
         row.addView(eye, LayoutParams(40.dp, 40.dp))
 
-        swipeable(row, onSwipe = {
+        swipeable(row, onTwo = { kind, y0, y1 ->
+            when (kind) {
+                TWO_TAP -> onOpacityDrag?.invoke(layer)
+                TWO_SWIPE -> {
+                    if (layer.vector != null || layer.scene != null || layer.isLayerMask) cv.listener?.onMessage("Alpha Lock is for drawing layers")
+                    else {
+                        layer.alphaLock = !layer.alphaLock
+                        cv.listener?.onMessage(if (layer.alphaLock) "Alpha Lock: on · paint stays inside what is there" else "Alpha Lock: off")
+                        changed()
+                    }
+                }
+                TWO_PINCH -> pinchMerge(y0, y1)
+            }
+        }, onSwipe = {
             // pick or un-pick this layer, keeping the active one
             if (!isActive) {
                 if (!picked.remove(layer)) picked.add(layer)
@@ -226,9 +251,12 @@ class LayersPanel(
      * or a long press. The swipe works in both directions, so it feels the same in Arabic.
      */
     @SuppressLint("ClickableViewAccessibility")
-    private fun swipeable(row: View, onSwipe: () -> Unit, onTap: () -> Unit) {
+    private fun swipeable(row: View, onSwipe: () -> Unit, onTap: () -> Unit, onTwo: ((Int, Float, Float) -> Unit)? = null) {
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         var x0 = 0f; var y0 = 0f; var done = false
+        // two fingers
+        var multi = false; var mt = 0L
+        val mx = FloatArray(2); val my = FloatArray(2); val cx = FloatArray(2); val cy = FloatArray(2)
         row.foreground = Ui.ripple(10f)
         val hold = Runnable {
             if (!done) {
@@ -239,6 +267,33 @@ class LayersPanel(
             }
         }
         row.setOnTouchListener { v, e ->
+            if (onTwo != null && (multi || e.pointerCount >= 2)) {
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_POINTER_DOWN -> if (!multi && e.pointerCount == 2 && !done) {
+                        multi = true; mt = e.eventTime
+                        v.removeCallbacks(hold); v.isPressed = false
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                        for (k in 0..1) { mx[k] = e.getRawX(k); my[k] = e.getRawY(k); cx[k] = mx[k]; cy[k] = my[k] }
+                    }
+                    MotionEvent.ACTION_MOVE -> if (multi && e.pointerCount >= 2) for (k in 0..1) { cx[k] = e.getRawX(k); cy[k] = e.getRawY(k) }
+                    MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (multi) {
+                        multi = false; done = true
+                        if (e.actionMasked != MotionEvent.ACTION_CANCEL) {
+                            val dx = ((cx[0] - mx[0]) + (cx[1] - mx[1])) / 2f
+                            val dy = ((cy[0] - my[0]) + (cy[1] - my[1])) / 2f
+                            val d0 = kotlin.math.hypot(mx[1] - mx[0], my[1] - my[0])
+                            val d1 = kotlin.math.hypot(cx[1] - cx[0], cy[1] - cy[0])
+                            val moved = maxOf(kotlin.math.hypot(cx[0] - mx[0], cy[0] - my[0]), kotlin.math.hypot(cx[1] - mx[1], cy[1] - my[1]))
+                            when {
+                                e.eventTime - mt < 350 && moved < slop * 2 -> post { onTwo(TWO_TAP, 0f, 0f) }
+                                kotlin.math.abs(dx) > 40.dp && kotlin.math.abs(dy) < kotlin.math.abs(dx) * 0.7f -> post { onTwo(TWO_SWIPE, 0f, 0f) }
+                                d0 > 36.dp && d1 < d0 * 0.6f -> { val a = my[0]; val b = my[1]; post { onTwo(TWO_PINCH, a, b) } }
+                            }
+                        }
+                    }
+                }
+                return@setOnTouchListener true
+            }
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     x0 = e.rawX; y0 = e.rawY; done = false; v.isPressed = true
@@ -265,6 +320,48 @@ class LayersPanel(
             }
             true
         }
+    }
+
+    /** the layer under a point of the screen (by its row) */
+    private fun layerAtScreenY(y: Float): Layer? {
+        val loc = IntArray(2)
+        for (r in layerRows()) {
+            r.getLocationOnScreen(loc)
+            if (y >= loc[1] - 2.dp && y <= loc[1] + r.height + 2.dp) return r.tag as Layer
+        }
+        return null
+    }
+
+    /** two fingers on two layers, pinched together: those layers and the ones between become one */
+    private fun pinchMerge(y0: Float, y1: Float) {
+        val a = layerAtScreenY(y0) ?: return
+        val b = layerAtScreenY(y1) ?: return
+        val ia = doc.layers.indexOf(a); val ib = doc.layers.indexOf(b)
+        if (ia < 0 || ib < 0 || ia == ib) { cv.listener?.onMessage("Pinch two layers together to merge them (and the ones between)"); return }
+        val lo = minOf(ia, ib); val hi = maxOf(ia, ib)
+        val t = doc.layers.subList(lo, hi + 1).filter { !it.isLayerMask }
+        if (t.size < 2) return
+        mergeInto(t, doc.layers[hi].let { if (it.isLayerMask) doc.layers[hi - 1] else it }.name, "merge")
+        cv.listener?.onMessage("Merged")
+    }
+
+    /** this layer alone (hold its checkbox); again: all layers as they were */
+    private fun solo(layer: Layer) {
+        val saved = cv.soloSaved
+        if (saved != null) {
+            for ((l, vis) in saved) if (l in doc.layers) l.visible = vis
+            cv.soloSaved = null
+            cv.listener?.onMessage("All layers are back")
+        } else {
+            cv.soloSaved = doc.layers.associateWith { it.visible }
+            val i = doc.layers.indexOf(layer)
+            val mask = if (i >= 0 && doc.hasMask(i)) doc.layers[i + 1] else null
+            for (l in doc.layers) if (l !== layer && l !== mask) l.visible = false
+            layer.visible = true
+            layer.groupId?.let { g -> doc.groups[g]?.visible = true }
+            cv.listener?.onMessage("Only this layer · hold its checkbox again to see them all")
+        }
+        changed()
     }
 
     /** dragging a layer by its grip: the row follows the finger, and is put where it is let go */
@@ -453,7 +550,7 @@ class LayersPanel(
         val box = LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(10.dp, 4.dp, 10.dp, 10.dp)
-            background = Ui.rounded(0xFF25262D.toInt(), 10f)
+            background = Ui.rounded(Ui.CARD, 10f)
         }
         box.addView(Ui.sliderRow(context, "Opacity", g.opacity, { "${(it * 100).roundToInt()}%" }) {
             g.opacity = it
@@ -491,7 +588,7 @@ class LayersPanel(
         val box = LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(10.dp, 8.dp, 10.dp, 10.dp)
-            background = Ui.rounded(0xFF1E2C44.toInt(), 12f)
+            background = Ui.rounded(Ui.PANEL_ROW_ACTIVE, 12f)
         }
         val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         head.addView(Ui.text(context, "Selected layers", 13f, bold = true))
@@ -705,7 +802,7 @@ class LayersPanel(
         val box = LinearLayout(context).apply {
             orientation = VERTICAL
             setPadding(10.dp, 4.dp, 10.dp, 10.dp)
-            background = Ui.rounded(0xFF25262D.toInt(), 10f)
+            background = Ui.rounded(Ui.CARD, 10f)
         }
         box.addView(Ui.sliderRow(context, "Opacity", layer.opacity, { "${(it * 100).roundToInt()}%" }) {
             layer.opacity = it
@@ -728,6 +825,7 @@ class LayersPanel(
 
         val actions = mutableListOf(
             "Rename" to { rename(layer) },
+            "Copy to another artwork…" to { onCopyToArtwork?.invoke(layer); Unit },
             (if (layer.isClippingMask) "Clipping Mask: ON" else "Clipping Mask: off") to {
                 layer.isClippingMask = !layer.isClippingMask; changed()
             },
@@ -1118,9 +1216,9 @@ class LayersPanel(
     companion object {
         /** layer thumbnails, kept until the layer's pixels change (or the layer is gone) */
         private val thumbs = java.util.WeakHashMap<Layer, Pair<LongArray, Bitmap>>()
-        private const val PICKED = 0xFF35507A.toInt()
-        private const val GROUP_ROW = 0xFF2F2F37.toInt()
-        private const val GROUP_HAS_ACTIVE = 0xFF2B3446.toInt()
+        private val PICKED get() = if (Ui.light) 0xFFC2D5F7.toInt() else 0xFF35507A.toInt()
+        private val GROUP_ROW get() = if (Ui.light) 0xFFE1E4EA.toInt() else 0xFF2F2F37.toInt()
+        private val GROUP_HAS_ACTIVE get() = if (Ui.light) 0xFFDCE6F7.toInt() else 0xFF2B3446.toInt()
     }
 }
 

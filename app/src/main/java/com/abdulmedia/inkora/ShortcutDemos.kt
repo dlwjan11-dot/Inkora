@@ -172,7 +172,7 @@ class DemoView(context: Context, private val demo: Demos.Demo) : View(context) {
 @SuppressLint("ViewConstructor")
 class DemosPage(context: Context, onKeyboard: () -> Unit, onClose: () -> Unit) : FrameLayout(context) {
     init {
-        setBackgroundColor(0xF2101115.toInt())
+        setBackgroundColor(Ui.SCRIM)
         isClickable = true
         val narrow = context.narrow
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }

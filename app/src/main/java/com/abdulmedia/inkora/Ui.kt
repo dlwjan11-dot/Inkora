@@ -31,18 +31,37 @@ object Screen { var wDp = 0; var hDp = 0 }
 val Float.dp: Float get() = this * Resources.getSystem().displayMetrics.density
 
 object Ui {
-    val PANEL = 0xF51E1F25.toInt()
-    val PANEL_ROW = 0xFF2B2C33.toInt()
-    val PANEL_ROW_ACTIVE = 0xFF2B3A55.toInt()
-    val BAR = 0xF0141519.toInt()
-    val ACCENT = 0xFF6E9FF5.toInt()
-    val ACCENT_SOFT = 0x2E6E9FF5
-    val TEXT = 0xFFE8E9ED.toInt()
-    val TEXT_DIM = 0xFF8D92A0.toInt()
-    val CARD = 0xFF27282F.toInt()
-    val CARD_HI = 0xFF30333A.toInt()
-    val DIVIDER = 0x16FFFFFF
-    val DANGER = 0xFFF07178.toInt()
+    /** the light interface (Preferences); the colors below follow it. Set before the screen is built. */
+    var light = false
+
+    private fun pick(dark: Long, bright: Long) = (if (light) bright else dark).toInt()
+
+    val PANEL get() = pick(0xF51E1F25, 0xF7F7F8FB)
+    val PANEL_ROW get() = pick(0xFF2B2C33, 0xFFE8EAF0)
+    val PANEL_ROW_ACTIVE get() = pick(0xFF2B3A55, 0xFFD3E1FA)
+    val BAR get() = pick(0xF0141519, 0xF5FFFFFF)
+    val ACCENT get() = pick(0xFF6E9FF5, 0xFF2F6FE0)
+    val ACCENT_SOFT get() = pick(0x2E6E9FF5, 0x2E2F6FE0)
+    val TEXT get() = pick(0xFFE8E9ED, 0xFF1C1E24)
+    val TEXT_DIM get() = pick(0xFF8D92A0, 0xFF5F6573)
+    val CARD get() = pick(0xFF27282F, 0xFFEEF0F4)
+    val CARD_HI get() = pick(0xFF30333A, 0xFFE2E5EB)
+    val DIVIDER get() = pick(0x16FFFFFF, 0x1A000000)
+    val DANGER get() = pick(0xFFF07178, 0xFFD64550)
+    /** a whole page (gallery, brush studio, settings pages) */
+    val SURFACE get() = pick(0xFF101115, 0xFFF2F3F6)
+    /** a page laid over the canvas */
+    val SCRIM get() = pick(0xF2101115, 0xF4F2F3F6)
+    /** sunken fields: tabs, thumbnails, small windows */
+    val SUNKEN get() = pick(0xFF14151A, 0xFFDDE0E7)
+    /** around the canvas */
+    val CANVAS_BG get() = pick(0xFF2A2B31, 0xFFCDD0D6)
+    /** thin outlines of cards */
+    val OUTLINE get() = pick(0x1AFFFFFF, 0x1F000000)
+    /** the empty part of a slider */
+    val TRACK get() = pick(0x55FFFFFF, 0x33000000)
+    /** text on the accent color */
+    val ON_ACCENT = 0xFFFFFFFF.toInt()
 
     fun rounded(color: Int, radiusDp: Float, strokeColor: Int = 0, strokeDp: Int = 0) = GradientDrawable().apply {
         setColor(color)
@@ -80,7 +99,7 @@ object Ui {
         progress = (value * 1000).roundToInt()
         progressTintList = ColorStateList.valueOf(ACCENT)
         thumbTintList = ColorStateList.valueOf(TEXT)
-        progressBackgroundTintList = ColorStateList.valueOf(0x55FFFFFF)
+        progressBackgroundTintList = ColorStateList.valueOf(TRACK)
         setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
                 if (fromUser) onChange(p / 1000f)
@@ -103,6 +122,7 @@ object Ui {
         textSize = 13f
         setPadding(14.dp, 8.dp, 14.dp, 8.dp)
         background = rounded(if (primary) ACCENT else PANEL_ROW, 18f)
+        if (primary) setTextColor(ON_ACCENT)
         foreground = ripple(18f)
     }
 

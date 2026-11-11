@@ -290,34 +290,93 @@ class TransformSession(
 ) {
     class Piece(val layer: Layer, val floating: Bitmap, val before: Bitmap)
 
+    /** maps the piece into the document */
     val matrix = Matrix().apply { setTranslate(source.left.toFloat(), source.top.toFloat()) }
     private val start = Matrix(matrix)
 
     val fw get() = floating.width.toFloat()
     val fh get() = floating.height.toFloat()
 
-    /** corners of the floating piece in document coordinates: x0,y0 … x3,y3 (TL, TR, BR, BL) */
+    /**
+     * The box you hold (handles, sides): its own frame, [bw] x [bh] mapped by [box]. It moves with
+     * the piece, but it can also be turned on its own (the yellow dot) so a side stretches the piece
+     * along its real direction, not along the canvas.
+     */
+    val box = Matrix(matrix)
+    var bw = fw
+        private set
+    var bh = fh
+        private set
+
+    /** corners of the box in document coordinates: x0,y0 … x3,y3 (TL, TR, BR, BL) */
     fun corners(): FloatArray {
-        val pts = floatArrayOf(0f, 0f, fw, 0f, fw, fh, 0f, fh)
-        matrix.mapPoints(pts)
+        val pts = floatArrayOf(0f, 0f, bw, 0f, bw, bh, 0f, bh)
+        box.mapPoints(pts)
         return pts
     }
 
     fun center(): FloatArray {
-        val c = floatArrayOf(fw / 2, fh / 2)
-        matrix.mapPoints(c)
+        val c = floatArrayOf(bw / 2, bh / 2)
+        box.mapPoints(c)
         return c
     }
 
-    fun flipH() = matrix.preScale(-1f, 1f, fw / 2, fh / 2)
-    fun flipV() = matrix.preScale(1f, -1f, fw / 2, fh / 2)
-    fun rotate90() = matrix.preRotate(90f, fw / 2, fh / 2)
-    fun reset() = matrix.set(start)
+    /** a change in document space, applied to the piece and its box together */
+    fun apply(d: Matrix) { matrix.postConcat(d); box.postConcat(d) }
+
+    /** a change written in the box's own frame (stretch a side, flip), turned into document space */
+    fun inBox(local: Matrix): Matrix {
+        val inv = Matrix(); box.invert(inv)
+        return Matrix(inv).apply { postConcat(local); postConcat(box) }
+    }
+
+    /** the box's turn from the canvas, in degrees */
+    fun boxAngle(): Float {
+        val p = floatArrayOf(0f, 0f, 1f, 0f); box.mapPoints(p)
+        return Math.toDegrees(kotlin.math.atan2((p[3] - p[1]).toDouble(), (p[2] - p[0]).toDouble())).toFloat()
+    }
+
+    /** the box's size in document pixels */
+    fun boxSize(): Pair<Float, Float> {
+        val c = corners()
+        return kotlin.math.hypot(c[2] - c[0], c[3] - c[1]) to kotlin.math.hypot(c[6] - c[0], c[7] - c[1])
+    }
+
+    /** turns the box only (the piece stays): it is fitted around the piece again at the new angle */
+    fun alignBox(angle: Float) {
+        val pts = floatArrayOf(0f, 0f, fw, 0f, fw, fh, 0f, fh)
+        matrix.mapPoints(pts)
+        val r = Matrix().apply { setRotate(-angle) }
+        r.mapPoints(pts)
+        var x0 = Float.MAX_VALUE; var y0 = Float.MAX_VALUE; var x1 = -Float.MAX_VALUE; var y1 = -Float.MAX_VALUE
+        for (i in 0 until 4) { x0 = minOf(x0, pts[i * 2]); x1 = maxOf(x1, pts[i * 2]); y0 = minOf(y0, pts[i * 2 + 1]); y1 = maxOf(y1, pts[i * 2 + 1]) }
+        bw = maxOf(1f, x1 - x0); bh = maxOf(1f, y1 - y0)
+        box.setTranslate(x0, y0)
+        box.postRotate(angle)
+    }
+
+    private fun boxToPiece() { box.set(matrix); bw = fw; bh = fh }
+
+    fun flipH() = apply(inBox(Matrix().apply { setScale(-1f, 1f, bw / 2, bh / 2) }))
+    fun flipV() = apply(inBox(Matrix().apply { setScale(1f, -1f, bw / 2, bh / 2) }))
+    fun rotate90() { val c = center(); apply(Matrix().apply { setRotate(90f, c[0], c[1]) }) }
+    fun reset() { matrix.set(start); boxToPiece() }
 
     fun fitTo(w: Int, h: Int) {
         val s = minOf(w / fw, h / fh)
         matrix.setScale(s, s)
         matrix.postTranslate((w - fw * s) / 2, (h - fh * s) / 2)
+        boxToPiece()
+    }
+
+    /** turn to exactly [deg] (the box's angle) around its middle */
+    fun setAngle(deg: Float) { val c = center(); apply(Matrix().apply { setRotate(deg - boxAngle(), c[0], c[1]) }) }
+
+    /** make the box exactly [w] x [h] document pixels, from its middle */
+    fun setSize(w: Float, h: Float) {
+        val (cw, ch) = boxSize()
+        if (cw < 0.5f || ch < 0.5f) return
+        apply(inBox(Matrix().apply { setScale(w / cw, h / ch, bw / 2, bh / 2) }))
     }
 
     /** document-space rectangle touched by the result */

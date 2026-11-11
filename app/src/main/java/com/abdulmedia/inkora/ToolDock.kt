@@ -47,6 +47,7 @@ object ToolCatalog {
         ToolDef("eyedropper", "Eyedropper", Icon.EYEDROPPER, "Color", "Pick a color from the canvas"),
         ToolDef("fill", "Fill", Icon.FILL, "Color", "Tap areas to fill them"),
         ToolDef("gradient", "Gradient", Icon.CONTRAST, "Color", "Drag: one color into another, or fading out"),
+        ToolDef("recolor", "Recolor", Icon.FILL, "Color", "Tap an area; change the color and it follows"),
         ToolDef("palette_photo", "Palette from photo", Icon.PALETTE, "Color", "The main colors of a photo, as a palette"),
         ToolDef("measure", "Measure", Icon.RULER, "Guides", "Length and angle; turn it into a ruler"),
         ToolDef("text", "Text", Icon.TEXT, "Create", "Any language, 9 fonts"),

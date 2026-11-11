@@ -32,6 +32,7 @@ import android.widget.ScrollView
 import android.widget.Toast
 import kotlin.concurrent.thread
 import kotlin.math.hypot
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -110,6 +111,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installCrashReporter()
+        Ui.light = prefs.getBoolean("light_ui", false)
         LivingBrushes.init(this)
         // the layer limit follows this device's memory
         runCatching {
@@ -122,7 +124,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         PressureCurve.load(prefs)
         Symmetry.segments = prefs.getInt("kaleidoSegments", 6)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.setBackgroundDrawable(ColorDrawable(0xFF2A2B31.toInt()))
+        window.setBackgroundDrawable(ColorDrawable(Ui.CANVAS_BG))
         buildUi()
         goFullscreen()
 
@@ -146,6 +148,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)
         cv.fillThreshold = prefs.getFloat("fillThreshold", cv.fillThreshold)
+        cv.selectionShade = prefs.getFloat("selectionShade", cv.selectionShade)
         cv.quickShapeEnabled = prefs.getBoolean("quickShape", true)
         if (prefs.contains("fingerDrawing")) {
             cv.fingerDrawing = prefs.getBoolean("fingerDrawing", true)
@@ -219,6 +222,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             cv.interaction == Interaction.SELECT -> { cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll() }
             cv.interaction == Interaction.GRADIENT -> leaveGradient()
             cv.interaction == Interaction.MEASURE -> leaveMeasure()
+            cv.recolorMode -> leaveRecolor()
+            gallery?.previewOpen() == true -> gallery?.closePreview()
             gallery != null && galleryFromCanvas -> closeGallery()
             else -> {
                 autosave()
@@ -942,7 +947,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             id == "copy_paste" -> if (cv.selection == null) hud.show("Select something first") else cv.copySelectionToNewLayer()
             id == "transform" -> if (isVector) { cv.vectorEditor.tool = VTool.SELECT; refreshAll() } else enterTransform()
             id == "eyedropper" -> cv.armEyedropper()
+            id == "recolor" -> if (cv.recolorMode) leaveRecolor() else enterRecolor()
             id == "fill" -> {
+                if (cv.recolorMode) leaveRecolor()
                 cv.fillMode = !cv.fillMode
                 if (cv.fillMode && cv.interaction == Interaction.SELECT) { cv.interaction = Interaction.PAINT; hideBottomBar() }
                 hud.show(if (cv.fillMode) "Fill: tap an area to fill it with your color" else "Fill off")
@@ -1008,6 +1015,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "gradient" -> cv.interaction == Interaction.GRADIENT
             "measure" -> cv.interaction == Interaction.MEASURE
             "fill" -> cv.fillMode
+            "recolor" -> cv.recolorMode
             "guides" -> cv.doc.guide.type != GuideType.OFF
             "assisted" -> cv.doc.guide.assisted && cv.doc.guide.type != GuideType.OFF
             "quickshape" -> cv.quickShapeEnabled
@@ -1315,6 +1323,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         // picking a painting tool leaves selection mode (the selection itself stays and limits painting)
         if (cv.interaction == Interaction.GRADIENT) leaveGradient()
         if (cv.interaction == Interaction.MEASURE) leaveMeasure()
+        if (cv.recolorMode) leaveRecolor()
         if (cv.interaction == Interaction.SELECT) {
             cv.interaction = Interaction.PAINT
             hideBottomBar()
@@ -1372,13 +1381,26 @@ class MainActivity : Activity(), CanvasView.Listener {
         var downX = 0f
         var downY = 0f
         var dragging = false
+        var held = false
+        // hold the color: back to the color before it (and hold again to go back)
+        val hold = Runnable {
+            if (!dragging) {
+                held = true
+                swapColor()
+                colorBtn.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                hud.show("Previous color")
+                refreshAll()
+            }
+        }
         colorBtn.setOnTouchListener { _, e ->
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    downX = e.rawX; downY = e.rawY; dragging = false
+                    downX = e.rawX; downY = e.rawY; dragging = false; held = false
+                    colorBtn.postDelayed(hold, 450)
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    if (!dragging && hypot(e.rawX - downX, e.rawY - downY) > 24f.dp) {
+                    if (!dragging && hypot(e.rawX - downX, e.rawY - downY) > 12f.dp) colorBtn.removeCallbacks(hold)
+                    if (!dragging && !held && hypot(e.rawX - downX, e.rawY - downY) > 24f.dp) {
                         dragging = true
                         dropDot.color = cv.color
                         dropDot.visibility = View.VISIBLE
@@ -1386,15 +1408,17 @@ class MainActivity : Activity(), CanvasView.Listener {
                     if (dragging) moveDropDot(e.rawX, e.rawY)
                 }
                 MotionEvent.ACTION_UP -> {
+                    colorBtn.removeCallbacks(hold)
                     if (dragging) {
                         dropDot.visibility = View.GONE
                         val loc = IntArray(2)
                         cv.getLocationOnScreen(loc)
                         cv.colorDrop(e.rawX - loc[0], e.rawY - loc[1], cv.color)
-                    } else showColors()
+                    } else if (!held) showColors()
                     dragging = false
                 }
                 MotionEvent.ACTION_CANCEL -> {
+                    colorBtn.removeCallbacks(hold)
                     dropDot.visibility = View.GONE
                     dragging = false
                 }
@@ -1510,7 +1534,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (!cv.isDocReady()) return
         unpinView(kind)
         val content: View = when (kind) {
-            "layers" -> LayersPanel(this, cv, { cv.color }, onAddVector = { addVectorLayer() }, onPin = null, onEdit3D = { open3D(it) }) { onHistoryChanged() }
+            "layers" -> LayersPanel(this, cv, { cv.color }, onAddVector = { addVectorLayer() }, onPin = null, onEdit3D = { open3D(it) }, onOpacityDrag = { layerOpacityDrag(it) }, onCopyToArtwork = { copyLayerToArtwork(it) }) { onHistoryChanged() }
             "reference" -> ReferenceWindow(this, onImport = {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
@@ -1660,7 +1684,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 6.dp, 0, 6.dp) }
             val iv = android.widget.ImageView(this).apply {
                 scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                background = Ui.rounded(0xFF14151A.toInt(), 8f)
+                background = Ui.rounded(Ui.SUNKEN, 8f)
                 clipToOutline = true
                 runCatching { setImageBitmap(android.graphics.BitmapFactory.decodeFile(s.thumb.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 })) }
             }
@@ -2007,7 +2031,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun showLayers() {
         if (busy()) return
         val panel = LayersPanel(this, cv, { cv.color }, onAddVector = { popup?.dismiss(); addVectorLayer() }, onPin = { popup?.dismiss(); pinPanel("layers") },
-            onEdit3D = { popup?.dismiss(); open3D(it) }) { onHistoryChanged() }
+            onEdit3D = { popup?.dismiss(); open3D(it) }, onOpacityDrag = { popup?.dismiss(); layerOpacityDrag(it) },
+            onCopyToArtwork = { popup?.dismiss(); copyLayerToArtwork(it) }) { onHistoryChanged() }
         showPanel(layersBtn, panel, 360, 600)
     }
 
@@ -2173,6 +2198,16 @@ class MainActivity : Activity(), CanvasView.Listener {
         override var watercolorDrying: Boolean
             get() = cv.watercolorDrying
             set(v) { cv.watercolorDrying = v; prefs.edit().putBoolean("watercolorDrying", v).apply() }
+        override var lightInterface: Boolean
+            get() = Ui.light
+            set(v) {
+                if (v == Ui.light) return
+                prefs.edit().putBoolean("light_ui", v).apply()
+                popup?.dismiss()
+                // the whole screen is built again in the new colors; the artwork is saved first
+                autosave(force = true)
+                afterSaves { Ui.light = v; recreate() }
+            }
         override var wetBleed: Boolean
             get() = cv.wetBleed
             set(v) { cv.wetBleed = v; prefs.edit().putBoolean("wetBleed", v).apply() }
@@ -2689,7 +2724,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         Ui.button(this, label, onClick).apply {
             textSize = 13f
             setPadding(12.dp, 9.dp, 12.dp, 9.dp)
-            if (highlighted) background = Ui.rounded(Ui.ACCENT, 10f)
+            if (highlighted) { background = Ui.rounded(Ui.ACCENT, 10f); setTextColor(Ui.ON_ACCENT) }
         }
 
     private fun LinearLayout.addBar(v: View) = addView(v, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 4.dp; rightMargin = 4.dp })
@@ -2864,6 +2899,82 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
     }
 
+    // ---------- Layer opacity with a finger (two fingers tapped a layer) ----------
+
+    private fun layerOpacityDrag(layer: Layer) {
+        val shield = object : View(this) {
+            var x0 = 0f; var o0 = layer.opacity; var moved = false
+            @android.annotation.SuppressLint("ClickableViewAccessibility")
+            override fun onTouchEvent(e: MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> { x0 = e.x; o0 = layer.opacity; moved = false }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (abs(e.x - x0) > 6.dp) moved = true
+                        if (moved) {
+                            layer.opacity = (o0 + (e.x - x0) / (width * 0.6f)).coerceIn(0f, 1f)
+                            cv.doc.revision++
+                            cv.invalidate()
+                            hud.show(L10n.tr("Layer opacity") + " ${(layer.opacity * 100).roundToInt()}%", sticky = true)
+                        }
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        root.removeView(this)
+                        hud.hideSoon()
+                        refreshAll()
+                    }
+                }
+                return true
+            }
+        }
+        root.addView(shield, FrameLayout.LayoutParams(-1, -1))
+        hud.show(L10n.tr("Layer opacity") + " ${(layer.opacity * 100).roundToInt()}% · " + L10n.tr("slide left or right"), sticky = true)
+    }
+
+    // ---------- A layer into another artwork ----------
+
+    private fun copyLayerToArtwork(layer: Layer) {
+        val cur = cv.doc.galleryId
+        val others = Gallery.list(this).filter { it.id != cur }
+        if (others.isEmpty()) { toast("No other artworks yet"); return }
+        val names = others.map { "${it.title}   ${it.width} × ${it.height}" }.toTypedArray()
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Copy the layer into…"))
+            .setItems(names) { _, k ->
+                val e = others[k]
+                val copy = try { layer.bitmap.copy(Bitmap.Config.ARGB_8888, false) } catch (er: OutOfMemoryError) { null }
+                    ?: run { toast("Not enough memory for this right now"); return@setItems }
+                val name = layer.name; val op = layer.opacity; val bl = layer.blend
+                hud.show("Copying…", sticky = true)
+                saver.execute {
+                    val res = runCatching {
+                        val d = Gallery.load(applicationContext, e.id) ?: error("open")
+                        try {
+                            if (d.layers.size >= d.maxLayers()) error("full")
+                            val nl = d.createLayer()
+                            nl.name = name; nl.opacity = op; nl.blend = bl
+                            // centered: a different canvas size crops it or leaves room around it
+                            Canvas(nl.bitmap).drawBitmap(copy, (d.width - copy.width) / 2f, (d.height - copy.height) / 2f, null)
+                            d.layers.add(nl)
+                            val thumb = Gallery.makeThumb(d)
+                            Gallery.save(applicationContext, e.id, e.title, ProjectIO.snapshot(d, copy = false), thumb, e.origin)
+                            thumb.recycle()
+                        } finally { d.layers.forEach { it.bitmap.recycle() } }
+                    }
+                    main.post {
+                        copy.recycle()
+                        hud.hideSoon()
+                        val m = res.exceptionOrNull()?.message
+                        when {
+                            res.isSuccess -> toast(L10n.tr("Layer copied to") + " " + e.title)
+                            m == "full" -> toast("That artwork has as many layers as it can take")
+                            else -> toast("Could not copy the layer")
+                        }
+                    }
+                }
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null).show()
+    }
+
     // ---------- Back up / restore ----------
 
     private var backupSnaps = true
@@ -2986,6 +3097,27 @@ class MainActivity : Activity(), CanvasView.Listener {
             backupNudged = true
             main.postDelayed({ hud.show(backupNoteText() + " · " + L10n.tr("Import… › Back up all artworks")) }, 1200)
         }
+    }
+
+    // ---------- Recolor ----------
+
+    private fun enterRecolor() {
+        popup?.dismiss()
+        if (cv.interaction != Interaction.PAINT) { hideBottomBar(); cv.interaction = Interaction.PAINT }
+        cv.fillMode = false
+        cv.recolorMode = true
+        val bar = barRow()
+        bar.addBar(barButton("Colors") { showColors() })
+        bar.addBar(barButton("Done", true) { leaveRecolor() })
+        showBottomBar(bar)
+        refreshAll()
+        hud.show("Recolor: tap an area, then change the color: the area follows")
+    }
+
+    private fun leaveRecolor() {
+        cv.recolorMode = false
+        hideBottomBar()
+        refreshAll()
     }
 
     // ---------- Measure ----------
@@ -3124,7 +3256,20 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun enterTransform() {
         popup?.dismiss()
         if (!cv.beginTransform()) return
+        cv.transformSnap = prefs.getBoolean("transform_snap", true)
+        cv.onTransformExact = { angle -> transformExactDialog(angle) }
+        showTransformBar()
+        refreshAll()
+        hud.show("Drag to move · corners scale · sides stretch · green turns · yellow turns the box · tap a handle for a number")
+    }
+
+    private fun showTransformBar() {
         val bar = barRow()
+        bar.addBar(barButton(if (cv.transformSnap) "Snapping: on" else "Snapping: off", cv.transformSnap) {
+            cv.transformSnap = !cv.transformSnap
+            prefs.edit().putBoolean("transform_snap", cv.transformSnap).apply()
+            showTransformBar()
+        })
         bar.addBar(barButton("Flip ↔") { cv.transformAction("flipH") })
         bar.addBar(barButton("Flip ↕") { cv.transformAction("flipV") })
         bar.addBar(barButton("Rotate 90°") { cv.transformAction("rotate") })
@@ -3133,8 +3278,59 @@ class MainActivity : Activity(), CanvasView.Listener {
         bar.addBar(barButton("Cancel") { leaveTransform(false) })
         bar.addBar(barButton("Done", true) { leaveTransform(true) })
         showBottomBar(bar)
-        refreshAll()
-        hud.show("Drag to move · corners to scale · green dot to rotate · two fingers to pinch")
+    }
+
+    /** a tap on the green dot: an exact angle; on a corner or side: an exact size in pixels */
+    private fun transformExactDialog(angle: Boolean) {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24.dp, 8.dp, 24.dp, 0) }
+        fun field(label: String, v: Float, signed: Boolean): EditText {
+            box.addView(Ui.text(this, label, 13f, Ui.TEXT_DIM).apply { setPadding(0, 8.dp, 0, 0) })
+            return EditText(this).apply {
+                inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or (if (signed) InputType.TYPE_NUMBER_FLAG_SIGNED else 0)
+                setText(if (abs(v - v.roundToInt()) < 0.05f) v.roundToInt().toString() else String.format(java.util.Locale.US, "%.1f", v))
+                setSelectAllOnFocus(true)
+                box.addView(this)
+            }
+        }
+        val parse = { s: String -> s.replace(',', '.').toFloatOrNull() }
+        val d: AlertDialog
+        if (angle) {
+            var a = cv.transformAngle()
+            if (abs(a) < 0.05f) a = 0f
+            val f = field(L10n.tr("Angle (degrees)"), a, true)
+            d = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(L10n.tr("Rotate"))
+                .setView(box)
+                .setPositiveButton(L10n.tr("OK")) { _, _ -> parse(f.text.toString())?.let { cv.setTransformAngle(it) } }
+                .setNegativeButton(L10n.tr("Cancel"), null).create()
+        } else {
+            val (w, h) = cv.transformSize()
+            val fw = field(L10n.tr("Width (px)"), w, false)
+            val fh = field(L10n.tr("Height (px)"), h, false)
+            val keep = android.widget.CheckBox(this).apply { text = L10n.tr("Keep proportions"); isChecked = true; setTextColor(Ui.TEXT) }
+            box.addView(keep)
+            var syncing = false
+            fun link(src: EditText, dst: EditText, ratio: () -> Float) = src.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    if (syncing || !keep.isChecked || !src.hasFocus()) return
+                    val v = parse(s.toString()) ?: return
+                    syncing = true; dst.setText((v * ratio()).roundToInt().toString()); syncing = false
+                }
+            })
+            link(fw, fh) { h / max(1f, w) }
+            link(fh, fw) { w / max(1f, h) }
+            d = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                .setTitle(L10n.tr("Size"))
+                .setView(box)
+                .setPositiveButton(L10n.tr("OK")) { _, _ ->
+                    val nw = parse(fw.text.toString()); val nh = parse(fh.text.toString())
+                    if (nw != null && nh != null && nw >= 1f && nh >= 1f && nw <= 30000f && nh <= 30000f) cv.setTransformSize(nw, nh)
+                }
+                .setNegativeButton(L10n.tr("Cancel"), null).create()
+        }
+        d.show()
     }
 
     private fun leaveTransform(apply: Boolean) {
@@ -4111,7 +4307,7 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     /** X: the color before this one comes back (and this one goes into the recent list) */
     private fun swapColor() {
-        val prev = recentColors.firstOrNull { it != cv.color } ?: return
+        val prev = recentColors.firstOrNull { it != cv.color } ?: run { hud.show("No previous color yet"); return }
         ColorPanel.addRecent(recentColors, cv.color)
         cv.color = prev
         colorBtn.color = prev

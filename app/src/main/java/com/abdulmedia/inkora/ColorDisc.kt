@@ -184,6 +184,29 @@ class ColorDisc {
     }
 
     val dragging get() = zone != Zone.NONE
+
+    /**
+     * A double tap: on the ring, the nearest pure hue (every 30°, full strength); in the square,
+     * the nearest even step (quarters) of saturation and brightness.
+     */
+    fun snap(x: Float, y: Float): Boolean {
+        val d = hypot(x - cx, y - cy)
+        return when {
+            d in (rIn - 6f.dp)..(rOut + 10f.dp) -> {
+                var a = Math.toDegrees(atan2((y - cy).toDouble(), (x - cx).toDouble())).toFloat() + 90f
+                while (a < 0) a += 360f
+                hue = (Math.round(a / 30f) * 30f) % 360f
+                sat = 1f; value = 1f
+                true
+            }
+            x in sq.left..sq.right && y in sq.top..sq.bottom -> {
+                sat = Math.round(((x - sq.left) / sq.width()) * 4f) / 4f
+                value = Math.round((1f - (y - sq.top) / sq.height()) * 4f) / 4f
+                true
+            }
+            else -> false
+        }
+    }
 }
 
 /** A standalone standard color wheel. */
@@ -195,6 +218,7 @@ class ColorDiscView(context: Context, initial: Int) : View(context) {
     var onCommit: ((Int) -> Unit)? = null
 
     fun setColor(c: Int) { disc.set(c); invalidate() }
+    private var snapping = false
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -207,10 +231,25 @@ class ColorDiscView(context: Context, initial: Int) : View(context) {
         disc.draw(canvas)
     }
 
+    private var lastUpAt = 0L
+    private var lastUpX = 0f
+    private var lastUpY = 0f
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         val a = e.actionMasked
         if (a == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        if (a == MotionEvent.ACTION_DOWN && e.eventTime - lastUpAt < 320 && hypot(e.x - lastUpX, e.y - lastUpY) < 24f.dp && disc.snap(e.x, e.y)) {
+            performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+            onColor?.invoke(disc.color)
+            onCommit?.invoke(disc.color)
+            invalidate()
+            lastUpAt = 0L
+            snapping = true
+            return true
+        }
+        if (snapping) { if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) snapping = false; return true }
+        if (a == MotionEvent.ACTION_UP) { lastUpAt = e.eventTime; lastUpX = e.x; lastUpY = e.y }
         if (disc.touch(e.x, e.y, a)) {
             onColor?.invoke(disc.color)
             invalidate()

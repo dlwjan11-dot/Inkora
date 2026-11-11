@@ -84,7 +84,7 @@ object PaletteMaker {
         private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
         private var hx = -1f; private var hy = -1f; private var hc = 0
 
-        init { background = Ui.rounded(0xFF14151A.toInt(), 12f); clipToOutline = true }
+        init { background = Ui.rounded(Ui.SUNKEN, 12f); clipToOutline = true }
 
         override fun onDraw(c: Canvas) {
             val s = min(width / bmp.width.toFloat(), height / bmp.height.toFloat())

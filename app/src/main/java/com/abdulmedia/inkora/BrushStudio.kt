@@ -73,7 +73,7 @@ class BrushStudioView(
     private val pad = DrawingPad(context, brush) { host.padColor }
 
     init {
-        setBackgroundColor(0xFF18191E.toInt())
+        setBackgroundColor(Ui.SURFACE)
         isClickable = true
         val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
 
@@ -203,7 +203,7 @@ class BrushStudioView(
         if (title != null) body.addView(Ui.text(context, title, 13f, Ui.TEXT_DIM, true).apply { setPadding(6.dp, 10.dp, 0, 6.dp) })
         val c = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(0xFF27282F.toInt(), 16f)
+            background = Ui.rounded(Ui.CARD, 16f)
             setPadding(14.dp, 6.dp, 14.dp, 6.dp)
         }
         card = c

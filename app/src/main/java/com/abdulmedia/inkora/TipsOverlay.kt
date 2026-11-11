@@ -53,13 +53,16 @@ object Tour {
             "Tap the active layer again for its options: opacity, blend mode, masks, merge",
             "Slide a layer sideways, or hold it: pick several layers",
             "Drag a layer by the grip at its edge to move it up or down",
+            "Two fingers on a layer: tap for its opacity, swipe sideways for Alpha Lock",
+            "Pinch layers together to merge them; hold a layer's checkbox to see it alone",
             "With several picked: group, merge or delete them, or move them all with Transform",
             "The checkbox hides a layer; the letter beside it is its blend mode",
             "Clipping mask, alpha lock and layer masks are in the layer's options"), listOf(Icon.LAYERS, Icon.FOLDER, Icon.EYE)),
         Page(-1, "Select, move and adjust", listOf(
             "The three icons on the top bar: adjustments, selection, transform",
             "Selection: freehand, rectangle, ellipse, magic wand, color range or a selection brush",
-            "Transform: drag to move, corners to scale, the green dot to turn, two fingers to pinch",
+            "Transform: drag to move, corners to scale, sides to stretch, the green dot to turn, two fingers to pinch",
+            "Tap the green dot for an exact angle, a corner for an exact size; the yellow dot turns the box only",
             "Adjustments show live: hue, brightness, blur, sharpen and more"), listOf(Icon.ADJUST, Icon.SELECT, Icon.TRANSFORM)),
         Page(-1, "Perfect shapes and guides", listOf(
             "Draw a line, circle or box and keep the pen down: it becomes a clean shape",
@@ -296,7 +299,7 @@ class GuideView(
     private val onClose: () -> Unit
 ) : FrameLayout(context) {
     init {
-        setBackgroundColor(0xF2101115.toInt())
+        setBackgroundColor(Ui.SCRIM)
         isClickable = true
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val head = LinearLayout(context).apply {
@@ -326,7 +329,7 @@ class GuideView(
             val card = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(18.dp, 16.dp, 18.dp, 16.dp)
-                background = Ui.rounded(0xFF1E1F25.toInt(), 18f, 0x14FFFFFF, 1)
+                background = Ui.rounded(Ui.CARD, 18f, Ui.OUTLINE, 1)
             }
             val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             val icons = p.icons.ifEmpty { listOf(when (p.art) { 0 -> Icon.WHEEL; 1 -> Icon.CUSTOMIZE; else -> Icon.HAND }) }

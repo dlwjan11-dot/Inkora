@@ -8,6 +8,7 @@ import android.text.InputType
 import android.text.TextWatcher
 import android.text.format.DateUtils
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.EditText
 import android.widget.FrameLayout
@@ -55,7 +56,7 @@ class GalleryView(
     private var entries: List<Gallery.Entry> = emptyList()
 
     init {
-        setBackgroundColor(0xFF101115.toInt())
+        setBackgroundColor(Ui.SURFACE)
         isClickable = true // block touches to the canvas below
 
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
@@ -183,6 +184,7 @@ class GalleryView(
                 Filter.IMPORTED -> it.imported
             } && (query.isEmpty() || it.title.contains(query, ignoreCase = true))
         }
+        shownNow = shown
         if (shown.isEmpty()) {
             content.addView(Ui.text(context, "Nothing here.", 15f, Ui.TEXT_DIM).apply { setPadding(12.dp, 24.dp, 0, 0) })
             return
@@ -293,7 +295,7 @@ class GalleryView(
 
     private fun thumb(e: Gallery.Entry) = ImageView(context).apply {
         scaleType = ImageView.ScaleType.FIT_CENTER
-        background = Ui.rounded(0xFF1B1B20.toInt(), 10f)
+        background = Ui.rounded(Ui.SUNKEN, 10f)
         val key = e.thumb.absolutePath + ":" + e.thumb.lastModified()
         val bmp = thumbCache.get(key) ?: runCatching { BitmapFactory.decodeFile(e.thumb.absolutePath) }.getOrNull()?.also { thumbCache.put(key, it) }
         bmp?.let { setImageBitmap(it) }
@@ -332,6 +334,7 @@ class GalleryView(
         row.foreground = Ui.ripple(18f)
         row.setOnClickListener { onOpen(e.id) }
         row.setOnLongClickListener { menu(row, e); true }
+        row.tag = e.id
         return row
     }
 
@@ -350,11 +353,82 @@ class GalleryView(
         card.foreground = Ui.ripple(14f)
         card.setOnClickListener { onOpen(e.id) }
         card.setOnLongClickListener { menu(card, e); true }
+        card.tag = e.id
         return card
+    }
+
+    /** the artworks as they are listed now (for the big preview to go through) */
+    private var shownNow: List<Gallery.Entry> = emptyList()
+    private var preview: GalleryPreview? = null
+
+    fun previewOpen() = preview != null
+
+    fun closePreview() { preview?.let { removeView(it) }; preview = null }
+
+    private fun openPreview(id: String) {
+        val list = shownNow.ifEmpty { entries }
+        val i = list.indexOfFirst { it.id == id }
+        if (i < 0) return
+        closePreview()
+        val p = GalleryPreview(context, list, i, onOpen = { closePreview(); onOpen(it) }, onClose = { closePreview() })
+        preview = p
+        addView(p, LayoutParams(-1, -1))
+    }
+
+    // pinch a card open: its big preview
+    private var pinchD0 = 0f
+    private var pinchDone = false
+
+    override fun dispatchTouchEvent(e: MotionEvent): Boolean {
+        if (preview == null && pinchCheck(e)) {
+            // the cards and the scrolling let go of this touch
+            val c = MotionEvent.obtain(e).apply { action = MotionEvent.ACTION_CANCEL }
+            super.dispatchTouchEvent(c); c.recycle()
+            return true
+        }
+        if (pinchDone && e.actionMasked != MotionEvent.ACTION_DOWN) { if (e.actionMasked == MotionEvent.ACTION_UP) pinchDone = false; return true }
+        return super.dispatchTouchEvent(e)
+    }
+
+    private fun pinchCheck(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> pinchDone = false
+            MotionEvent.ACTION_POINTER_DOWN -> if (e.pointerCount == 2) {
+                pinchD0 = kotlin.math.hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0)); pinchDone = false
+            }
+            MotionEvent.ACTION_MOVE -> if (e.pointerCount >= 2 && !pinchDone && pinchD0 > 0f) {
+                val d = kotlin.math.hypot(e.getX(1) - e.getX(0), e.getY(1) - e.getY(0))
+                if (d > pinchD0 * 1.45f) {
+                    pinchDone = true
+                    val mx = (e.getX(0) + e.getX(1)) / 2; val my = (e.getY(0) + e.getY(1)) / 2
+                    cardAt(this, mx, my)?.let { openPreview(it) }
+                    return true
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> pinchD0 = 0f
+        }
+        return false
+    }
+
+    /** the artwork id of the card under a point of this view */
+    private fun cardAt(root: View, x: Float, y: Float): String? {
+        val loc = IntArray(2); val me = IntArray(2)
+        getLocationOnScreen(me)
+        fun walk(v: View): String? {
+            if (v.tag is String && v.isShown) {
+                v.getLocationOnScreen(loc)
+                val sx = x + me[0]; val sy = y + me[1]
+                if (sx >= loc[0] && sx <= loc[0] + v.width && sy >= loc[1] && sy <= loc[1] + v.height) return v.tag as String
+            }
+            if (v is android.view.ViewGroup) for (k in 0 until v.childCount) walk(v.getChildAt(k))?.let { return it }
+            return null
+        }
+        return walk(root)
     }
 
     private fun menu(anchor: View, e: Gallery.Entry) {
         val pm = PopupMenu(context, anchor)
+        pm.menu.add(0, 9, 0, "Preview")
         pm.menu.add(0, 1, 1, "Rename")
         pm.menu.add(0, 2, 2, "Duplicate")
         pm.menu.add(0, 4, 3, "Move to stack…")
@@ -362,6 +436,7 @@ class GalleryView(
         pm.menu.add(0, 3, 5, "Delete")
         pm.setOnMenuItemClickListener {
             when (it.itemId) {
+                9 -> openPreview(e.id)
                 1 -> onRename(e)
                 2 -> onDuplicate(e)
                 3 -> onDelete(e)
