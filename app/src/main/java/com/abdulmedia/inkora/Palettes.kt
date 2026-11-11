@@ -108,34 +108,79 @@ object PaletteStore {
      * The main colors of a picture (for "Palette from artwork / photo"): colors are grouped into
      * boxes by hue, saturation and brightness, and the fullest boxes give one average color each.
      */
+    /**
+     * The main colors of a picture: k-means over a sample of its pixels, so a small but strong
+     * color (a red flower in a green field) still gets its place. Sorted from dark to light by hue family.
+     */
     fun extract(bmp: Bitmap, count: Int = 12): List<Int> {
-        val step = maxOf(1, (bmp.width * bmp.height / 40000))
         val w = bmp.width; val h = bmp.height
+        if (w <= 0 || h <= 0) return emptyList()
         val px = IntArray(w * h)
         bmp.getPixels(px, 0, w, 0, 0, w, h)
-        class Box { var n = 0; var r = 0L; var g = 0L; var b = 0L }
-        val boxes = HashMap<Int, Box>()
-        val hsv = FloatArray(3)
+        val step = maxOf(1, px.size / 12000)
+        val sr = ArrayList<Float>(); val sg = ArrayList<Float>(); val sb = ArrayList<Float>()
         var i = 0
         while (i < px.size) {
-            val c = px[i]
-            i += step
+            val c = px[i]; i += step
             if ((c ushr 24) < 200) continue
-            Color.colorToHSV(c, hsv)
-            val key = if (hsv[1] < 0.12f) 1000 + (hsv[2] * 6).toInt() // grays by brightness
-            else ((hsv[0] / 30).toInt() * 100) + ((hsv[1] * 3).toInt().coerceAtMost(2) * 10) + (hsv[2] * 4).toInt().coerceAtMost(3)
-            val bx = boxes.getOrPut(key) { Box() }
-            bx.n++; bx.r += (c shr 16) and 255; bx.g += (c shr 8) and 255; bx.b += c and 255
+            sr.add(((c shr 16) and 255).toFloat()); sg.add(((c shr 8) and 255).toFloat()); sb.add((c and 255).toFloat())
         }
+        val n = sr.size
+        if (n == 0) return emptyList()
+        val k = count.coerceIn(1, minOf(32, n))
+        val cr = FloatArray(k); val cg = FloatArray(k); val cb = FloatArray(k)
+        // k-means++ start: each new center far from the ones already picked
+        val rnd = java.util.Random(7)
+        val dist = FloatArray(n) { Float.MAX_VALUE }
+        var pick = rnd.nextInt(n)
+        for (c in 0 until k) {
+            cr[c] = sr[pick]; cg[c] = sg[pick]; cb[c] = sb[pick]
+            var sum = 0.0
+            for (j in 0 until n) {
+                val d = d2(sr[j], sg[j], sb[j], cr[c], cg[c], cb[c])
+                if (d < dist[j]) dist[j] = d
+                sum += dist[j]
+            }
+            var r = rnd.nextDouble() * sum
+            pick = 0
+            for (j in 0 until n) { r -= dist[j]; if (r <= 0) { pick = j; break } }
+        }
+        val owner = IntArray(n)
+        val cnt = IntArray(k)
+        repeat(12) {
+            val ar = DoubleArray(k); val ag = DoubleArray(k); val ab = DoubleArray(k)
+            java.util.Arrays.fill(cnt, 0)
+            for (j in 0 until n) {
+                var best = 0; var bd = Float.MAX_VALUE
+                for (c in 0 until k) { val d = d2(sr[j], sg[j], sb[j], cr[c], cg[c], cb[c]); if (d < bd) { bd = d; best = c } }
+                owner[j] = best; cnt[best]++
+                ar[best] += sr[j].toDouble(); ag[best] += sg[j].toDouble(); ab[best] += sb[j].toDouble()
+            }
+            for (c in 0 until k) if (cnt[c] > 0) { cr[c] = (ar[c] / cnt[c]).toFloat(); cg[c] = (ag[c] / cnt[c]).toFloat(); cb[c] = (ab[c] / cnt[c]).toFloat() }
+        }
+        // the centers sit in the middle of their pixels; the most typical real pixel looks truer (less muddy)
         val out = ArrayList<Int>()
-        for (bx in boxes.values.sortedByDescending { it.n }) {
-            val c = Color.rgb((bx.r / bx.n).toInt(), (bx.g / bx.n).toInt(), (bx.b / bx.n).toInt())
-            // skip colors almost equal to one already taken
-            if (out.any { near(it, c) }) continue
-            out.add(c)
-            if (out.size >= count) break
+        for (c in 0 until k) {
+            if (cnt[c] == 0) continue
+            var best = -1; var bd = Float.MAX_VALUE
+            for (j in 0 until n) if (owner[j] == c) { val d = d2(sr[j], sg[j], sb[j], cr[c], cg[c], cb[c]); if (d < bd) { bd = d; best = j } }
+            val col = if (best >= 0) Color.rgb(sr[best].toInt(), sg[best].toInt(), sb[best].toInt()) else Color.rgb(cr[c].toInt(), cg[c].toInt(), cb[c].toInt())
+            if (out.none { near(it, col) }) out.add(col)
         }
-        return out
+        return sortColors(out)
+    }
+
+    /** grays first (dark to light), then the colors by hue, each family dark to light */
+    fun sortColors(cs: List<Int>): List<Int> {
+        val hsv = FloatArray(3)
+        return cs.sortedWith(compareBy({ Color.colorToHSV(it, hsv); if (hsv[1] < 0.12f) -1 else (hsv[0] / 30f).toInt() }, { Color.colorToHSV(it, hsv); hsv[2] }))
+    }
+
+    // perceptual-ish distance: the eye is most sensitive to green, least to blue
+    private fun d2(r1: Float, g1: Float, b1: Float, r2: Float, g2: Float, b2: Float): Float {
+        val dr = r1 - r2; val dg = g1 - g2; val db = b1 - b2
+        val rm = (r1 + r2) / 2f
+        return (2f + rm / 256f) * dr * dr + 4f * dg * dg + (2f + (255f - rm) / 256f) * db * db
     }
 
     private fun near(a: Int, b: Int): Boolean =

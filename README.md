@@ -3,14 +3,14 @@
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.21.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.21.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.21.0"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.22.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.22.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.22.0"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Android-10%2B-5fd39a?style=flat-square&logo=android&logoColor=white" alt="Android 10+">
-  <img src="https://img.shields.io/badge/size-1.3_MB-6fb3ff?style=flat-square" alt="1.3 MB">
+  <img src="https://img.shields.io/badge/size-1.7_MB-6fb3ff?style=flat-square" alt="1.7 MB">
   <img src="https://img.shields.io/badge/made_for-S_Pen-ff6b8b?style=flat-square" alt="Made for S Pen">
   <img src="https://img.shields.io/badge/Kotlin-no_libraries-7b5cff?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin, no libraries">
   <img src="https://img.shields.io/badge/ads-none-aab0d6?style=flat-square" alt="No ads">
@@ -40,12 +40,20 @@ I'm a designer and artist. I looked for a long time for a drawing app on Android
 
 | Platform | File | Install |
 |---|---|---|
-| Android 10+ tablets and phones | [`Inkora-0.21.0.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.21.0.apk) (0.21.0; the Living Paint brushes need the Android Studio build, everything else is in) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
+| Android 10+ tablets and phones | [`Inkora-0.22.0.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.22.0.apk) (0.22.0, everything included: Living Paint brushes too) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
 | iPad and iPhone | the `ios/` folder (Xcode project, version 1.0) | Open `ios/Inkora.xcodeproj` on a Mac, pick your team, press **Run ▶**; see `ios/README.md` |
-| Android Studio | this repository (source is at **0.21.0**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
+| Android Studio | this repository (source is at **0.22.0**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too (the layout slims down for them, upright or on the side), with a finger or the S Pen of an Ultra. Inkora is not on Google Play yet.
-SHA-256 of the 0.21.0 APK: `7e0620a7d740af6f38c580963b44d5c4672cda717b8541887542aa37fe97c1ce`
+SHA-256 of the 0.22.0 APK: `ed1e4ebf2c2cc3e5be2e088a358647a7a04e17032c9d28012eb9935170b1e2c3`
+
+## New in 0.22: measure, palettes from photos, backups
+
+- **Measure**: drag across the canvas for the length (px, cm or inches at 300 dpi) and the angle; it catches on 0°, 15°, 45°, 90°. Turn the line into a **ruler** your strokes follow, or draw it with the brush in hand.
+- **Palette from a photo**: Inkora finds the main colors; choose how many, take some out, tap the photo to add any spot. Works on your own artwork too.
+- **Back up all artworks** into one file (save it on Google Drive or a computer) and restore it on any device. Restoring never removes what is already there.
+- Adjustments (hue, saturation, brightness, contrast, color balance) now follow the slider at once, even on big canvases; blur and sharpen show a quick preview while you drag.
+- The website APK now has the **Living Paint** brushes too.
 
 ## New in 0.19 – 0.21: watercolor, comics, snapshots, phones
 
@@ -278,6 +286,13 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 ### من فنان، للفنانين
 أنا مصمم وفنان. بحثت طويلاً عن تطبيق رسم على أندرويد يشبه Procreate ولم أجد واحداً جيداً، فصنعت Inkora. جرّبت تطبيقات الرسم الموجودة وأخذت أفضل ما في كل واحد منها، وكل شيء في Inkora في مكانه لسبب.
 
+### الجديد في 0.22
+- **قياس**: اسحب على اللوحة لتعرف الطول (بيكسل أو سم أو إنش) والزاوية، وبيلزق على 0° و45° و90°. وبتقدر تحوّل الخط **لمسطرة** أو ترسمه بفرشاتك.
+- **لوحة ألوان من صورة**: بيلاقي الألوان الأساسية، بتختار العدد، وبتشيل أو تضيف ألوان بكبسة.
+- **نسخة احتياطية لكل الرسمات** بملف واحد (احفظه على Google Drive) واسترجعه على أي جهاز.
+- التعديلات (اللون، التشبع، السطوع) صارت تمشي مع السلايدر فوراً حتى على اللوحات الكبيرة.
+- ملف الموقع صار فيه فرش **الألوان الحيّة** كمان.
+
 ### الجديد في 0.19 – 0.21
 - **ألوان مائية بروح المائي**: مجموعة Aquarelle، الصبغة بتعلق بحبيبات الورق وبتتجمع على طرف الضربة وإنت عم ترسم، وضربة فوق لون لسا مبلول **بتسيح فيه**. ومجموعات جديدة: Tempera و Markers و Light & Shade.
 - **تدرّج لوني** خطّي أو دائري، و**كوميكس**: إطارات جاهزة للصفحة وفقاعات كلام وتفكير وصراخ.
@@ -339,7 +354,7 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Inkora-0.21.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.21.0.apk)** على جهازك.
+1. حمّل **[Inkora-0.22.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.22.0.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
 4. افتح Inkora وابدأ الرسم.
@@ -360,6 +375,13 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 
 ### لە هونەرمەندێکەوە، بۆ هونەرمەندان
 من دیزاینەر و هونەرمەندم. ماوەیەکی زۆر بەدوای ئەپێکی وێنەکێشاندا گەڕام لەسەر ئەندرۆید کە وەک Procreate بێت و هیچ یەکێکی باشم نەدۆزییەوە، بۆیە Inkoraم دروست کرد. ئەپەکانی وێنەکێشانم تاقی کردەوە و باشترینی هەر یەکێکیانم وەرگرت، و هەموو شتێک لە Inkora بە هۆیەکەوە لە شوێنی خۆیدایە.
+
+### نوێ لە 0.22
+- **پێوان**: بەسەر تابلۆکەدا ڕابکێشە بۆ درێژی (پیکسڵ، سم یان ئینچ) و گۆشە؛ لە 0° و 45° و 90° دەلکێت. دەتوانیت هێڵەکە بکەیت بە **ڕاستەڕێ** یان بە فڵچەکەت بیکێشیت.
+- **پالێت لە وێنە**: ڕەنگە سەرەکییەکان دەدۆزێتەوە؛ ژمارەکەی هەڵبژێرە، لایبەرە یان زیادی بکە.
+- **یەدەگی هەموو کارەکان** لە یەک فایلدا (لە Google Drive هەڵیبگرە) و لەسەر هەر ئامێرێک بیگەڕێنەوە.
+- دەستکارییەکان (ڕەنگ، تێری، ڕووناکی) ئێستا یەکسەر لەگەڵ هێڵەکە دەڕۆن.
+- فایلی ماڵپەڕەکە ئێستا فڵچەکانی **ڕەنگی زیندوو**ی تێدایە.
 
 ### نوێ لە 0.19 – 0.21
 - **ئاوڕەنگی ڕاستەقینە**: کۆمەڵەی Aquarelle، بۆیەکە لە دەنکی کاغەزەکەدا دەگیرێت و لە لێواری هێڵەکەدا کۆدەبێتەوە، و هێڵێک لەسەر بۆیەی هێشتا تەڕ **تێیدا بڵاودەبێتەوە**. کۆمەڵەی نوێ: Tempera، Markers، Light & Shade.
@@ -414,7 +436,7 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Inkora-0.21.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.21.0.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Inkora-0.22.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.22.0.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
 4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.

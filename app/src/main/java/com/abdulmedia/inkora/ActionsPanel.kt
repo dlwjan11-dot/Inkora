@@ -58,6 +58,9 @@ interface ActionsHost {
     fun openGuide()
     fun openDemos()
     fun openSnapshots()
+    fun backupAll()
+    fun restoreBackup()
+    fun backupNote(): String
     fun comicPanels()
     fun speechBubble()
 }
@@ -279,6 +282,10 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             row("Photoshop (.psd)…", "With your layers, for Photoshop and other apps") { host.export("psd") },
             row("PDF…", "For printing and sending") { host.export("pdf") },
             row("TIFF…", "Full quality, with transparency, for print shops") { host.export("tiff") }
+        )
+        group(
+            row("Back up all artworks…", host.backupNote()) { host.backupAll() },
+            row("Restore a backup…", "Brings artworks back from a backup file; nothing here is lost") { host.restoreBackup() }
         )
     }
 

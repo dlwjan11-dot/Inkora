@@ -290,7 +290,7 @@ class ToolsPanel(
     // =========================================================
 
     private fun buildCreate() {
-        grid(listOf(toolCard("text"), toolCard("photo"), toolCard("vector"), toolCard("pose3d"), toolCard("shadow_photo"), toolCard("fill"), toolCard("gradient"), toolCard("eyedropper")))
+        grid(listOf(toolCard("text"), toolCard("photo"), toolCard("vector"), toolCard("pose3d"), toolCard("shadow_photo"), toolCard("fill"), toolCard("gradient"), toolCard("eyedropper"), toolCard("palette_photo"), toolCard("measure")))
         content.addView(Ui.text(context, "Tip: drag the color circle (top right) onto an area to fill it with ColorDrop.", 12f, Ui.TEXT_DIM)
             .apply { setPadding(4.dp, 12.dp, 4.dp, 0) })
     }

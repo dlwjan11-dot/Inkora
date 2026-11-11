@@ -38,30 +38,36 @@ class AdjustSlider(val name: String, val min: Float, val max: Float, val default
 object Adjust {
 
     /** Computes [kind] of [src] into a new bitmap. Safe on a background thread. */
+    /** the adjustments that are only a color matrix: these can be shown at once, in one pass */
+    fun matrixFor(kind: AdjustKind, v: FloatArray): ColorMatrix? = when (kind) {
+        AdjustKind.HSB -> ColorMatrix().apply {
+            postConcat(hue(v[0]))
+            postConcat(ColorMatrix().apply { setSaturation(v[1] / 100f) })
+            val b = v[2] / 100f * 255f
+            postConcat(ColorMatrix(floatArrayOf(1f, 0f, 0f, 0f, b, 0f, 1f, 0f, 0f, b, 0f, 0f, 1f, 0f, b, 0f, 0f, 0f, 1f, 0f)))
+        }
+        AdjustKind.BRIGHT_CONTRAST -> {
+            val c = 1f + v[1] / 100f * (if (v[1] > 0) 2f else 1f)
+            val b = v[0] / 100f * 255f
+            val t = 128f * (1f - c) + b
+            ColorMatrix(floatArrayOf(c, 0f, 0f, 0f, t, 0f, c, 0f, 0f, t, 0f, 0f, c, 0f, t, 0f, 0f, 0f, 1f, 0f))
+        }
+        AdjustKind.COLOR_BALANCE -> {
+            val r = v[0] / 100f * 60f
+            val g = v[1] / 100f * 60f
+            val bl = v[2] / 100f * 60f
+            ColorMatrix(floatArrayOf(1f, 0f, 0f, 0f, r, 0f, 1f, 0f, 0f, g, 0f, 0f, 1f, 0f, bl, 0f, 0f, 0f, 1f, 0f))
+        }
+        AdjustKind.INVERT -> ColorMatrix(floatArrayOf(-1f, 0f, 0f, 0f, 255f, 0f, -1f, 0f, 0f, 255f, 0f, 0f, -1f, 0f, 255f, 0f, 0f, 0f, 1f, 0f))
+        AdjustKind.GRAYSCALE -> ColorMatrix().apply { setSaturation(0f) }
+        else -> null
+    }
+
     fun apply(kind: AdjustKind, src: Bitmap, v: FloatArray): Bitmap {
         val out = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val m = matrixFor(kind, v)
+        if (m != null) { colorMatrix(src, out, m); return out }
         when (kind) {
-            AdjustKind.HSB -> colorMatrix(src, out, ColorMatrix().apply {
-                postConcat(hue(v[0]))
-                postConcat(ColorMatrix().apply { setSaturation(v[1] / 100f) })
-                val b = v[2] / 100f * 255f
-                postConcat(ColorMatrix(floatArrayOf(1f, 0f, 0f, 0f, b, 0f, 1f, 0f, 0f, b, 0f, 0f, 1f, 0f, b, 0f, 0f, 0f, 1f, 0f)))
-            })
-            AdjustKind.BRIGHT_CONTRAST -> {
-                val c = 1f + v[1] / 100f * (if (v[1] > 0) 2f else 1f)
-                val b = v[0] / 100f * 255f
-                val t = 128f * (1f - c) + b
-                colorMatrix(src, out, ColorMatrix(floatArrayOf(c, 0f, 0f, 0f, t, 0f, c, 0f, 0f, t, 0f, 0f, c, 0f, t, 0f, 0f, 0f, 1f, 0f)))
-            }
-            AdjustKind.COLOR_BALANCE -> {
-                val r = v[0] / 100f * 60f
-                val g = v[1] / 100f * 60f
-                val bl = v[2] / 100f * 60f
-                colorMatrix(src, out, ColorMatrix(floatArrayOf(1f, 0f, 0f, 0f, r, 0f, 1f, 0f, 0f, g, 0f, 0f, 1f, 0f, bl, 0f, 0f, 0f, 1f, 0f)))
-            }
-            AdjustKind.INVERT -> colorMatrix(src, out, ColorMatrix(floatArrayOf(
-                -1f, 0f, 0f, 0f, 255f, 0f, -1f, 0f, 0f, 255f, 0f, 0f, -1f, 0f, 255f, 0f, 0f, 0f, 1f, 0f)))
-            AdjustKind.GRAYSCALE -> colorMatrix(src, out, ColorMatrix().apply { setSaturation(0f) })
             AdjustKind.BLUR -> pixels(src, out) { px, w, h -> blur(px, w, h, v[0]) }
             AdjustKind.SHARPEN -> pixels(src, out) { px, w, h ->
                 val orig = px.copyOf()
@@ -98,6 +104,7 @@ object Adjust {
                     px[i] = (c and 0xFF000000.toInt()) or (q((c shr 16) and 0xFF) shl 16) or (q((c shr 8) and 0xFF) shl 8) or q(c and 0xFF)
                 }
             }
+            else -> {}
         }
         return out
     }

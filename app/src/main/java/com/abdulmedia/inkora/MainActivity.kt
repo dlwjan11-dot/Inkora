@@ -141,6 +141,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
         cv.wetBleed = prefs.getBoolean("wetBleed", true)
+        cv.measureUnit = runCatching { MeasureUnit.valueOf(prefs.getString("measure_unit", "PX")!!) }.getOrDefault(MeasureUnit.PX)
         if (!prefs.getBoolean("sidebar", true)) sideBar.visibility = View.GONE
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)
@@ -217,6 +218,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             cv.editingGuide -> finishGuideEdit()
             cv.interaction == Interaction.SELECT -> { cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll() }
             cv.interaction == Interaction.GRADIENT -> leaveGradient()
+            cv.interaction == Interaction.MEASURE -> leaveMeasure()
             gallery != null && galleryFromCanvas -> closeGallery()
             else -> {
                 autosave()
@@ -957,6 +959,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             id == "actual_size" -> cv.actualSize()
             id == "liquify" -> if (cv.liquify != null) leaveLiquify(true) else enterLiquify()
             id == "gradient" -> if (cv.interaction == Interaction.GRADIENT) leaveGradient() else enterGradient()
+            id == "measure" -> if (cv.interaction == Interaction.MEASURE) leaveMeasure() else enterMeasure()
+            id == "palette_photo" -> { popup?.dismiss(); startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }, REQ_PALETTE_PHOTO) }
             id == "canvas" -> showCanvasSize()
             id == "guides" -> showGuide(anchor)
             id == "assisted" -> {
@@ -1002,6 +1006,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "transform" -> cv.interaction == Interaction.TRANSFORM
             "liquify" -> cv.liquify != null
             "gradient" -> cv.interaction == Interaction.GRADIENT
+            "measure" -> cv.interaction == Interaction.MEASURE
             "fill" -> cv.fillMode
             "guides" -> cv.doc.guide.type != GuideType.OFF
             "assisted" -> cv.doc.guide.assisted && cv.doc.guide.type != GuideType.OFF
@@ -1309,6 +1314,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         // picking a painting tool leaves selection mode (the selection itself stays and limits painting)
         if (cv.interaction == Interaction.GRADIENT) leaveGradient()
+        if (cv.interaction == Interaction.MEASURE) leaveMeasure()
         if (cv.interaction == Interaction.SELECT) {
             cv.interaction = Interaction.PAINT
             hideBottomBar()
@@ -2204,6 +2210,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         override fun openGuide() { popup?.dismiss(); showGuidePage() }
         override fun openDemos() { popup?.dismiss(); showDemos() }
         override fun openSnapshots() { popup?.dismiss(); showSnapshots() }
+        override fun backupAll() { popup?.dismiss(); backupDialog() }
+        override fun restoreBackup() { popup?.dismiss(); pickBackup() }
+        override fun backupNote(): String = backupNoteText()
         override fun comicPanels() { popup?.dismiss(); panelsDialog() }
         override fun speechBubble() { popup?.dismiss(); bubbleDialog() }
     }
@@ -2317,19 +2326,16 @@ class MainActivity : Activity(), CanvasView.Listener {
         val uri: Uri = data.data ?: return
         when (requestCode) {
             REQ_SAVE -> saveProject(uri)
+            REQ_BACKUP -> writeBackup(uri)
+            REQ_RESTORE -> readBackup(uri)
             REQ_OPEN -> openProject(uri)
             REQ_IMAGE -> insertImage(uri)
             REQ_SHADOW_IMAGE -> insertImage(uri, shadow = true)
             REQ_MODEL -> readModel(uri)
             REQ_PALETTE_PHOTO -> {
-                val bmp = runCatching { ProjectIO.decodeImage(this, uri, 600, 600) }.getOrNull()
+                val bmp = runCatching { ProjectIO.decodeImage(this, uri, 1200, 1200) }.getOrNull()
                 if (bmp == null) toast("Could not open that image")
-                else {
-                    PaletteStore.create("From photo", PaletteStore.extract(bmp))
-                    bmp.recycle()
-                    colorPanel?.paletteAdded()
-                    toast("New palette made from the photo")
-                }
+                else PaletteMaker.show(this, bmp, "From photo") { colorPanel?.paletteAdded(); refreshAll() }
             }
             REQ_PHOTO_NEW -> photoAsArtwork(uri)
             REQ_SVG -> writeSvg(uri)
@@ -2858,6 +2864,176 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
     }
 
+    // ---------- Back up / restore ----------
+
+    private var backupSnaps = true
+    private var backupBusy = false
+
+    private fun backupNoteText(): String {
+        val d = Backup.daysSince(this)
+        return when {
+            d < 0 -> L10n.tr("Never backed up. One file you can keep on Google Drive or a computer")
+            d == 0 -> L10n.tr("Last backup: today")
+            d == 1 -> L10n.tr("Last backup: yesterday")
+            else -> L10n.tr("Last backup") + ": " + String.format(L10n.tr("%d days ago"), d)
+        }
+    }
+
+    private fun backupDialog() {
+        if (backupBusy) { hud.show("A backup is already running"); return }
+        val (n, bytes) = Backup.size(this, true)
+        val (_, light) = Backup.size(this, false)
+        if (n == 0) { toast("No artworks to back up yet"); return }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24.dp, 8.dp, 24.dp, 0) }
+        fun mb(b: Long) = String.format(java.util.Locale.US, "%.1f MB", b / 1048576f)
+        box.addView(Ui.text(this, L10n.tr("Every artwork with its layers, reference photo, your palettes and imported brushes, in one file.") + "\n\n" +
+            L10n.tr("Artworks") + ": $n", 14f, Ui.TEXT))
+        val sizeText = Ui.text(this, "", 13f, Ui.TEXT_DIM).apply { setPadding(0, 6.dp, 0, 0) }
+        fun upd() { sizeText.text = L10n.tr("About") + " " + mb(if (backupSnaps) bytes else light) }
+        val snaps = android.widget.CheckBox(this).apply {
+            text = L10n.tr("Include snapshots"); isChecked = backupSnaps; setTextColor(Ui.TEXT)
+            setOnCheckedChangeListener { _, c -> backupSnaps = c; upd() }
+        }
+        box.addView(snaps); box.addView(sizeText); upd()
+        box.addView(Ui.text(this, "Tip: choose Google Drive in the next screen and the backup is safe even if the tablet is lost.", 12.5f, Ui.TEXT_DIM).apply { setPadding(0, 10.dp, 0, 0) })
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(L10n.tr("Back up all artworks"))
+            .setView(box)
+            .setPositiveButton(L10n.tr("Back up")) { _, _ ->
+                val day = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE); type = "application/zip"
+                    putExtra(Intent.EXTRA_TITLE, "Inkora backup $day.zip")
+                }, REQ_BACKUP)
+            }
+            .setNegativeButton(L10n.tr("Cancel"), null).show()
+    }
+
+    private fun writeBackup(uri: Uri) {
+        backupBusy = true
+        val ver = runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: ""
+        // the artwork on the canvas goes in as it is now
+        autosave(force = true)
+        hud.show("Backing up…", sticky = true)
+        afterSaves {
+            saver.execute {
+                var last = 0L
+                val ok = runCatching {
+                    contentResolver.openOutputStream(uri, "w")!!.use { out ->
+                        Backup.write(applicationContext, out, backupSnaps, ver) { f ->
+                            val now = android.os.SystemClock.uptimeMillis()
+                            if (now - last > 250) { last = now; main.post { hud.show(L10n.tr("Backing up…") + " ${(f * 100).roundToInt()}%", sticky = true) } }
+                        }
+                    }
+                }
+                main.post {
+                    backupBusy = false
+                    hud.hideSoon()
+                    if (ok.isSuccess) toast("Backup saved") else toast("Could not write the backup: " + (ok.exceptionOrNull()?.message ?: ""))
+                }
+            }
+        }
+    }
+
+    private fun pickBackup() {
+        if (backupBusy) { hud.show("A backup is already running"); return }
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))
+        }, REQ_RESTORE)
+    }
+
+    private fun readBackup(uri: Uri) {
+        backupBusy = true
+        autosave(force = true)
+        hud.show("Restoring…", sticky = true)
+        val openId = if (cv.isDocReady()) cv.doc.galleryId else null
+        afterSaves {
+            saver.execute {
+                val res = runCatching {
+                    contentResolver.openInputStream(uri)!!.use { inp ->
+                        Backup.restore(applicationContext, inp) { n -> if (n % 20 == 0) main.post { hud.show(L10n.tr("Restoring…") + " $n", sticky = true) } }
+                    }
+                }
+                main.post {
+                    backupBusy = false
+                    hud.hideSoon()
+                    val r = res.getOrNull()
+                    if (r == null) {
+                        val m = res.exceptionOrNull()?.message
+                        toast(if (m == "not a backup") "This file is not an Inkora backup" else if (m == "newer") "This backup is from a newer Inkora: update the app first" else "Could not read the backup")
+                        return@post
+                    }
+                    PaletteStore.load(prefs)
+                    colorPanel?.paletteAdded()
+                    gallery?.refresh()
+                    // the artwork on the canvas came back newer from the backup: show that one
+                    if (openId != null && r.updated > 0 && gallery == null) Gallery.load(this, openId)?.let { d -> openDocument(d); savedDoc = d; savedRevision = d.revision }
+                    toast(L10n.tr("Restored") + ": " + String.format(L10n.tr("%1\$d new, %2\$d updated, %3\$d already here"), r.added, r.updated, r.kept))
+                }
+            }
+        }
+    }
+
+    /** once a session, in the gallery: a nudge when there has been no backup for a while */
+    private var backupNudged = false
+
+    private fun maybeNudgeBackup() {
+        if (backupNudged) return
+        val n = Gallery.list(this).size
+        val d = Backup.daysSince(this)
+        if (n >= 3 && (d < 0 || d >= 14)) {
+            backupNudged = true
+            main.postDelayed({ hud.show(backupNoteText() + " · " + L10n.tr("Import… › Back up all artworks")) }, 1200)
+        }
+    }
+
+    // ---------- Measure ----------
+
+    private var measureInfo: android.widget.TextView? = null
+
+    private fun enterMeasure() {
+        popup?.dismiss()
+        if (cv.interaction == Interaction.SELECT || cv.interaction == Interaction.GRADIENT) hideBottomBar()
+        cv.fillMode = false
+        cv.interaction = Interaction.MEASURE
+        cv.onMeasure = { measureInfo?.text = if (cv.measureA != null) cv.measureLabel() else L10n.tr("Drag across the canvas") }
+        showMeasureBar()
+        refreshAll()
+        hud.show("Measure: drag across the canvas. Near 0°, 45°, 90° it snaps")
+    }
+
+    private fun showMeasureBar() {
+        val bar = barRow()
+        val info = android.widget.TextView(this).apply {
+            textSize = 14f; setTextColor(Ui.TEXT); typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(10.dp, 0, 10.dp, 0); gravity = Gravity.CENTER_VERTICAL; minWidth = 120.dp
+        }
+        measureInfo = info
+        bar.addView(info, LinearLayout.LayoutParams(-2, 40.dp))
+        cv.onMeasure?.invoke()
+        MeasureUnit.values().forEach { u ->
+            bar.addBar(barButton(u.label, cv.measureUnit == u) {
+                cv.measureUnit = u; prefs.edit().putString("measure_unit", u.name).apply(); cv.invalidate(); showMeasureBar()
+            })
+        }
+        bar.addBar(barButton("Make it a ruler") {
+            if (cv.measureToRuler()) { hud.show("Ruler set: your strokes follow it. Grid & perspective › Off removes it"); leaveMeasure() }
+            else hud.show("Measure a line first")
+        })
+        bar.addBar(barButton("Draw this line") { if (cv.measureA == null) hud.show("Measure a line first") else if (cv.drawMeasuredLine()) refreshAll() })
+        bar.addBar(barButton("Done", true) { leaveMeasure() })
+        showBottomBar(bar)
+    }
+
+    private fun leaveMeasure() {
+        if (cv.interaction == Interaction.MEASURE) cv.interaction = Interaction.PAINT
+        cv.onMeasure = null
+        measureInfo = null
+        hideBottomBar()
+        refreshAll()
+    }
+
     // ---------- Gradient ----------
 
     private var gradientSecond = 0xFFFFFFFF.toInt()
@@ -2992,7 +3168,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             }) { v ->
                 adjustValues[i] = sl.min + v * (sl.max - sl.min)
                 requestAdjust()
-            }, LinearLayout.LayoutParams(420.dp, -2))
+            }, LinearLayout.LayoutParams(min(420.dp, root.width - 72.dp), -2))
         }
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
         buttons.addView(barButton("Cancel") { endAdjust(false) })
@@ -3003,14 +3179,35 @@ class MainActivity : Activity(), CanvasView.Listener {
         requestAdjust()
     }
 
+    private var adjustChangedAt = 0L
+    private var adjustFrameQueued = false
+    private val adjustFullRun = Runnable { if (adjustKind != null && !adjustBusy && cv.adjustShownPreview) runAdjust(full = true) }
+
     private fun requestAdjust() {
+        adjustChangedAt = android.os.SystemClock.uptimeMillis()
+        val kind = adjustKind ?: return
+        // color-only adjustments: shown at once, at most once a frame
+        if (Adjust.matrixFor(kind, adjustValues) != null) {
+            if (!adjustFrameQueued) {
+                adjustFrameQueued = true
+                cv.postOnAnimation {
+                    adjustFrameQueued = false
+                    val k = adjustKind ?: return@postOnAnimation
+                    val m = Adjust.matrixFor(k, adjustValues) ?: return@postOnAnimation
+                    val r = cv.adjustArea(0)
+                    if (!r.isEmpty) cv.showAdjustedMatrix(r, m)
+                }
+            }
+            return
+        }
         if (adjustBusy) { adjustPending = true; return }
         runAdjust()
     }
 
-    private fun runAdjust() {
+    private fun runAdjust(full: Boolean = false) {
         val kind = adjustKind ?: return
         val src = adjustSrc ?: return
+        main.removeCallbacks(adjustFullRun)
         adjustBusy = true
         val vals = adjustValues.copyOf()
         val grow = when (kind) {
@@ -3020,12 +3217,25 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         val r = cv.adjustArea(grow)
         if (r.isEmpty) { adjustBusy = false; return }
-        val slow = kind == AdjustKind.BLUR || kind == AdjustKind.SHARPEN
+        // while a slider moves, a big layer is worked out smaller (quick) and at full size when it stops
+        val area = r.width().toLong() * r.height()
+        val moving = android.os.SystemClock.uptimeMillis() - adjustChangedAt < 350
+        val scale = if (!full && adjustFinish == null && moving && area > 1_200_000L) kotlin.math.sqrt(1_200_000.0 / area).toFloat() else 1f
+        val slow = scale == 1f && area > 1_200_000L && (kind == AdjustKind.BLUR || kind == AdjustKind.SHARPEN)
         if (slow) hud.show("Working…", sticky = true)
         adjustExec.execute {
             val result = runCatching {
-                val crop = Bitmap.createBitmap(src, r.left, r.top, r.width(), r.height())
-                Adjust.apply(kind, crop, vals)
+                if (scale < 1f) {
+                    val sw = (r.width() * scale).toInt().coerceAtLeast(1); val sh = (r.height() * scale).toInt().coerceAtLeast(1)
+                    val small = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888)
+                    Canvas(small).drawBitmap(src, r, android.graphics.Rect(0, 0, sw, sh), Paint(Paint.FILTER_BITMAP_FLAG))
+                    val v = vals.copyOf()
+                    if (kind == AdjustKind.BLUR) v[0] *= scale
+                    Adjust.apply(kind, small, v).also { small.recycle() }
+                } else {
+                    val crop = Bitmap.createBitmap(src, r.left, r.top, r.width(), r.height())
+                    Adjust.apply(kind, crop, vals).also { if (it !== crop) crop.recycle() }
+                }
             }.getOrNull()
             main.post {
                 adjustBusy = false
@@ -3036,19 +3246,30 @@ class MainActivity : Activity(), CanvasView.Listener {
                     result.recycle()
                 }
                 when {
+                    // Apply never keeps a preview: work it out at full size first
+                    finish == true && cv.adjustShownPreview -> runAdjust(full = true)
                     finish != null -> completeAdjust(finish)
                     adjustPending -> { adjustPending = false; runAdjust() }
+                    cv.adjustShownPreview -> main.postDelayed(adjustFullRun, 300)
                 }
             }
         }
     }
 
     private fun endAdjust(apply: Boolean) {
+        main.removeCallbacks(adjustFullRun)
         // a calculation may still be running: finish when it's done
         if (adjustBusy) {
             adjustFinish = apply
             adjustPending = false
             return
+        }
+        // the slider's last value (color matrix: maybe still waiting for its frame), at full size
+        val kind = adjustKind
+        if (apply && kind != null) {
+            val m = Adjust.matrixFor(kind, adjustValues)
+            if (m != null) { val r = cv.adjustArea(0); if (!r.isEmpty) cv.showAdjustedMatrix(r, m) }
+            else if (cv.adjustShownPreview) { adjustFinish = true; runAdjust(full = true); return }
         }
         completeAdjust(apply)
     }
@@ -3586,6 +3807,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             if (unsaved) hud.hideSoon()
             if (gallery != null) return@afterSaves
             galleryFromCanvas = fromCanvas
+            maybeNudgeBackup()
             val g = GalleryView(this, if (cv.isDocReady()) cv.doc.galleryId else null, fromCanvas,
                 onOpen = { id -> openFromGallery(id) },
                 onNew = { newCanvasDialog() },
@@ -3593,7 +3815,11 @@ class MainActivity : Activity(), CanvasView.Listener {
                     val pm = PopupMenu(this, anchor)
                     pm.menu.add(0, 1, 1, "Photo as a new artwork…")
                     pm.menu.add(0, 2, 2, "Inkora project or Photoshop file…")
+                    pm.menu.add(0, 3, 3, "Restore a backup…")
+                    pm.menu.add(0, 4, 4, "Back up all artworks…")
                     pm.setOnMenuItemClickListener {
+                        if (it.itemId == 3) { pickBackup(); return@setOnMenuItemClickListener true }
+                        if (it.itemId == 4) { backupDialog(); return@setOnMenuItemClickListener true }
                         if (it.itemId == 1) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
                         }, REQ_PHOTO_NEW)
@@ -3995,5 +4221,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         private const val REQ_SHADOW_IMAGE = 113
         private const val REQ_MODEL = 114
         private const val REQ_PALETTE_PHOTO = 115
+        private const val REQ_BACKUP = 116
+        private const val REQ_RESTORE = 117
     }
 }

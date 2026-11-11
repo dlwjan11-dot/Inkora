@@ -168,7 +168,7 @@ class ColorPanel(
                 base + 1 -> {
                     val b = artwork?.invoke()
                     if (b == null) Ui.toast(context, "Nothing drawn yet")
-                    else { PaletteStore.create("From artwork", PaletteStore.extract(b)); b.recycle(); refreshPalette() }
+                    else PaletteMaker.show(context, b, "From artwork") { refreshPalette() }
                 }
                 base + 2 -> onPalettePhoto?.invoke()
                 base + 3 -> askName("Rename palette", PaletteStore.current.name) { PaletteStore.current.name = it; PaletteStore.save(); refreshPalette() }

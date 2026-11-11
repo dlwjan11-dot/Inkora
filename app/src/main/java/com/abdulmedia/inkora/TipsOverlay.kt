@@ -73,6 +73,7 @@ object Tour {
         Page(1, "More tools, and your own toolbar", listOf(
             "The ••• in the top bar opens Creative and Editing",
             "Creative: text, vector shapes and pen, 3D figures to pose, photos, fill, gradient",
+            "Measure lengths and angles; turn a line into a ruler",
             "Actions (the wrench) › Add: comic panels and speech bubbles",
             "Editing: liquify, canvas size and crop, filters, feather",
             "Tap ☆ on any tool to put it on your own toolbar; long-press the toolbar to arrange it")),
@@ -82,7 +83,8 @@ object Tour {
             "Actions (the wrench) › Share: PNG, JPEG, Photoshop PSD, PDF, TIFF, project file",
             "Every artwork records a time-lapse video you can export",
             "Actions › Canvas › Snapshots: keep a moment of the artwork and come back to it",
-            "A reference photo you import stays with its artwork"), listOf(Icon.FOLDER, Icon.EXPORT, Icon.VIDEO)),
+            "A reference photo you import stays with its artwork",
+            "Actions › Share › Back up all artworks: every artwork in one file, for Google Drive"), listOf(Icon.FOLDER, Icon.EXPORT, Icon.VIDEO)),
         Page(-1, "Find all of this again", listOf(
             "Actions (the wrench) › Help › Guide: everything on these pages",
             "Help › Shortcuts, shown: every gesture as a small moving picture",

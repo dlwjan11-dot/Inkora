@@ -22,13 +22,16 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import android.graphics.RectF
 
 enum class Tool { BRUSH, SMUDGE, ERASER }
 
 /** What touches on the canvas do right now. */
-enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR, LIQUIFY, GRADIENT }
+enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR, LIQUIFY, GRADIENT, MEASURE }
+
+enum class MeasureUnit(val label: String) { PX("px"), CM("cm"), IN("in") }
 
 enum class GradientKind(val label: String) { LINEAR("Linear"), RADIAL("Radial") }
 
@@ -174,7 +177,7 @@ class CanvasView(context: Context) : View(context) {
     private val loupePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // ---- input state ----
-    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG, GRADIENT_DRAG }
+    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG, GRADIENT_DRAG, MEASURE_DRAG }
 
     // ---- vector layers ----
     val vectorEditor: VectorEditor by lazy {
@@ -614,6 +617,7 @@ class CanvasView(context: Context) : View(context) {
         }
 
         drawGradientLine(canvas)
+        drawMeasure(canvas)
         if (mode == Mode.PICK) drawLoupe(canvas)
         drawLiquifyBrush(canvas)
     }
@@ -962,6 +966,12 @@ class CanvasView(context: Context) : View(context) {
                 return
             }
             Interaction.LIQUIFY -> { startLiquify(e); return }
+            Interaction.MEASURE -> {
+                mode = Mode.MEASURE_DRAG
+                downTime = e.eventTime
+                measureDown(e.x, e.y)
+                return
+            }
             Interaction.GRADIENT -> {
                 mode = Mode.GRADIENT_DRAG
                 downTime = e.eventTime
@@ -1058,6 +1068,10 @@ class CanvasView(context: Context) : View(context) {
                 } else startGesture(e, -1, keepTapInfo = true)
             }
             Mode.LIQUIFY_DRAG -> startGesture(e, -1)
+            Mode.MEASURE_DRAG -> if (e.eventTime - downTime < 300) {
+                measureUndoDown()
+                startGesture(e, -1)
+            }
             Mode.GRADIENT_DRAG -> if (e.eventTime - downTime < 300) {
                 // a second finger right away: zoom or move the view instead
                 gradA = null; gradB = null
@@ -1149,6 +1163,7 @@ class CanvasView(context: Context) : View(context) {
             Mode.SELECT_DRAW -> moveSelect(e)
             Mode.LIQUIFY_DRAG -> moveLiquify(e)
             Mode.GRADIENT_DRAG -> { gradB = toDoc(e.x, e.y); invalidate() }
+            Mode.MEASURE_DRAG -> measureMove(e.x, e.y)
             Mode.VECTOR_DRAG -> vectorEditor.onMove(e.x, e.y)
             Mode.TRANSFORM_DRAG -> updateTransformDrag(e)
             Mode.TRANSFORM_PINCH -> updateTransformPinch(e)
@@ -1200,6 +1215,7 @@ class CanvasView(context: Context) : View(context) {
             Mode.VP_DRAG -> doc.revision++
             Mode.SELECT_DRAW -> finishSelect()
             Mode.GRADIENT_DRAG -> commitGradient()
+            Mode.MEASURE_DRAG -> measureUp()
             Mode.VECTOR_DRAG -> vectorEditor.onUp(e.x, e.y)
             else -> {}
         }
@@ -2048,6 +2064,240 @@ class CanvasView(context: Context) : View(context) {
         selection = Selections.combine(selection, fresh, mode, doc.width, doc.height)
     }
 
+    // ---------------- Measure ----------------
+
+    var measureUnit = MeasureUnit.PX
+    /** the two ends of the measured line (document pixels), or null before the first drag */
+    var measureA: PointF? = null
+        private set
+    var measureB: PointF? = null
+        private set
+    /** what the finger holds: 0 = a new line (its end), 1 = start, 2 = end, 3 = the whole line */
+    private var measurePart = 0
+    private var measureGrab = PointF()
+    private var measureBefore: Pair<PointF?, PointF?> = null to null
+    private var measureSnapped = -1
+    private val measureText = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; isFakeBoldText = true }
+    private val measureBox = RectF()
+    /** the measurement changed (MainActivity shows the numbers in its bar) */
+    var onMeasure: (() -> Unit)? = null
+
+    fun clearMeasure() { measureA = null; measureB = null; invalidate(); onMeasure?.invoke() }
+
+    private fun screenOf(p: PointF): PointF { val a = floatArrayOf(p.x, p.y); viewMatrix.mapPoints(a); return PointF(a[0], a[1]) }
+
+    private fun measureDown(sx: Float, sy: Float) {
+        measureBefore = measureA?.let { PointF(it.x, it.y) } to measureB?.let { PointF(it.x, it.y) }
+        val a = measureA; val b = measureB
+        val p = toDoc(sx, sy)
+        measurePart = 0
+        if (a != null && b != null) {
+            val sa = screenOf(a); val sb = screenOf(b)
+            val grab = 26f * density
+            measurePart = when {
+                hypot(sx - sb.x, sy - sb.y) < grab -> 2
+                hypot(sx - sa.x, sy - sa.y) < grab -> 1
+                distToSegment(sx, sy, sa, sb) < 16f * density -> 3
+                else -> 0
+            }
+        }
+        measureGrab = p
+        if (measurePart == 0) { measureA = p; measureB = PointF(p.x, p.y) }
+        measureSnapped = -1
+        invalidate()
+    }
+
+    /** a second finger came at once: that was a zoom, not a measurement */
+    private fun measureUndoDown() {
+        measureA = measureBefore.first; measureB = measureBefore.second
+        invalidate()
+    }
+
+    private fun distToSegment(x: Float, y: Float, a: PointF, b: PointF): Float {
+        val dx = b.x - a.x; val dy = b.y - a.y
+        val l2 = dx * dx + dy * dy
+        val t = if (l2 < 1e-3f) 0f else (((x - a.x) * dx + (y - a.y) * dy) / l2).coerceIn(0f, 1f)
+        return hypot(x - (a.x + dx * t), y - (a.y + dy * t))
+    }
+
+    private fun measureMove(sx: Float, sy: Float) {
+        val a = measureA ?: return
+        val b = measureB ?: return
+        val p = toDoc(sx, sy)
+        when (measurePart) {
+            3 -> {
+                val dx = p.x - measureGrab.x; val dy = p.y - measureGrab.y
+                a.offset(dx, dy); b.offset(dx, dy)
+                measureGrab = p
+            }
+            1 -> { a.set(p); snapEnd(b, a) }
+            else -> { b.set(p); snapEnd(a, b) }
+        }
+        invalidate()
+        onMeasure?.invoke()
+    }
+
+    /** near a multiple of 15° the free end catches on it, with a small tick */
+    private fun snapEnd(fixed: PointF, free: PointF) {
+        val dx = free.x - fixed.x; val dy = free.y - fixed.y
+        val len = hypot(dx, dy)
+        if (len < 4f) return
+        val deg = Math.toDegrees(atan2(-dy.toDouble(), dx.toDouble())).toFloat()
+        val near = (Math.round(deg / 15f) * 15)
+        if (abs(deg - near) < 2.5f) {
+            val r = Math.toRadians(near.toDouble())
+            free.set(fixed.x + (len * cos(r)).toFloat(), fixed.y - (len * sin(r)).toFloat())
+            if (near != measureSnapped) performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+            measureSnapped = near
+        } else measureSnapped = -1
+    }
+
+    private fun measureUp() {
+        val a = measureA; val b = measureB
+        // a tap without a drag: no line
+        if (a != null && b != null && measurePart == 0 && hypot(b.x - a.x, b.y - a.y) * zoom() < 6f * density) {
+            measureA = measureBefore.first; measureB = measureBefore.second
+        }
+        invalidate()
+        onMeasure?.invoke()
+    }
+
+    /** length in the chosen unit (cm and inches at 300 dpi) */
+    fun measureLength(): Float {
+        val a = measureA ?: return 0f
+        val b = measureB ?: return 0f
+        val px = hypot(b.x - a.x, b.y - a.y)
+        return when (measureUnit) {
+            MeasureUnit.PX -> px
+            MeasureUnit.CM -> px / 300f * 2.54f
+            MeasureUnit.IN -> px / 300f
+        }
+    }
+
+    /** the angle from the horizontal, counter-clockwise, -180..180 */
+    fun measureAngle(): Float {
+        val a = measureA ?: return 0f
+        val b = measureB ?: return 0f
+        return Math.toDegrees(atan2(-(b.y - a.y).toDouble(), (b.x - a.x).toDouble())).toFloat()
+    }
+
+    fun measureLabel(): String {
+        val v = measureLength()
+        val len = if (measureUnit == MeasureUnit.PX) "${v.roundToInt()} px" else String.format(java.util.Locale.US, "%.2f %s", v, measureUnit.label)
+        val a = measureAngle()
+        val ang = if (abs(a - a.roundToInt()) < 0.05f) "${a.roundToInt()}°" else String.format(java.util.Locale.US, "%.1f°", a)
+        return "$len  ·  $ang"
+    }
+
+    private fun drawMeasure(canvas: Canvas) {
+        if (interaction != Interaction.MEASURE) return
+        val a = measureA ?: return
+        val b = measureB ?: return
+        val sa = screenOf(a); val sb = screenOf(b)
+        val d = density
+        // a faint horizontal and the arc of the angle
+        handlePaint.style = Paint.Style.STROKE
+        val len = hypot(sb.x - sa.x, sb.y - sa.y)
+        if (len > 30f * d) {
+            handlePaint.color = 0x66FFFFFF; handlePaint.strokeWidth = 1f * d
+            handlePaint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(5f * d, 4f * d), 0f)
+            val h = min(len, 70f * d)
+            canvas.drawLine(sa.x, sa.y, sa.x + h, sa.y, handlePaint)
+            handlePaint.pathEffect = null
+            val ang = measureAngle()
+            val rr = min(len * 0.45f, 36f * d)
+            measureBox.set(sa.x - rr, sa.y - rr, sa.x + rr, sa.y + rr)
+            handlePaint.color = 0xCCFFBE3D.toInt(); handlePaint.strokeWidth = 1.6f * d
+            canvas.drawArc(measureBox, 0f, -ang, false, handlePaint)
+        }
+        // the line: dark under light, so it shows on any color
+        handlePaint.strokeCap = Paint.Cap.ROUND
+        handlePaint.color = 0x99000000.toInt(); handlePaint.strokeWidth = 4f * d
+        canvas.drawLine(sa.x, sa.y, sb.x, sb.y, handlePaint)
+        handlePaint.color = Ui.ACCENT; handlePaint.strokeWidth = 2f * d
+        canvas.drawLine(sa.x, sa.y, sb.x, sb.y, handlePaint)
+        // ticks across the ends
+        if (len > 1f) {
+            val nx = -(sb.y - sa.y) / len * 7f * d; val ny = (sb.x - sa.x) / len * 7f * d
+            handlePaint.color = Color.WHITE; handlePaint.strokeWidth = 1.6f * d
+            canvas.drawLine(sa.x - nx, sa.y - ny, sa.x + nx, sa.y + ny, handlePaint)
+            canvas.drawLine(sb.x - nx, sb.y - ny, sb.x + nx, sb.y + ny, handlePaint)
+        }
+        handlePaint.style = Paint.Style.FILL
+        for (p in listOf(sa, sb)) {
+            handlePaint.color = 0x99000000.toInt(); canvas.drawCircle(p.x, p.y, 7.5f * d, handlePaint)
+            handlePaint.color = Color.WHITE; canvas.drawCircle(p.x, p.y, 5.5f * d, handlePaint)
+        }
+        // the numbers, beside the middle of the line
+        val label = measureLabel()
+        measureText.textSize = 13f * d
+        val tw = measureText.measureText(label)
+        val mx = (sa.x + sb.x) / 2; val my = (sa.y + sb.y) / 2
+        var ox = 0f; var oy = -22f * d
+        if (len > 1f) { ox = -(sb.y - sa.y) / len * 24f * d; oy = (sb.x - sa.x) / len * 24f * d; if (oy > 0) { ox = -ox; oy = -oy } }
+        val cx = (mx + ox).coerceIn(tw / 2 + 12f * d, width - tw / 2 - 12f * d)
+        val cy = (my + oy).coerceIn(20f * d, height - 20f * d)
+        measureBox.set(cx - tw / 2 - 9f * d, cy - 13f * d, cx + tw / 2 + 9f * d, cy + 11f * d)
+        handlePaint.color = 0xE6202228.toInt()
+        canvas.drawRoundRect(measureBox, 12f * d, 12f * d, handlePaint)
+        canvas.drawText(label, cx - tw / 2, cy + 4.5f * d, measureText)
+        handlePaint.strokeCap = Paint.Cap.BUTT
+    }
+
+    /** the measured line becomes the Ruler guide: strokes then run along it */
+    fun measureToRuler(): Boolean {
+        val a = measureA ?: return false
+        val b = measureB ?: return false
+        if (hypot(b.x - a.x, b.y - a.y) < 4f) return false
+        val g = doc.guide
+        g.setVp(5, a.x / doc.width, a.y / doc.height)
+        g.setVp(6, b.x / doc.width, b.y / doc.height)
+        g.type = GuideType.RULER
+        doc.revision++
+        invalidate()
+        return true
+    }
+
+    /** draws the measured line with the brush in hand (or erases along it with the eraser) */
+    fun drawMeasuredLine(): Boolean {
+        val a = measureA ?: return false
+        val b = measureB ?: return false
+        if (hypot(b.x - a.x, b.y - a.y) < 2f) return false
+        val layer = doc.active
+        when {
+            !layer.visible || doc.groupOf(layer)?.visible == false -> { listener?.onMessage("This layer is hidden"); return false }
+            layer.vector != null -> { listener?.onMessage("Vector layer: use the vector tools, or pick a drawing layer"); return false }
+            layer.scene != null -> { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); return false }
+        }
+        val erasing = tool == Tool.ERASER
+        val brush = if (erasing) eraserBrush else paintBrush
+        if (brush.preset.living != null) { listener?.onMessage("Living brushes: use Make it a ruler, then draw along it"); return false }
+        val sb = strokeBitmap ?: return false
+        sb.eraseColor(0)
+        strokeErasing = erasing
+        smudging = false
+        engine.brush = brush
+        engine.color = if (erasing) Color.BLACK else if (layer.isLayerMask) Color.WHITE else color
+        engine.dabHandler = null
+        engine.symmetry = symmetry
+        engine.wetSource = null
+        strokeGrain = grainPaintFor(brush)
+        strokeLook = if (erasing) null else strokeLookFor(brush)
+        strokeMask = if (brush.dualTip() != null) {
+            val mb = maskBitmap?.takeIf { it.width == doc.width && it.height == doc.height }
+                ?: run { maskBitmap?.recycle(); runCatching { Bitmap.createBitmap(doc.width, doc.height, Bitmap.Config.ALPHA_8) }.getOrNull() }
+            maskBitmap = mb
+            mb?.eraseColor(0)
+            mb
+        } else null
+        engine.maskTarget = strokeMask
+        engine.renderPoints(sb, QuickShape.toPoints(Shape.Line(PointF(a.x, a.y), PointF(b.x, b.y))), 0.8f, shapeSeed)
+        commitStroke()
+        lastStroke = null
+        invalidate()
+        return true
+    }
+
     // ---------------- Gradient ----------------
 
     var gradientKind = GradientKind.LINEAR
@@ -2622,14 +2872,50 @@ class CanvasView(context: Context) : View(context) {
         return r
     }
 
-    /** Shows [result] (pixels of rectangle [r]) on the layer. */
+    private val adjustSrcPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.SRC }
+    private val adjustMatrixPaint = Paint().apply { blendMode = BlendMode.SRC }
+
+    /** what was shown last was a smaller, quicker preview: Apply must compute it at full size first */
+    var adjustShownPreview = false
+        private set
+
+    /** puts back the untouched pixels where the last preview was, when that was outside [r] */
+    private fun restoreAdjustOutside(c: Canvas, orig: Bitmap, r: Rect) {
+        val last = lastAdjustRect ?: return
+        if (r.contains(last)) return
+        c.drawBitmap(orig, last, last, adjustSrcPaint)
+    }
+
+    /**
+     * A color-matrix adjustment, shown straight away: one pass over the layer, on this thread,
+     * with no copies (called at most once a frame).
+     */
+    fun showAdjustedMatrix(r: Rect, m: android.graphics.ColorMatrix) {
+        val layer = adjustLayer ?: return
+        val orig = adjustOrig ?: return
+        val c = Canvas(layer.bitmap)
+        restoreAdjustOutside(c, orig, r)
+        adjustMatrixPaint.colorFilter = android.graphics.ColorMatrixColorFilter(m)
+        c.drawBitmap(orig, r, r, adjustMatrixPaint)
+        selection?.let {
+            val beforeRegion = Bitmap.createBitmap(orig, r.left, r.top, r.width(), r.height())
+            Selections.restrict(layer.bitmap, beforeRegion, r, it)
+            beforeRegion.recycle()
+        }
+        lastAdjustRect = Rect(r)
+        adjustShownPreview = false
+        invalidate()
+    }
+
+    /** Shows [result] (pixels of rectangle [r], or a smaller preview of them) on the layer. */
     fun showAdjusted(r: Rect, result: Bitmap) {
         val layer = adjustLayer ?: return
         val orig = adjustOrig ?: return
-        val src = Paint().apply { blendMode = BlendMode.SRC }
         val c = Canvas(layer.bitmap)
-        c.drawBitmap(orig, 0f, 0f, src)
-        c.drawBitmap(result, r.left.toFloat(), r.top.toFloat(), src)
+        restoreAdjustOutside(c, orig, r)
+        adjustShownPreview = result.width != r.width() || result.height != r.height()
+        if (adjustShownPreview) c.drawBitmap(result, null, RectF(r), adjustSrcPaint)
+        else c.drawBitmap(result, r.left.toFloat(), r.top.toFloat(), adjustSrcPaint)
         selection?.let {
             val beforeRegion = Bitmap.createBitmap(orig, r.left, r.top, r.width(), r.height())
             Selections.restrict(layer.bitmap, beforeRegion, r, it)
