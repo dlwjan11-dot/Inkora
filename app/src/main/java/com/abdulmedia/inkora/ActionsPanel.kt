@@ -78,6 +78,8 @@ interface ActionsHost {
     var railMode: String
     /** runs a tool by its id in [ToolCatalog] */
     fun runTool(id: String)
+    /** the full-screen Settings (on a page: "fill", "pressure") */
+    fun openSettings(page: String? = null)
 }
 
 /**
@@ -86,12 +88,20 @@ interface ActionsHost {
  * Canvas (drawing help, windows, views, the canvas itself).
  */
 @SuppressLint("ViewConstructor")
-class ActionsPanel(context: Context, private val host: ActionsHost, private val mode: String = MODE_ACTIONS) : LinearLayout(context) {
+class ActionsPanel(
+    context: Context,
+    private val host: ActionsHost,
+    private val mode: String = MODE_ACTIONS,
+    /** the Settings screen's back arrow */
+    private val onBack: () -> Unit = {}
+) : LinearLayout(context) {
 
     companion object {
         const val MODE_ACTIONS = "actions"
         const val MODE_ADD = "add"
         const val MODE_CANVAS = "canvas"
+        /** the full-screen Settings: sections on the side, search on top */
+        const val MODE_SETTINGS = "settings"
     }
 
     enum class Tab(val label: String, val icon: Icon) {
@@ -105,9 +115,160 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
     private val cv get() = host.canvas
     /** an open sub-page of a tab (for now: "pressure" in Prefs) */
     private var page: String? = null
-    private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "FILE")!!) }.getOrDefault(Tab.FILE)
+    private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "FILE")!!) }.getOrDefault(Tab.FILE).let { if (it == Tab.PREFS) Tab.FILE else it }
+
+    // ---- the Settings screen ----
+    /** a section: its key, its name, and words that find it in the search */
+    private class Section(val key: String, val label: String, val words: String)
+    private val sections = listOf(
+        Section("canvas", "Canvas", "canvas selection mask shade"),
+        Section("brushes", "Brushes and Pen", "pressure pen heavy light smoothing stabilization motion eraser cursor fill colordrop gap s pen hold watercolor wet bleed faster gpu graphics"),
+        Section("gestures", "Gestures and Shortcuts", "gesture finger touch tap pinch keyboard shortcut s pen button quick menu modify"),
+        Section("appearance", "Appearance", "dark light theme color colour accent left right hand left hand mirror tool bar toolbar side docked floating fade island sidebar slider"),
+        Section("workspaces", "Workspaces", "workspace layout sketching painting lettering frame mine"),
+        Section("language", "Language", "language arabic english kurdish sorani"),
+        Section("files", "Files and Backup", "backup back up restore files drive save"),
+        Section("about", "About", "about version licence license open source tour guide help")
+    )
+    private var section: String = host.prefs.getString("settings_section", "brushes") ?: "brushes"
+    private var query = ""
+    private var advanced = false
+    private val sectionList = LinearLayout(context).apply { orientation = VERTICAL }
 
     init {
+        if (mode == MODE_SETTINGS) buildSettingsFrame() else buildPopupFrame()
+        rebuild()
+    }
+
+    /** Settings: a whole screen with the sections on the start side */
+    private fun buildSettingsFrame() {
+        orientation = VERTICAL
+        setBackgroundColor(Ui.SURFACE)
+        isClickable = true
+        val phone = context.narrow
+        setPadding(if (phone) 12.dp else 28.dp, if (phone) 12.dp else 20.dp, if (phone) 12.dp else 28.dp, 0)
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(IconView(context, if (L10n.isRtl) Icon.CHEV_RIGHT else Icon.CHEV_LEFT).apply {
+            iconScale = 0.5f
+            contentDescription = L10n.tr("Back")
+            setOnClickListener { onBack() }
+        }, LayoutParams(44.dp, 44.dp))
+        head.addView(Ui.text(context, "Settings", 28f, bold = true), LayoutParams(0, -2, 1f).apply { marginStart = 4.dp })
+        val field = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12.dp, 0, 8.dp, 0)
+            background = Ui.rounded(Ui.CARD, 12f)
+        }
+        field.addView(IconView(context, Icon.SEARCH).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.6f }, LayoutParams(24.dp, 24.dp))
+        field.addView(android.widget.EditText(context).apply {
+            hint = L10n.tr("Search settings")
+            setHintTextColor(Ui.TEXT_DIM)
+            setTextColor(Ui.TEXT)
+            textSize = 14f
+            typeface = Fonts.get(400)
+            background = null
+            setSingleLine()
+            setPadding(8.dp, 0, 4.dp, 0)
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(e: android.text.Editable?) {
+                    query = e?.toString()?.trim() ?: ""
+                    page = null
+                    rebuild()
+                }
+            })
+        }, LayoutParams(0, -1, 1f))
+        if (phone) {
+            addView(head)
+            addView(field, LayoutParams(-1, 44.dp).apply { topMargin = 8.dp })
+        } else {
+            head.addView(field, LayoutParams(300.dp, 44.dp))
+            addView(head)
+        }
+        val row = LinearLayout(context).apply { orientation = if (phone) VERTICAL else HORIZONTAL }
+        val scroll = ScrollView(context).apply { isVerticalScrollBarEnabled = false; clipToPadding = false; setPadding(0, 0, 0, 32.dp) }
+        scroll.addView(body)
+        if (phone) {
+            sectionList.orientation = HORIZONTAL
+            row.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(sectionList) },
+                LayoutParams(-1, -2).apply { topMargin = 10.dp; bottomMargin = 8.dp })
+            row.addView(scroll, LayoutParams(-1, 0, 1f))
+        } else {
+            row.addView(ScrollView(context).apply { isVerticalScrollBarEnabled = false; addView(sectionList) }, LayoutParams(240.dp, -1))
+            row.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1, -1).apply { marginStart = 12.dp; marginEnd = 28.dp })
+            // a readable column, not the whole width of the tablet
+            row.addView(scroll, LayoutParams(0, -1, 1f))
+        }
+        addView(row, LayoutParams(-1, 0, 1f).apply { topMargin = 14.dp })
+    }
+
+    private fun fillSectionList() {
+        sectionList.removeAllViews()
+        val phone = context.narrow
+        for (sec in sections) {
+            val on = query.isEmpty() && sec.key == section
+            sectionList.addView(Ui.text(context, sec.label, 14.5f, if (on) Ui.ACCENT else Ui.TEXT, on).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(14.dp, 0, 14.dp, 0)
+                background = if (on) Ui.rounded(Ui.ACCENT_SOFT, 12f) else null
+                foreground = Ui.ripple(12f)
+                setOnClickListener {
+                    section = sec.key; page = null; advanced = false
+                    host.prefs.edit().putString("settings_section", sec.key).apply()
+                    rebuild()
+                }
+            }, if (phone) LayoutParams(-2, 40.dp).apply { marginEnd = 4.dp } else LayoutParams(-1, 46.dp).apply { bottomMargin = 2.dp })
+        }
+    }
+
+    private fun buildSection(key: String) = when (key) {
+        "canvas" -> setCanvas()
+        "brushes" -> setBrushes()
+        "gestures" -> setGestures()
+        "appearance" -> setAppearance()
+        "workspaces" -> setWorkspaces()
+        "language" -> setLanguage()
+        "files" -> setFiles()
+        else -> setAbout()
+    }
+
+    private fun matches(sec: Section): Boolean {
+        val q = query.lowercase()
+        return sec.words.contains(q) || sec.label.lowercase().contains(q) || L10n.tr(sec.label).lowercase().contains(q) ||
+            searchLabels(sec.key).any { it.lowercase().contains(q) || L10n.tr(it).lowercase().contains(q) }
+    }
+
+    /** the row names of a section, so a search finds them in any language */
+    private fun searchLabels(key: String): List<String> = when (key) {
+        "canvas" -> listOf("Selection mask visibility")
+        "brushes" -> listOf("Pressure and Smoothing", "Brush cursor", "Keep my last eraser", "Fill and ColorDrop", "S Pen button hold time", "Faster drawing (test)", "Watercolor drying", "Wet paint runs together")
+        "gestures" -> listOf("Gesture controls", "Shortcuts, shown", "Keyboard shortcuts")
+        "appearance" -> listOf("Light interface", "Accent color", "Side", "Style", "Hand island", "Fade the islands while drawing")
+        "workspaces" -> listOf("Workspace", "Save this layout as mine")
+        "language" -> listOf("Language")
+        "files" -> listOf("Back up all artworks…", "Restore a backup…")
+        else -> listOf("Guide", "Take the tour again", "Open-source licenses")
+    }
+
+    private fun rebuildSettings() {
+        fillSectionList()
+        if (query.isNotEmpty()) {
+            val found = sections.filter { matches(it) }
+            if (found.isEmpty()) note("Nothing found. Try another word, like \"pressure\" or \"left hand\".")
+            for (sec in found) {
+                body.addView(Ui.text(context, sec.label, 20f, bold = true).apply { setPadding(4.dp, 10.dp, 0, 8.dp) })
+                buildSection(sec.key)
+            }
+            return
+        }
+        body.addView(Ui.text(context, sections.firstOrNull { it.key == section }?.label ?: "", 22f, bold = true).apply { setPadding(4.dp, 0, 0, 12.dp) })
+        buildSection(section)
+    }
+
+    /** the old popup frame (Actions, Add, Canvas) */
+    private fun buildPopupFrame() {
         orientation = VERTICAL
         background = Ui.rounded(Ui.PANEL, 22f, Ui.OUTLINE, 1)
         setPadding(14.dp, 16.dp, 14.dp, 12.dp)
@@ -121,7 +282,6 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         val scroll = ScrollView(context).apply { isVerticalScrollBarEnabled = false }
         scroll.addView(body)
         addView(scroll, LayoutParams(-1, 0, 1f).apply { topMargin = 10.dp })
-        rebuild()
     }
 
     private fun rebuild() {
@@ -133,6 +293,8 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, 4.dp, 0, 4.dp)
                 setOnClickListener {
+                    // Settings has a screen of its own
+                    if (t == Tab.PREFS) { host.close(); host.openSettings(); return@setOnClickListener }
                     tab = t
                     page = null
                     host.prefs.edit().putString("actions_tab", t.name).apply()
@@ -149,6 +311,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         body.removeAllViews()
         if (page == "pressure") { buildPressure(); return }
         if (page == "fill") { buildFill(); return }
+        if (mode == MODE_SETTINGS) { rebuildSettings(); return }
         if (mode == MODE_ADD) { buildAdd(); return }
         if (mode == MODE_CANVAS) { buildCanvas(); return }
         when (tab) {
@@ -412,18 +575,75 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         )
     }
 
-    private fun buildPrefs() {
-        val langs = listOf(L10n.EN to "English", L10n.AR to "العربية", L10n.CKB to "کوردی")
-        val dock = host.dockEdge()
-        val sliders = host.slidersEdge()
+    private fun buildPrefs() = setBrushes()
 
-        section("Interface")
+    private fun setCanvas() {
         group(
-            choiceRow("Language", langs, L10n.lang, icon = Icon.GLOBE) { code -> host.close(); host.setLanguage(code) },
+            sliderRow("Selection mask visibility", cv.selectionShade / 0.8f, { "${(it * 100).roundToInt()}%" }) { v ->
+                cv.selectionShade = v * 0.8f
+                cv.invalidate()
+                host.prefs.edit().putFloat("selectionShade", cv.selectionShade).apply()
+            }
+        )
+        note("Canvas size, crop and guides are in Actions › Canvas, with an artwork open.")
+    }
+
+    private fun setBrushes() {
+        group(
+            row("Pressure and Smoothing", "The pressure curve, stabilization and motion filtering", closes = false, icon = Icon.PRESSURE) { page = "pressure"; rebuild() },
+            row("Fill and ColorDrop", "How far the color goes, and closing gaps in the lines", closes = false, icon = Icon.FILL) { page = "fill"; rebuild() },
+            switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor, icon = Icon.BRUSH) { host.brushCursor = it },
+            switchRow("Keep my last eraser", "The eraser you used last (its size too) is ready next time, in new artworks as well", host.rememberEraser, icon = Icon.ERASER) { host.rememberEraser = it },
+            sliderRow("S Pen button hold time", ((cv.penHoldMs - 400L) / 1600f).coerceIn(0f, 1f),
+                { String.format(Locale.US, "%.2f s", it * 1.6f + 0.4f) }) { v ->
+                val ms = ((v * 1.6f + 0.4f) * 1000).toLong()
+                cv.penHoldMs = ms
+                host.prefs.edit().putLong("penHoldMs", ms).apply()
+            }
+        )
+        advancedRow {
+            group(
+                switchRow("Faster drawing (test)", "Sends only the part of the stroke that changed to the graphics chip. Turn it off if strokes look wrong", host.gpuTiles, icon = Icon.SPARKLE) { host.gpuTiles = it },
+                switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying, icon = Icon.DROP) { host.watercolorDrying = it },
+                switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed, icon = Icon.INK) { host.wetBleed = it }
+            )
+        }
+    }
+
+    /** one "Advanced" row at the end of a section: it opens the settings few people need */
+    private fun advancedRow(content: () -> Unit) {
+        group(row(if (advanced) "Advanced  ▾" else "Advanced  ▸", null, closes = false, icon = Icon.WRENCH) { advanced = !advanced; rebuild() })
+        if (advanced || query.isNotEmpty()) content()
+    }
+
+    private fun setGestures() {
+        group(
+            row("Gesture controls", "What fingers, the S Pen and □ do", icon = Icon.TOUCH) { host.openGestureControls() },
+            row("Shortcuts, shown", "Every gesture as a small moving picture", icon = Icon.VIDEO) { host.openDemos() },
+            row("Keyboard shortcuts", "Or hold Ctrl on a keyboard", icon = Icon.KEYBOARD) { host.openShortcuts() }
+        )
+    }
+
+    private fun setAppearance() {
+        val dock = host.dockEdge()
+        group(
             switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it },
             accentRow()
         )
-        section("Workspace")
+        group(
+            choiceRow("Side", listOf("Left" to "Left", "Right" to "Right"), dock, icon = Icon.LAYOUT) { e ->
+                host.setEdges(e, if (e == "Left") "Right" else "Left"); rebuild()
+            },
+            choiceRow("Style", listOf(ToolRail.TOP to "On top", ToolRail.DOCK to "Docked", ToolRail.WIDE to "Wide", ToolRail.FLOAT to "Floating"), host.railMode, icon = Icon.DOCK) { m ->
+                host.railMode = m; rebuild()
+            },
+            switchRow("Hand island", "Brush, size, opacity, colors and undo by your free hand. Off: change them with gestures", host.sidebarShown, icon = Icon.EYE) { host.sidebarShown = it },
+            switchRow("Fade the islands while drawing", "They step back 300 ms into a stroke and come back 700 ms after the pen lifts", host.fadeIslands, icon = Icon.HIDE) { host.fadeIslands = it }
+        )
+        note("Left-handed? Put the side on Right: the hand island moves to your right hand.")
+    }
+
+    private fun setWorkspaces() {
         val spaces = Workspaces.presets + listOfNotNull(Workspaces.mine(host.prefs))
         val cur = Workspaces.current(host.prefs)
         group(
@@ -432,45 +652,33 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
             },
             row("Save this layout as mine", spaces.firstOrNull { it.key == cur }?.hint ?: "Your tool bar as it is now, to come back to", closes = false, icon = Icon.PIN) {
                 host.saveWorkspace(); rebuild()
-            },
-            switchRow("Fade the islands while drawing", "They step back 300 ms into a stroke and come back 700 ms after the pen lifts", host.fadeIslands, icon = Icon.HIDE) { host.fadeIslands = it }
-        )
-        section("Tool bar")
-        group(
-            choiceRow("Side", listOf("Left" to "Left", "Right" to "Right"), dock, icon = Icon.LAYOUT) { e ->
-                // the size and opacity sliders go to the other side
-                host.setEdges(e, if (e == "Left") "Right" else "Left"); rebuild()
-            },
-            choiceRow("Style", listOf(ToolRail.TOP to "On top", ToolRail.DOCK to "Docked", ToolRail.WIDE to "Wide", ToolRail.FLOAT to "Floating"), host.railMode, icon = Icon.DOCK) { m ->
-                host.railMode = m; rebuild()
-            },
-            switchRow("Size & Opacity sidebar", "Hide it if you only change them with gestures", host.sidebarShown, icon = Icon.EYE) { host.sidebarShown = it }
-        )
-        section("Painting")
-        group(
-            switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor, icon = Icon.BRUSH) { host.brushCursor = it },
-            switchRow("Faster drawing (test)", "Sends only the part of the stroke that changed to the graphics chip. Turn it off if strokes look wrong", host.gpuTiles, icon = Icon.SPARKLE) { host.gpuTiles = it },
-            switchRow("Keep my last eraser", "The eraser you used last (its size too) is ready next time, in new artworks as well", host.rememberEraser, icon = Icon.ERASER) { host.rememberEraser = it },
-            switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying, icon = Icon.DROP) { host.watercolorDrying = it },
-            switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed, icon = Icon.INK) { host.wetBleed = it },
-            row("Fill and ColorDrop", "How far the color goes, and closing gaps in the lines", closes = false, icon = Icon.FILL) { page = "fill"; rebuild() },
-                        sliderRow("Selection mask visibility", cv.selectionShade / 0.8f, { "${(it * 100).roundToInt()}%" }) { v ->
-                cv.selectionShade = v * 0.8f
-                cv.invalidate()
-                host.prefs.edit().putFloat("selectionShade", cv.selectionShade).apply()
             }
         )
-        section("Pen and touch")
+        for (w in Workspaces.presets) note(L10n.tr(w.name) + ": " + L10n.tr(w.hint))
+    }
+
+    private fun setLanguage() {
+        val langs = listOf(L10n.EN to "English", L10n.AR to "العربية", L10n.CKB to "کوردی")
+        group(choiceRow("Language", langs, L10n.lang, icon = Icon.GLOBE) { code -> host.close(); host.setLanguage(code) })
+        note("Arabic and Kurdish turn the screen right to left.")
+    }
+
+    private fun setFiles() {
         group(
-            row("Pressure and Smoothing", closes = false, icon = Icon.PRESSURE) { page = "pressure"; rebuild() },
-            row("Gesture controls", "What fingers, the S Pen and □ do", icon = Icon.TOUCH) { host.openGestureControls() },
-            sliderRow("S Pen button hold time", ((cv.penHoldMs - 400L) / 1600f).coerceIn(0f, 1f),
-                { String.format(Locale.US, "%.2f s", it * 1.6f + 0.4f) }) { v ->
-                val ms = ((v * 1.6f + 0.4f) * 1000).toLong()
-                cv.penHoldMs = ms
-                host.prefs.edit().putLong("penHoldMs", ms).apply()
-            }
+            row("Back up all artworks…", host.backupNote(), icon = Icon.BACKUP) { host.backupAll() },
+            row("Restore a backup…", "Brings artworks back from a backup file; nothing here is lost", icon = Icon.SNAPSHOT) { host.restoreBackup() }
         )
+        note("Inkora saves your artwork by itself while you work and when you leave.")
+    }
+
+    private fun setAbout() {
+        val ver = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
+        group(
+            row("Guide", "Everything Inkora can do, and the gestures that get you there", icon = Icon.LIGHTBULB) { host.openGuide() },
+            row("Take the tour again", icon = Icon.HELP) { host.showTips() },
+            row("Open-source licenses", "The MyPaint brush engine, json-c, Inter and Noto Sans Arabic", icon = Icon.INFO) { host.openLicenses() }
+        )
+        note("Inkora $ver")
     }
 
     /** Prefs › Pressure and Smoothing */

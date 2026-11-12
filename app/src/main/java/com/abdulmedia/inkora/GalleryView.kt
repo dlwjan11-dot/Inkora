@@ -38,6 +38,7 @@ class GalleryView(
     /** "Start new" with a size (width, height); null: ask for a size of your own */
     private val onNewSize: ((Int, Int) -> Unit)? = null,
     private val onCustomSize: (() -> Unit)? = null,
+    private val onSettings: (() -> Unit)? = null,
     /** this screen's size in pixels, for the "Screen" size */
     private val screen: Pair<Int, Int> = 2048 to 1536
 ) : FrameLayout(context) {
@@ -128,6 +129,12 @@ class GalleryView(
         }
         if (!phone) head.addView(sortBtn, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })
         if (showBack) head.addView(quiet("‹ " + L10n.tr("Back to canvas")) { onClose() }, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })
+        if (onSettings != null) head.addView(IconView(context, Icon.SETTINGS).apply {
+            iconScale = 0.5f
+            background = Ui.rounded(Ui.CARD, 12f)
+            contentDescription = L10n.tr("Settings")
+            setOnClickListener { onSettings.invoke() }
+        }, LinearLayout.LayoutParams(44.dp, 44.dp).apply { marginEnd = 10.dp })
         val importBtn = quiet(L10n.tr("Import")) {}
         importBtn.setOnClickListener { onImport(importBtn) }
         head.addView(importBtn, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })

@@ -2484,7 +2484,16 @@ class MainActivity : Activity(), CanvasView.Listener {
         showBeside(anchor, box, 340, null)
     }
 
+    /** Settings, a whole screen (from Actions, the Gallery, or a tool's "settings" chip on a [page]) */
+    private fun openSettingsScreen(page: String? = null) {
+        popup?.dismiss()
+        val sp = ActionsPanel(this, actionsHost, ActionsPanel.MODE_SETTINGS, onBack = { closeSettings() })
+        if (page != null) sp.openPage(page)
+        showOverlay(sp)
+    }
+
     private fun showActions(anchor: View, page: String? = null, tab: ActionsPanel.Tab? = null) {
+        if (page != null) { openSettingsScreen(page); return }
         if (!cv.isDocReady()) return
         val panel = ActionsPanel(this, actionsHost)
         if (tab != null) panel.openTab(tab)
@@ -2630,6 +2639,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             get() = this@MainActivity.dock.mode
             set(v) { this@MainActivity.dock.setMode(v) }
         override fun runTool(id: String) { this@MainActivity.runTool(id, canvasBtn) }
+        override fun openSettings(page: String?) = openSettingsScreen(page)
         override fun setLanguage(code: String) {
             // save the artwork, then start again in the new language
             autosave(force = true)
@@ -4589,6 +4599,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onClose = { closeGallery() },
                 onNewSize = { w, h -> newCanvas(w, h) },
                 onCustomSize = { customSizeDialog() },
+                onSettings = { openSettingsScreen() },
                 screen = screenSize())
             gallery = g
             topBar.visibility = View.GONE
