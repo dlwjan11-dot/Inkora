@@ -1213,8 +1213,7 @@ class CanvasView(context: Context) : View(context) {
                 startGesture(e, -1)
             } else {
                 // a finger down while drawing the shape: it becomes even (a square, a circle, an equal star…)
-                shapeFingerEven = true
-                if (shapeA != null) renderShapeTool()
+                makeShapeEven()
             }
             Mode.MEASURE_DRAG -> if (e.eventTime - downTime < 300) {
                 measureUndoDown()
@@ -2534,11 +2533,29 @@ class CanvasView(context: Context) : View(context) {
 
     private fun shapeMove(p: PointF) {
         if (shapeA == null) return
+        val old = shapeB
         shapeB = p
+        // holding the pen still for a moment also makes it even, like QuickShape
+        if (old == null || hypot(p.x - old.x, p.y - old.y) * zoom() > 3f * density) {
+            removeCallbacks(shapeHoldRunnable)
+            if (!shapeFingerEven) postDelayed(shapeHoldRunnable, 600)
+        }
         renderShapeTool()
     }
 
+    private val shapeHoldRunnable = Runnable { if (mode == Mode.SHAPE_DRAG && shapeA != null) makeShapeEven() }
+
+    private fun makeShapeEven() {
+        if (shapeFingerEven || shapeEven) return
+        shapeFingerEven = true
+        removeCallbacks(shapeHoldRunnable)
+        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        listener?.onMessage(when (shapeKind) { ShapeKind.RECT -> "Square"; ShapeKind.ELLIPSE -> "Circle"; ShapeKind.LINE, ShapeKind.ARROW -> "Straight line"; else -> "Even shape" })
+        if (shapeA != null) renderShapeTool()
+    }
+
     private fun shapeUp() {
+        removeCallbacks(shapeHoldRunnable)
         val a = shapeA; val b = shapeB
         shapeA = null; shapeB = null
         strokeActive = false
@@ -2551,6 +2568,7 @@ class CanvasView(context: Context) : View(context) {
     }
 
     private fun shapeCancel() {
+        removeCallbacks(shapeHoldRunnable)
         shapeA = null; shapeB = null
         strokeActive = false
         strokeBitmap?.eraseColor(0)
