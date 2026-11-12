@@ -2432,8 +2432,14 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun showGuide(anchor: View? = null) {
+        lastGuideAnchor = anchor
+        showBeside(anchor, guideContent(), 360, 620)
+    }
+
+    /** the drawing guide's settings (in their own window, or as a page of Actions › Canvas) */
+    private fun guideContent(): View {
         val g = cv.doc.guide
-        val panel = GuidePanel(this, g,
+        return GuidePanel(this, g,
             onChange = {
                 cv.doc.revision++
                 cv.invalidate()
@@ -2446,8 +2452,6 @@ class MainActivity : Activity(), CanvasView.Listener {
                 doneBtn.visibility = View.VISIBLE
                 hud.show("Drag the numbered points")
             })
-        lastGuideAnchor = anchor
-        showBeside(anchor, panel, 360, 620)
     }
 
     private var lastGuideAnchor: View? = null
@@ -2460,6 +2464,11 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     /** symmetry modes as little pictures */
     private fun showSymmetry(anchor: View?) {
+        showBeside(anchor, symmetryContent { popup?.dismiss() }, 340, null)
+    }
+
+    /** the kinds of symmetry to pick from; [picked] runs after one is picked */
+    private fun symmetryContent(picked: () -> Unit): View {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(12.dp, 12.dp, 12.dp, 12.dp)
@@ -2474,14 +2483,14 @@ class MainActivity : Activity(), CanvasView.Listener {
                 gravity = Gravity.CENTER_HORIZONTAL
                 background = Ui.rounded(if (on) Ui.PANEL_ROW_ACTIVE else Ui.CARD, 12f, if (on) Ui.ACCENT else 0, if (on) 1 else 0)
                 setPadding(4.dp, 4.dp, 4.dp, 6.dp)
-                setOnClickListener { cv.symmetry = sym; popup?.dismiss(); refreshAll(); hud.show("Symmetry: ${sym.label}") }
+                setOnClickListener { cv.symmetry = sym; picked(); refreshAll(); hud.show("Symmetry: ${sym.label}") }
             }
             cell.addView(SymmetryPreview(this, sym, on), LinearLayout.LayoutParams(-1, 64.dp))
             cell.addView(Ui.text(this, sym.label, 12f, if (on) Ui.ACCENT else Ui.TEXT))
             grid.addView(cell, android.widget.GridLayout.LayoutParams().apply { width = 96.dp; setMargins(3.dp, 3.dp, 3.dp, 3.dp) })
         }
         box.addView(grid)
-        showBeside(anchor, box, 340, null)
+        return box
     }
 
     /** Settings, a whole screen (from Actions, the Gallery, or a tool's "settings" chip on a [page]) */
@@ -2640,6 +2649,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             set(v) { this@MainActivity.dock.setMode(v) }
         override fun runTool(id: String) { this@MainActivity.runTool(id, canvasBtn) }
         override fun openSettings(page: String?) = openSettingsScreen(page)
+        override fun guideView(): View = guideContent()
+        override fun symmetryView(picked: () -> Unit): View = symmetryContent(picked)
         override fun setLanguage(code: String) {
             // save the artwork, then start again in the new language
             autosave(force = true)

@@ -80,6 +80,9 @@ interface ActionsHost {
     fun runTool(id: String)
     /** the full-screen Settings (on a page: "fill", "pressure") */
     fun openSettings(page: String? = null)
+    /** the drawing guide's settings and the symmetry picker, shown as pages of Canvas */
+    fun guideView(): View
+    fun symmetryView(picked: () -> Unit): View
 }
 
 /**
@@ -309,6 +312,8 @@ class ActionsPanel(
         body.removeAllViews()
         if (page == "pressure") { buildPressure(); return }
         if (page == "fill") { buildFill(); return }
+        if (page == "guide") { subPage("Drawing guide", host.guideView()); return }
+        if (page == "symmetry") { subPage("Symmetry", host.symmetryView { rebuild() }); return }
         if (mode == MODE_SETTINGS) { rebuildSettings(); return }
         if (mode == MODE_ADD) { buildAdd(); return }
         if (mode == MODE_CANVAS) { buildCanvas(); return }
@@ -509,14 +514,14 @@ class ActionsPanel(
         section("Drawing help")
         group(
             switchRow("Drawing guide", "Grids and perspective", g.type != GuideType.OFF, icon = Icon.GRID) { on ->
-                if (on) { host.close(); host.editGuide() } else { g.type = GuideType.OFF; d.revision++; cv.invalidate(); rebuild() }
+                if (on) { page = "guide"; rebuild() } else { g.type = GuideType.OFF; d.revision++; cv.invalidate(); rebuild() }
             },
-            row("Edit drawing guide", enabled = true, icon = Icon.EDIT) { host.editGuide() },
+            row("Edit drawing guide", enabled = true, closes = false, icon = Icon.EDIT) { page = "guide"; rebuild() },
             switchRow("Assisted drawing", "Strokes follow the drawing guide", g.assisted && g.type != GuideType.OFF, icon = Icon.RULER) { on ->
-                if (g.type == GuideType.OFF) { host.close(); host.editGuide() }
+                if (g.type == GuideType.OFF) { page = "guide"; rebuild() }
                 else { g.assisted = on; d.revision++; cv.invalidate() }
             },
-            row("Symmetry…", icon = Icon.SYMMETRY) { host.showSymmetry() }
+            row("Symmetry", L10n.tr(cv.symmetry.label), closes = false, icon = Icon.SYMMETRY) { page = "symmetry"; rebuild() }
         )
         section("Windows and views")
         group(
@@ -699,6 +704,28 @@ class ActionsPanel(
             row("Open-source licenses", "The MyPaint brush engine, json-c, Inter and Noto Sans Arabic", icon = Icon.INFO) { host.openLicenses() }
         )
         note("Inkora $ver")
+    }
+
+    /** a page inside this panel: ‹ back to the tab, its title, then [content] (made to sit flat) */
+    private fun subPage(title: String, content: View) {
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 8.dp) }
+        head.addView(IconView(context, if (L10n.isRtl) Icon.CHEV_RIGHT else Icon.CHEV_LEFT).apply {
+            iconScale = 0.5f
+            contentDescription = L10n.tr("Back")
+            setOnClickListener { page = null; rebuild() }
+        }, LayoutParams(40.dp, 40.dp))
+        head.addView(Ui.text(context, title, 20f, bold = true).apply { setPadding(4.dp, 0, 0, 0) })
+        body.addView(head)
+        (content.parent as? android.view.ViewGroup)?.removeView(content)
+        content.background = null
+        content.elevation = 0f
+        if (content is LinearLayout) content.setPadding(0, 0, 0, content.paddingBottom)
+        // a title of its own inside the content repeats ours: hide it
+        if (content is LinearLayout && content.childCount > 0) {
+            val first = content.getChildAt(0)
+            if (first is android.widget.TextView && first.text.toString() == L10n.tr(title)) first.visibility = View.GONE
+        }
+        body.addView(content, LayoutParams(-1, -2))
     }
 
     /** Prefs › Pressure and Smoothing */
