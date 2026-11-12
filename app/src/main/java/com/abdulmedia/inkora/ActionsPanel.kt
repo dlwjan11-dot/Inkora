@@ -19,6 +19,7 @@ interface ActionsHost {
     fun close()
     // Add
     fun insertPhoto()
+    fun insertPdfPage()
     fun openProjectFile()
     fun addText()
     fun importBrushes()
@@ -406,6 +407,7 @@ class ActionsPanel(
     private fun buildAdd() {
         group(
             row("Photo", "As a new layer", icon = Icon.PHOTO) { host.insertPhoto() },
+            row("PDF page", "One page of a PDF, as a new layer to draw on", icon = Icon.IMPORT) { host.insertPdfPage() },
             row("Text", "Any language, 9 fonts", icon = Icon.TEXT) { host.addText() },
             row("Vector layer", "Pen and shapes, sharp at any size", icon = Icon.VECTOR) { host.runTool("vector") },
             row("3D figure", "A pose to draw from", icon = Icon.CUBE) { host.runTool("pose3d") }

@@ -131,6 +131,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         // made the app close, the app still starts (it opens when you pick it)
         val crashedLastTime = crashFile().exists()
         installCrashReporter()
+        // 0.41.0 kept PDF books here; that bookshelf is gone, so are its copies
+        java.io.File(filesDir, "books").takeIf { it.exists() }?.let { d -> thread(name = "inkora-cleanup") { d.deleteRecursively() } }
         Ui.light = prefs.getBoolean("light_ui", false)
         Ui.accent = prefs.getInt("accent", 0)
         Fonts.init(resources)
@@ -259,8 +261,6 @@ class MainActivity : Activity(), CanvasView.Listener {
             cv.interaction == Interaction.MEASURE -> leaveMeasure()
             cv.interaction == Interaction.SHAPE -> leaveShapes()
             cv.recolorMode -> leaveRecolor()
-            reader != null -> closeReader()
-            books != null -> closeBooks()
             gallery?.previewOpen() == true -> gallery?.closePreview()
             gallery != null && galleryFromCanvas -> closeGallery()
             else -> {
@@ -2608,6 +2608,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         override fun insertPhoto() = startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
         }, REQ_IMAGE)
+        override fun insertPdfPage() = pickPdf(asArtwork = false)
         override fun openProjectFile() = startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
         }, REQ_OPEN)
@@ -2894,7 +2895,8 @@ class MainActivity : Activity(), CanvasView.Listener {
                 else PaletteMaker.show(this, bmp, "From photo") { colorPanel?.paletteAdded(); refreshAll() }
             }
             REQ_PHOTO_NEW -> photoAsArtwork(uri)
-            REQ_BOOK -> addBook(uri)
+            REQ_PDF -> insertPdfPage(uri)
+            REQ_PDF_NEW -> pdfPageAsArtwork(uri)
             REQ_SVG -> writeSvg(uri)
             REQ_BRUSH_EXPORT -> writeBrushFile(uri)
             REQ_EXPORT_FILE -> writeExportFile(uri)
@@ -3075,68 +3077,27 @@ class MainActivity : Activity(), CanvasView.Listener {
         autosave(force = true)
     }
 
-    // ---------- Books: PDF files to read ----------
+    // ---------- one page of a PDF ----------
 
-    private var books: BooksView? = null
-    private var reader: ReaderView? = null
-
-    private fun showBooks() {
-        if (books != null) return
-        val v = BooksView(this,
-            onAdd = { pickBook() },
-            onOpen = { id -> openBook(id) },
-            onRename = { b -> renameDialog(b.title) { t -> Books.rename(this, b.id, t); books?.refresh() } },
-            onDelete = { b ->
-                AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-                    .setTitle(L10n.tr("Delete this book?"))
-                    .setMessage(L10n.tr("The book is removed from Inkora (the PDF on your device is not touched)."))
-                    .setPositiveButton(L10n.tr("Delete")) { _, _ -> Books.delete(this, b.id); books?.refresh() }
-                    .setNegativeButton(L10n.tr("Cancel"), null).show()
-            },
-            onClose = { closeBooks() })
-        books = v
-        root.addView(v, FrameLayout.LayoutParams(-1, -1))
-    }
-
-    private fun closeBooks() {
-        books?.let { root.removeView(it) }
-        books = null
-    }
-
-    private fun pickBook() = startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+    private fun pickPdf(asArtwork: Boolean) = startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
         addCategory(Intent.CATEGORY_OPENABLE); type = "application/pdf"
-    }, REQ_BOOK)
+    }, if (asArtwork) REQ_PDF_NEW else REQ_PDF)
 
-    /** copies the PDF in (background), then opens it */
-    private fun addBook(uri: Uri) {
-        hud.show("Opening…", sticky = true)
-        val name = displayName(uri)
-        thread(name = "inkora-book-add") {
-            val r = runCatching { Books.add(applicationContext, uri, name) }
-            main.post {
-                hud.hideSoon()
-                if (isFinishing || isDestroyed) return@post
-                r.onSuccess { id -> showBooks(); books?.refresh(); openBook(id) }
-                r.onFailure { e -> toast(e.message ?: "This is not a PDF file Inkora can read") }
-            }
+    /** a page of the PDF at [uri] on a new layer of this drawing, fitted inside the canvas */
+    private fun insertPdfPage(uri: Uri) {
+        val doc = cv.doc
+        if (doc.layers.size >= doc.maxLayers()) { toast("Layer limit reached for this canvas size"); return }
+        PdfPage.pick(this, uri, { _, _ -> doc.width to doc.height }) { page, n ->
+            if (cv.doc !== doc) { page.recycle(); return@pick }
+            insertBitmapLayer(page, L10n.tr("PDF page") + " $n")
+            toast("PDF page added as a new layer")
         }
     }
 
-    private fun openBook(id: String) {
-        closeReader()
-        val v = ReaderView(this, id, onClose = { closeReader() }) { page, title ->
-            // the page as a new artwork: the book closes, the canvas opens
-            closeReader(); closeBooks()
-            artworkFrom(page, title)
-        }
-        reader = v
-        root.addView(v, FrameLayout.LayoutParams(-1, -1))
-    }
-
-    private fun closeReader() {
-        reader?.let { it.close(); root.removeView(it) }
-        reader = null
-        books?.refresh()
+    /** a page of the PDF at [uri] as a new artwork, at print quality */
+    private fun pdfPageAsArtwork(uri: Uri) {
+        val name = displayName(uri)?.substringBeforeLast('.') ?: "PDF"
+        PdfPage.pick(this, uri, { w, h -> w to h }) { page, n -> artworkFrom(page, "$name · $n") }
     }
 
     private fun insertImage(uri: Uri, shadow: Boolean = false) {
@@ -3156,6 +3117,31 @@ class MainActivity : Activity(), CanvasView.Listener {
         layer.name = if (shadow) "Shadow photo" else "Photo"
         layer.shadow = shadow
         if (shadow) layer.opacity = 0.6f
+        drawCentered(layer, img)
+        val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
+        cmd.redo(doc)
+        cv.pushCommand(cmd)
+        toast(if (shadow) "Shadow photo added: trace it, it stays out of the time-lapse and exports" else "Photo added as a new layer")
+    }
+
+    /** [img] (recycled here) on a new layer above the active one */
+    private fun insertBitmapLayer(img: Bitmap, name: String) {
+        val doc = cv.doc
+        if (doc.layers.size >= doc.maxLayers()) { img.recycle(); toast("Layer limit reached for this canvas size"); return }
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) {
+            img.recycle(); toast("Not enough memory for another layer right now"); return
+        }
+        layer.name = name
+        drawCentered(layer, img)
+        val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
+        cmd.redo(doc)
+        cv.pushCommand(cmd)
+        refreshAll()
+    }
+
+    /** [img] in the middle of [layer], made smaller when it doesn't fit; recycles it */
+    private fun drawCentered(layer: Layer, img: Bitmap) {
+        val doc = cv.doc
         val s = min(1f, min(doc.width / img.width.toFloat(), doc.height / img.height.toFloat()))
         val w = img.width * s
         val h = img.height * s
@@ -3163,10 +3149,6 @@ class MainActivity : Activity(), CanvasView.Listener {
         c.drawBitmap(img, null, android.graphics.RectF((doc.width - w) / 2, (doc.height - h) / 2, (doc.width + w) / 2, (doc.height + h) / 2),
             Paint(Paint.FILTER_BITMAP_FLAG))
         img.recycle()
-        val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
-        cmd.redo(doc)
-        cv.pushCommand(cmd)
-        toast(if (shadow) "Shadow photo added: trace it, it stays out of the time-lapse and exports" else "Photo added as a new layer")
     }
 
     // =========================================================
@@ -4907,12 +4889,14 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onImport = { anchor ->
                     val pm = InkMenu(this, anchor)
                     pm.menu.add(0, 1, 1, "Photo as a new artwork…")
-                    pm.menu.add(0, 2, 2, "Inkora project or Photoshop file…")
+                    pm.menu.add(0, 5, 2, "PDF page as a new artwork…")
+                    pm.menu.add(0, 2, 3, "Inkora project or Photoshop file…")
                     pm.menu.add(0, 3, 3, "Restore a backup…")
                     pm.menu.add(0, 4, 4, "Back up all artworks…")
                     pm.setOnMenuItemClickListener {
                         if (it.itemId == 3) { pickBackup(); return@setOnMenuItemClickListener true }
                         if (it.itemId == 4) { backupDialog(); return@setOnMenuItemClickListener true }
+                        if (it.itemId == 5) { pickPdf(asArtwork = true); return@setOnMenuItemClickListener true }
                         if (it.itemId == 1) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                             addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
                         }, REQ_PHOTO_NEW)
@@ -4934,7 +4918,6 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onNewSize = { w, h -> newCanvas(w, h) },
                 onCustomSize = { customSizeDialog() },
                 onSettings = { v -> openSettingsPopup(v) },
-                onBooks = { showBooks() },
                 screen = screenSize())
             gallery = g
             topBar.visibility = View.GONE
@@ -5268,7 +5251,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             val type = contentResolver.getType(first) ?: ""
             when {
                 name.endsWith(".inkora") || name.endsWith(".zerin") || name.endsWith(".psd") -> openProject(first)
-                name.endsWith(".pdf") || type == "application/pdf" -> addBook(first)
+                name.endsWith(".pdf") || type == "application/pdf" -> pdfPageAsArtwork(first)
                 type.startsWith("image/") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") ->
                     AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle(L10n.tr("What should Inkora do with this image?"))
@@ -5369,6 +5352,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         private const val REQ_PALETTE_PHOTO = 115
         private const val REQ_BACKUP = 116
         private const val REQ_RESTORE = 117
-        private const val REQ_BOOK = 118
+        private const val REQ_PDF = 118
+        private const val REQ_PDF_NEW = 119
     }
 }
