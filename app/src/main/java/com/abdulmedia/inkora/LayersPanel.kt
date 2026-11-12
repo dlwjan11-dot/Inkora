@@ -844,6 +844,7 @@ class LayersPanel(
                 Unit
             },
             "Fill with color" to { fillLayer(layer) },
+            "Draw inside this layer" to { drawInside(layer, index) },
             "Add layer mask" to { addMask(layer, index) },
             "Duplicate" to { duplicate(layer, index) },
             "Merge Down" to { mergeDown(index) },
@@ -946,6 +947,26 @@ class LayersPanel(
             doc.activeIndex = doc.layers.indexOf(l)
             true
         }
+    }
+
+    // ---------- drawing inside a layer (a clipping layer above it) ----------
+
+    /** a new layer just above, clipped to this one: what you paint shows only where this layer has paint */
+    private fun drawInside(layer: Layer, index: Int) {
+        if (blocked()) return
+        if (doc.layers.size >= doc.maxLayers()) { cv.listener?.onMessage("Layer limit reached for this canvas size"); return }
+        val bmp = try { doc.newLayerBitmap() } catch (e: OutOfMemoryError) { null }
+        if (bmp == null) { cv.listener?.onMessage("Not enough memory for another layer right now"); return }
+        val m = Layer(bmp, L10n.tr("Inside") + " " + layer.name)
+        m.isClippingMask = true
+        m.groupId = layer.groupId
+        val cmd = AddLayerCmd(m, index + 1, index)
+        cmd.redo(doc)
+        cv.pushCommand(cmd)
+        doc.activeIndex = doc.layers.indexOf(m)
+        expanded = false
+        cv.listener?.onMessage("Paint now: it shows only inside the layer below")
+        changed()
     }
 
     // ---------- layer masks ----------
