@@ -1531,6 +1531,8 @@ object L10n {
         "OpenGL paints the stroke while you draw, each dab once; best for big brushes. Not for smudge, living paint, wet mix or dual brushes. Turn it off if strokes look wrong", "OpenGL بيرسم الخط وانت عم ترسم، كل نقطة مرة وحدة؛ أحسن شي للفراشي الكبيرة. مش للتمويه والألوان الحيّة والمزج الرطب والفراشي المزدوجة. طفّيه إذا الخطوط طلعت غلط", "OpenGL هێڵەکە دەکێشێت لە کاتی کێشاندا، هەر خاڵێک یەک جار؛ باشترینە بۆ فڵچە گەورەکان. نەک بۆ تێکەڵکردن، ڕەنگی زیندوو، تێکەڵی تەڕ یان فڵچەی دووانە. ئەگەر هێڵەکان هەڵە دەرکەوتن بیکوژێنەوە",
         "The GPU engine could not start on this device: brushes paint the usual way", "محرك كرت الشاشة ما قدر يشتغل عهالجهاز: الفراشي بترسم بالطريقة العادية", "بزوێنەری کارتی گرافیک نەیتوانی لەم ئامێرەدا کار بکات: فڵچەکان بە شێوەی ئاسایی دەکێشن",
         "The GPU engine could not finish this stroke: it was painted the usual way", "محرك كرت الشاشة ما قدر يخلّص هالخط: انرسم بالطريقة العادية", "بزوێنەری کارتی گرافیک نەیتوانی ئەم هێڵە تەواو بکات: بە شێوەی ئاسایی کێشرا",
+        "Show speed numbers", "اعرض أرقام السرعة", "ژمارەکانی خێرایی پیشان بدە",
+        "Frames per second and how far behind the pen the app is, at the bottom of the screen, to compare the test switches", "كم إطار بالثانية وقديش التطبيق متأخر عن القلم، تحت الشاشة، لتقارن بين خيارات التجربة", "چەند وێنە لە چرکەیەکدا و ئەپەکە چەندە لە دوای قەڵەمە، لە خوارەوەی شاشە، بۆ بەراوردی هەڵبژاردنەکانی تاقیکردنەوە",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

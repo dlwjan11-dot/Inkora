@@ -257,6 +257,8 @@ class GlStroke(private val width: Int, private val height: Int, private val onFr
     /** a frame: new dabs into the texture, then the texture to the screen's buffer */
     private fun renderFrame() {
         if (!ok) return
+        val t = System.nanoTime()
+        Perf.glPending = maxOf(Perf.glPending, synchronized(lock) { pending.size })
         drawDabs()
         GLES30.glBindFramebuffer(GLES30.GL_FRAMEBUFFER, 0)
         GLES30.glViewport(0, 0, width, height)
@@ -271,6 +273,7 @@ class GlStroke(private val width: Int, private val height: Int, private val onFr
         GLES30.glEnableVertexAttribArray(0)
         GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
         EGL14.eglSwapBuffers(display, window)
+        Perf.glFrames++; Perf.glNs += System.nanoTime() - t
     }
 
     // ---------------------------------------------------------------- pictures for the screen
@@ -288,6 +291,7 @@ class GlStroke(private val width: Int, private val height: Int, private val onFr
         val bmp = hb?.let { Bitmap.wrapHardwareBuffer(it, ColorSpace.get(ColorSpace.Named.SRGB)) }
         hb?.close()
         if (bmp == null) { img.close(); return }
+        Perf.glImages++
         main.post {
             if (!ok) { img.close(); return@post }
             previous?.close()

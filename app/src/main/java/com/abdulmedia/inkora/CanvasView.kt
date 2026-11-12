@@ -655,6 +655,13 @@ class CanvasView(context: Context) : View(context) {
     // =========================================================
 
     override fun onDraw(canvas: Canvas) {
+        if (!Perf.on) { drawAll(canvas); return }
+        val t = System.nanoTime()
+        drawAll(canvas)
+        Perf.draws++; Perf.drawNs += System.nanoTime() - t
+    }
+
+    private fun drawAll(canvas: Canvas) {
         canvas.drawColor(Ui.CANVAS_BG)
         if (!isDocReady()) return
         val z = zoom()
@@ -1342,6 +1349,15 @@ class CanvasView(context: Context) : View(context) {
     }
 
     private fun onMove(e: MotionEvent) {
+        if (!Perf.on || mode != Mode.DRAW) { onMoveInner(e); return }
+        val t = System.nanoTime()
+        onMoveInner(e)
+        Perf.moves++; Perf.moveNs += System.nanoTime() - t
+        // how old the newest pen position is when it is handled
+        Perf.lagNs += (android.os.SystemClock.uptimeMillis() - e.eventTime) * 1_000_000L
+    }
+
+    private fun onMoveInner(e: MotionEvent) {
         when (mode) {
             Mode.DRAW -> {
                 val idx = e.findPointerIndex(drawPointerId)

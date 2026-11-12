@@ -162,6 +162,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
         cv.gpuTiles = prefs.getBoolean("gpu_tiles", false)
         cv.gpuBrushes = prefs.getBoolean("gpu_engine", false)
+        if (prefs.getBoolean("perf_numbers", false)) root.post { setPerf(true) }
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
         cv.wetBleed = prefs.getBoolean("wetBleed", true)
@@ -1125,6 +1126,38 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         sizeHandIsland()
         updateOptions()
+    }
+
+    // ---------- speed numbers (Settings › Advanced) ----------
+
+    private var perfView: android.widget.TextView? = null
+    private val perfTick = object : Runnable {
+        override fun run() {
+            if (!Perf.on) return
+            perfView?.text = Perf.take(0.5f)
+            main.postDelayed(this, 500)
+        }
+    }
+
+    private fun setPerf(on: Boolean) {
+        Perf.on = on
+        main.removeCallbacks(perfTick)
+        perfView?.let { root.removeView(it) }
+        perfView = null
+        if (!on) return
+        val v = android.widget.TextView(this).apply {
+            textSize = 11f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextColor(0xFFFFFFFF.toInt())
+            setPadding(10.dp, 6.dp, 10.dp, 6.dp)
+            background = Ui.rounded(0xCC000000.toInt(), 10f)
+            elevation = 40f.dp
+            isClickable = false; isFocusable = false
+        }
+        root.addView(v, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = 12.dp; leftMargin = 12.dp; rightMargin = 12.dp })
+        perfView = v
+        Perf.take(1f)
+        main.postDelayed(perfTick, 500)
     }
 
     // ---------- the islands step back while you draw ----------
@@ -2607,6 +2640,9 @@ class MainActivity : Activity(), CanvasView.Listener {
                 autosave(force = true)
                 afterSaves { Ui.light = v; recreate() }
             }
+        override var perfNumbers: Boolean
+            get() = Perf.on
+            set(v) { prefs.edit().putBoolean("perf_numbers", v).apply(); setPerf(v) }
         override var gpuBrushes: Boolean
             get() = cv.gpuBrushes
             set(v) { cv.gpuBrushes = v; prefs.edit().putBoolean("gpu_engine", v).apply() }

@@ -443,6 +443,7 @@ class StrokeEngine {
         if (angle != 0f) m.postRotate(angle)
         m.postTranslate(x, y)
         c.drawBitmap(tip, m, paint)
+        Perf.dabs++
         var r = d * 0.75f + 2f
         val mc = maskCanvas
         if (dual != null && mc != null) {
