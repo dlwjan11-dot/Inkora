@@ -59,7 +59,7 @@ object Tour {
             "The checkbox hides a layer; the letter beside it is its blend mode",
             "Clipping mask, alpha lock and layer masks are in the layer's options"), listOf(Icon.LAYERS, Icon.FOLDER, Icon.EYE)),
         Page(-1, "Select, move and adjust", listOf(
-            "Selection and Transform are in the tool bar; Adjust is in the top bar",
+            "Selection, Transform and Adjust are in the tool bar",
             "Selection: freehand, rectangle, ellipse, magic wand, color range or a selection brush",
             "Transform: drag to move, corners to scale, sides to stretch, the green dot to turn, two fingers to pinch",
             "Tap the green dot for an exact angle, a corner for an exact size; the yellow dot turns the box only",
@@ -74,18 +74,16 @@ object Tour {
             "Light & Shade: airbrushes that brighten, deepen or tint what is under them",
             "Import Procreate brushes (.brush, .brushset) with + in the brush library"), listOf(Icon.DROP, Icon.PALETTE, Icon.LIGHTBULB)),
         Page(-1, "The tool bar", listOf(
-            "Every tool is in the tool bar on the side: tap one to use it",
+            "The tools are in the tool bar at the top: tap one to use it",
             "A small triangle in the corner: hold the tool to see its sister tools",
             "Tap the brush, smudge or eraser again for the brush library",
-            "» shows every tool with its name; the floating button keeps only your tools in a bar you can move",
-            "⋯ edits it: take tools out, add them back, change the order",
-            "The bar under the top bar shows the settings of the tool in hand"), listOf(Icon.DOCK, Icon.MORE, Icon.FLOAT)),
-        Page(-1, "The top bar", listOf(
-            "Actions: file, share, video, settings and help",
-            "Add: photos, text, vector layers, 3D figures, comic panels, speech bubbles",
-            "Adjust: hue, brightness, color balance, blur, sharpen and more, with a live preview",
-            "Canvas: guides, symmetry, floating windows, grey view, crop and snapshots",
-            "Brushes, Layers and Color on the right; each opens right under its button"), listOf(Icon.WRENCH, Icon.PLUS, Icon.ADJUST)),
+            "⋯ edits it: on top, docked at the side, wide with names, or floating; add and take out tools",
+            "The strip under the tool bar shows the settings of the tool in hand"), listOf(Icon.DOCK, Icon.MORE, Icon.FLOAT)),
+        Page(-1, "The islands", listOf(
+            "Top left: Gallery, the artwork's name, focus mode and ⋯ (Actions)",
+            "Actions: add, canvas, file, share, video, settings and help",
+            "Brushes, Layers and Color at the top right; each opens right under its button",
+            "By your free hand: brush, smudge, eraser, size, eyedropper, opacity, colors, undo and redo"), listOf(Icon.WRENCH, Icon.PLUS, Icon.LAYERS)),
         Page(-1, "Your artworks", listOf(
             "Gallery (top left): all your artworks, in stacks if you like",
             "Inkora saves by itself while you work and when you leave",
@@ -102,6 +100,25 @@ object Tour {
             "With a keyboard: hold Ctrl to see every shortcut"), listOf(Icon.HELP, Icon.HAND, Icon.KEYBOARD))
     )
 
+    /** the first time Inkora opens: three short pages; the rest is in Help › Guide */
+    val welcome = listOf(
+        Page(0, "Your canvas", listOf(
+            "Draw with the pen; the tools wait in islands around the edges",
+            "They fade while you draw and come back when the pen lifts",
+            "Brush, smudge, eraser, size and opacity sit by your free hand",
+            "Brushes, Layers and Color are at the top right")),
+        Page(2, "Your fingers", listOf(
+            "Pinch to zoom, move and turn the canvas",
+            "Two-finger tap: undo · three-finger tap: redo",
+            "Hold Undo: drag back and forth through the whole history",
+            "Four-finger tap: hide everything; tap again to bring it back")),
+        Page(-1, "Your way", listOf(
+            "Pick a workspace in Settings: Sketching, Painting, Lettering or Frame",
+            "⋯ on the tool bar: add tools, take them out, change the order",
+            "Accent color, light interface and more are in Settings",
+            "Rest the pen over a button for two seconds: it says what it does"), listOf(Icon.LAYOUT, Icon.PALETTE, Icon.SETTINGS))
+    )
+
     /** a page's lines as one text, each on its own line with a dot in front */
     fun body(p: Page) = p.lines.joinToString("\n") { "•  " + L10n.tr(it) }
 }
@@ -110,10 +127,15 @@ object Tour {
  * The first-run tour: one card per page of [Tour], with Back, Next and Skip.
  */
 @SuppressLint("ViewConstructor")
-class TipsOverlay(context: Context, private val onDone: (View) -> Unit) : FrameLayout(context) {
-
-    private val pages = Tour.pages
+class TipsOverlay(
+    context: Context,
+    private val pages: List<Tour.Page> = Tour.pages,
+    /** the welcome's last page offers the whole guide */
+    private val onMore: (() -> Unit)? = null,
+    private val onDone: (View) -> Unit
+) : FrameLayout(context) {
     private var index = 0
+    private var more: View? = null
 
     private val card = LinearLayout(context)
     private val art = TipArt(context)
@@ -143,6 +165,10 @@ class TipsOverlay(context: Context, private val onDone: (View) -> Unit) : FrameL
         dots.orientation = LinearLayout.HORIZONTAL
         bottom.addView(count, LinearLayout.LayoutParams(0, -2, 1f))
         bottom.addView(Ui.button(context, "Skip all") { finish() }.apply { background = null; setTextColor(Ui.TEXT_DIM) })
+        if (onMore != null) {
+            more = Ui.button(context, "See everything") { finish(); onMore.invoke() }.apply { background = null; setTextColor(Ui.ACCENT) }
+            bottom.addView(more)
+        }
         bottom.addView(back)
         bottom.addView(next, LinearLayout.LayoutParams(-2, -2).apply { marginStart = 6.dp })
         card.addView(dots, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 16.dp })
@@ -173,6 +199,7 @@ class TipsOverlay(context: Context, private val onDone: (View) -> Unit) : FrameL
         body.text = Tour.body(p)
         next.text = L10n.tr(if (index == pages.size - 1) "Start drawing" else "Next")
         back.visibility = if (index == 0) View.INVISIBLE else View.VISIBLE
+        more?.visibility = if (index == pages.size - 1) View.VISIBLE else View.GONE
         count.text = "${index + 1} / ${pages.size}"
         dots.removeAllViews()
         for (k in pages.indices) {

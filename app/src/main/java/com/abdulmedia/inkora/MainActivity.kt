@@ -800,9 +800,21 @@ class MainActivity : Activity(), CanvasView.Listener {
         showPanel(anchor, ToolsPanel(this, false, toolsHost, adjustOnly = true), 600, 640)
     }
 
+    /** the first time a tool is picked, one line says what it does (never again after that) */
+    private fun firstUseHint(id: String) {
+        if (id in setOf("brush", "smudge", "eraser")) return
+        val key = "hint_seen_$id"
+        if (prefs.getBoolean(key, false)) return
+        prefs.edit().putBoolean(key, true).apply()
+        val def = RailTools.def(id) ?: return
+        if (def.hint.isBlank()) return
+        root.postDelayed({ hud.show(L10n.tr(def.label) + ": " + L10n.tr(def.hint)) }, 350)
+    }
+
     /** a tool picked on the tool bar: paint tools open their brushes when tapped again */
     private fun railPick(id: String, anchor: View, again: Boolean) {
         if (busy()) return
+        firstUseHint(id)
         val paint = when (id) { "brush" -> Tool.BRUSH; "smudge" -> Tool.SMUDGE; "eraser" -> Tool.ERASER; else -> null }
         if (paint != null) {
             if (again) showBrushes(paint) else selectTool(paint)
@@ -2565,6 +2577,18 @@ class MainActivity : Activity(), CanvasView.Listener {
                 autosave(force = true)
                 afterSaves { Ui.light = v; recreate() }
             }
+        override var fadeIslands: Boolean
+            get() = prefs.getBoolean("fade_islands", true)
+            set(v) { prefs.edit().putBoolean("fade_islands", v).apply(); if (!v) { root.removeCallbacks(islandsOut); islandsAlpha(1f) } }
+        override fun useWorkspace(w: Workspaces.Workspace) {
+            Workspaces.apply(prefs, w)
+            dock.reload()
+            hud.show(L10n.tr("Workspace") + " · " + L10n.tr(w.name))
+        }
+        override fun saveWorkspace() {
+            Workspaces.saveMine(prefs)
+            hud.show("Saved as your workspace")
+        }
         override var accent: Int
             get() = Ui.accent
             set(v) {
@@ -4588,9 +4612,11 @@ class MainActivity : Activity(), CanvasView.Listener {
         showOverlay(DemosPage(this, onKeyboard = { showShortcuts() }, onClose = { closeSettings() }))
     }
 
-    private fun showTips() {
+    /** [welcome]: the three first-run pages (with "See everything"); else the whole tour */
+    private fun showTips(welcome: Boolean = !prefs.getBoolean("tour_done", false)) {
         if (root.findViewWithTag<View>("tips") != null) return
-        val tips = TipsOverlay(this) { v ->
+        val tips = TipsOverlay(this, if (welcome) Tour.welcome else Tour.pages,
+            onMore = if (welcome) ({ root.postDelayed({ showTips(false) }, 260) }) else null) { v ->
             root.removeView(v)
             prefs.edit().putBoolean("tour_done", true).apply()
         }

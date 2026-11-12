@@ -47,6 +47,10 @@ interface ActionsHost {
     var lightInterface: Boolean
     /** the accent color theme, an index into Ui.ACCENTS */
     var accent: Int
+    /** the islands step back while the pen draws */
+    var fadeIslands: Boolean
+    fun useWorkspace(w: Workspaces.Workspace)
+    fun saveWorkspace()
     // Share
     fun export(kind: String)
     // Video
@@ -416,6 +420,18 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
             choiceRow("Language", langs, L10n.lang, icon = Icon.GLOBE) { code -> host.close(); host.setLanguage(code) },
             switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it },
             accentRow()
+        )
+        section("Workspace")
+        val spaces = Workspaces.presets + listOfNotNull(Workspaces.mine(host.prefs))
+        val cur = Workspaces.current(host.prefs)
+        group(
+            choiceRow("Workspace", spaces.map { it.key to it.name }, cur, icon = Icon.LAYOUT) { k ->
+                spaces.firstOrNull { it.key == k }?.let { host.useWorkspace(it) }; rebuild()
+            },
+            row("Save this layout as mine", spaces.firstOrNull { it.key == cur }?.hint ?: "Your tool bar as it is now, to come back to", closes = false, icon = Icon.PIN) {
+                host.saveWorkspace(); rebuild()
+            },
+            switchRow("Fade the islands while drawing", "They step back 300 ms into a stroke and come back 700 ms after the pen lifts", host.fadeIslands, icon = Icon.HIDE) { host.fadeIslands = it }
         )
         section("Tool bar")
         group(

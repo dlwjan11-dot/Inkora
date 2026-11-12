@@ -142,6 +142,15 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
 
     init { rebuild() }
 
+    /** the settings were changed from outside (a workspace was picked): load them again */
+    fun reload() {
+        editor?.dismiss()
+        mode = prefs.getString("rail_mode", TOP).let { if (it == WIDE || it == FLOAT || it == DOCK) it else TOP }
+        order = loadOrder()
+        rebuild()
+        host.layoutChanged()
+    }
+
     fun rebuild() {
         removeAllViews()
         views.clear()
