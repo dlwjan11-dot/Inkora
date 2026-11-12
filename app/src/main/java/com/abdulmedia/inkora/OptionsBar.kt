@@ -58,15 +58,25 @@ class OptionsBar(context: Context) : LinearLayout(context) {
      * Shows [content] as the settings. A tool's own bar ([fromTool]) was made to float at the bottom:
      * it loses its card and its rows are laid out side by side.
      */
+    private var swapping = false
+
     fun show(ic: Icon, name: String, content: View, fromTool: Boolean) {
         setTitle(ic, name)
-        if (current === content) return
-        (content.parent as? ViewGroup)?.removeView(content)
-        if (fromTool) flatten(content)
-        scroll.removeAllViews()
-        scroll.addView(content, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_VERTICAL))
-        current = content
-        scroll.scrollTo(0, 0)
+        if (current === content || swapping) return
+        // removing the old settings can send a touch-cancel to them, which may ask for a new bar:
+        // that inner request is ignored here, and the bar ends up holding exactly one thing
+        swapping = true
+        try {
+            (content.parent as? ViewGroup)?.removeView(content)
+            if (fromTool) flatten(content)
+            scroll.removeAllViews()
+            if (scroll.childCount > 0) scroll.removeAllViews()
+            scroll.addView(content, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_VERTICAL))
+            current = content
+            scroll.scrollTo(0, 0)
+        } finally {
+            swapping = false
+        }
     }
 
     private fun flatten(v: View) {

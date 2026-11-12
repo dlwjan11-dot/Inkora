@@ -795,9 +795,13 @@ class MainActivity : Activity(), CanvasView.Listener {
                         }
                         MotionEvent.ACTION_UP -> {
                             v.isPressed = false
-                            if (dragging) { scrubbing = false; refreshAll() } else onClick()
+                            // rebuilding the bar now would remove this very view while it handles the touch
+                            if (dragging) { dragging = false; scrubbing = false; v.post { refreshAll() } } else onClick()
                         }
-                        MotionEvent.ACTION_CANCEL -> { v.isPressed = false; if (dragging) { scrubbing = false; refreshAll() } }
+                        MotionEvent.ACTION_CANCEL -> {
+                            v.isPressed = false
+                            if (dragging) { dragging = false; scrubbing = false; v.post { refreshAll() } }
+                        }
                     }
                     true
                 }
