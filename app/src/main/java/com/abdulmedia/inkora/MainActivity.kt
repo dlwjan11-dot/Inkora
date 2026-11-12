@@ -4586,7 +4586,10 @@ class MainActivity : Activity(), CanvasView.Listener {
                 } },
                 onDuplicate = { e -> Gallery.duplicate(this, e.id); gallery?.refresh() },
                 onDelete = { e -> confirmDeleteArtwork(e) },
-                onClose = { closeGallery() })
+                onClose = { closeGallery() },
+                onNewSize = { w, h -> newCanvas(w, h) },
+                onCustomSize = { customSizeDialog() },
+                screen = screenSize())
             gallery = g
             topBar.visibility = View.GONE
             sideBar.visibility = View.GONE

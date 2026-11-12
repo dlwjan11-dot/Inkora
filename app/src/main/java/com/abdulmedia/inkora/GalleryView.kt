@@ -34,12 +34,20 @@ class GalleryView(
     private val onRename: (Gallery.Entry) -> Unit,
     private val onDuplicate: (Gallery.Entry) -> Unit,
     private val onDelete: (Gallery.Entry) -> Unit,
-    private val onClose: () -> Unit
+    private val onClose: () -> Unit,
+    /** "Start new" with a size (width, height); null: ask for a size of your own */
+    private val onNewSize: ((Int, Int) -> Unit)? = null,
+    private val onCustomSize: (() -> Unit)? = null,
+    /** this screen's size in pixels, for the "Screen" size */
+    private val screen: Pair<Int, Int> = 2048 to 1536
 ) : FrameLayout(context) {
 
     private enum class Filter(val label: String) { ALL("All"), DRAWN("My drawings"), IMPORTED("Imported") }
 
+    private enum class Sort(val label: String) { RECENT("Recent"), NAME("Name"), SIZE("Size") }
+
     companion object {
+        private var sort = Sort.RECENT
         /** decoded thumbnails, by file and the time it was written (about 40 MB at most) */
         private val thumbCache = object : android.util.LruCache<String, android.graphics.Bitmap>(40 * 1024 * 1024) {
             override fun sizeOf(key: String, value: android.graphics.Bitmap) = value.byteCount
@@ -60,55 +68,35 @@ class GalleryView(
 
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
 
-        // ---- header ----
+        // ---- header: Gallery, search, sort, import, new ----
+        val phone = context.narrow
         val head = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            if (context.narrow) setPadding(14.dp, 16.dp, 12.dp, 4.dp) else setPadding(28.dp, 22.dp, 24.dp, 6.dp)
+            if (phone) setPadding(16.dp, 16.dp, 12.dp, 4.dp) else setPadding(32.dp, 26.dp, 32.dp, 6.dp)
         }
         val titles = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        titles.addView(TextView(context).apply {
-            text = "Inkora"
-            textSize = 30f
-            setTextColor(Ui.TEXT)
-            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.NORMAL)
-        })
+        titles.addView(Ui.text(context, "Gallery", 28f, bold = true))
         val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: ""
-        titles.addView(Ui.text(context, if (context.narrow) "version $version" else "Your artworks  ·  version $version", 14f, Ui.TEXT_DIM))
+        titles.addView(Ui.text(context, "Inkora $version", 12f, Ui.TEXT_DIM))
         head.addView(titles, LinearLayout.LayoutParams(0, -2, 1f))
-        if (showBack) head.addView(Ui.button(context, "‹ Back to canvas") { onClose() },
-            LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 8.dp })
-        val importBtn = Ui.button(context, "Import…") {}
-        importBtn.setOnClickListener { onImport(importBtn) }
-        head.addView(importBtn, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 8.dp })
-        head.addView(Ui.button(context, "＋  New canvas") { onNew() }.apply {
-            background = Ui.rounded(Ui.ACCENT, 12f)
-            textSize = 15f
-            setPadding(18.dp, 10.dp, 18.dp, 10.dp)
-        })
-        col.addView(head)
-
-        // ---- filters + search ----
-        val tools = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(24.dp, 10.dp, 24.dp, 4.dp)
+        fun quiet(label: String, run: (View) -> Unit) = Ui.text(context, label, 14f, Ui.TEXT).apply {
+            gravity = Gravity.CENTER
+            setPadding(14.dp, 0, 14.dp, 0)
+            background = Ui.rounded(Ui.CARD, 12f)
+            foreground = Ui.ripple(12f)
+            setOnClickListener { v -> run(v) }
         }
-        chips.orientation = LinearLayout.HORIZONTAL
-        // the filters slide sideways when there is no room for them all (phones)
-        val chipScroll = android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(chips) }
-        val phone = context.narrow
-        if (phone) { tools.orientation = LinearLayout.VERTICAL; tools.gravity = Gravity.START; tools.setPadding(14.dp, 8.dp, 14.dp, 4.dp) }
-        tools.addView(chipScroll, if (phone) LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 8.dp } else LinearLayout.LayoutParams(0, -2, 1f))
         val search = EditText(context).apply {
-            hint = "Search"
+            hint = L10n.tr("Search artworks")
             setHintTextColor(Ui.TEXT_DIM)
             setTextColor(Ui.TEXT)
             textSize = 14f
+            typeface = Fonts.get(400)
             setSingleLine()
             inputType = InputType.TYPE_CLASS_TEXT
-            background = Ui.rounded(Ui.PANEL_ROW, 10f)
-            setPadding(14.dp, 8.dp, 14.dp, 8.dp)
+            background = null
+            setPadding(8.dp, 0, 4.dp, 0)
             addTextChangedListener(object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
                 override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -118,12 +106,95 @@ class GalleryView(
                 }
             })
         }
-        tools.addView(search, LinearLayout.LayoutParams(if (phone) -1 else 240.dp, -2))
-        col.addView(tools)
+        val field = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12.dp, 0, 8.dp, 0)
+            background = Ui.rounded(Ui.CARD, 12f)
+        }
+        field.addView(IconView(context, Icon.SEARCH).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.6f }, LinearLayout.LayoutParams(24.dp, 24.dp))
+        field.addView(search, LinearLayout.LayoutParams(0, -1, 1f))
+        if (!phone) head.addView(field, LinearLayout.LayoutParams(280.dp, 44.dp).apply { marginEnd = 10.dp })
+        val sortBtn = quiet(L10n.tr(sort.label) + "  ▾") {}
+        sortBtn.setOnClickListener {
+            val pm = InkMenu(context, sortBtn)
+            Sort.values().forEachIndexed { i, so -> pm.menu.add(0, i, i, so.label).isChecked = so == sort }
+            pm.setOnMenuItemClickListener { item ->
+                sort = Sort.values()[item.itemId]
+                sortBtn.text = L10n.tr(sort.label) + "  ▾"
+                render(); true
+            }
+            L10n.menu(pm.menu); pm.show()
+        }
+        if (!phone) head.addView(sortBtn, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })
+        if (showBack) head.addView(quiet("‹ " + L10n.tr("Back to canvas")) { onClose() }, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })
+        val importBtn = quiet(L10n.tr("Import")) {}
+        importBtn.setOnClickListener { onImport(importBtn) }
+        head.addView(importBtn, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })
+        head.addView(Ui.text(context, if (phone) "＋" else "＋  " + L10n.tr("New canvas"), 14f, Ui.ON_ACCENT, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(18.dp, 0, 18.dp, 0)
+            background = Ui.rounded(Ui.ACCENT, 12f)
+            foreground = Ui.ripple(12f)
+            contentDescription = L10n.tr("New canvas")
+            setOnClickListener { onNew() }
+        }, LinearLayout.LayoutParams(-2, 44.dp))
+        col.addView(head)
+        if (phone) {
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(16.dp, 8.dp, 12.dp, 0) }
+            row.addView(field, LinearLayout.LayoutParams(0, 44.dp, 1f).apply { marginEnd = 8.dp })
+            row.addView(sortBtn, LinearLayout.LayoutParams(-2, 44.dp))
+            col.addView(row)
+        }
+
+        // ---- start new: the usual sizes, one tap each ----
+        if (onNewSize != null) {
+            val presets = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            presets.addView(Ui.text(context, "Start new", 13f, Ui.TEXT_DIM, true), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 8.dp })
+            val (sw, sh) = screen
+            for ((name, size, wh) in listOf(
+                Triple("Screen", "$sw × $sh", sw to sh), Triple("Square", "2048", 2048 to 2048),
+                Triple("A4", "300 dpi", 2480 to 3508), Triple("Portrait post", "1080 × 1350", 1080 to 1350),
+                Triple("4K", "3840 × 2160", 3840 to 2160))) {
+                val chip = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(14.dp, 0, 14.dp, 0)
+                    background = Ui.rounded(Ui.CARD, 18f)
+                    foreground = Ui.ripple(18f)
+                    setOnClickListener { onNewSize.invoke(wh.first, wh.second) }
+                }
+                chip.addView(Ui.text(context, name, 13f, Ui.TEXT, true))
+                chip.addView(Ui.text(context, "  $size", 13f, Ui.TEXT_DIM))
+                presets.addView(chip, LinearLayout.LayoutParams(-2, 36.dp).apply { marginEnd = 8.dp })
+            }
+            if (onCustomSize != null) presets.addView(Ui.text(context, "Custom…", 13f, Ui.TEXT, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(14.dp, 0, 14.dp, 0)
+                background = Ui.rounded(Ui.CARD, 18f)
+                foreground = Ui.ripple(18f)
+                setOnClickListener { onCustomSize.invoke() }
+            }, LinearLayout.LayoutParams(-2, 36.dp))
+            col.addView(android.widget.HorizontalScrollView(context).apply {
+                isHorizontalScrollBarEnabled = false
+                if (phone) setPadding(16.dp, 12.dp, 16.dp, 0) else setPadding(32.dp, 14.dp, 32.dp, 0)
+                clipToPadding = false
+                addView(presets)
+            })
+        }
+
+        // ---- which artworks ----
+        chips.orientation = LinearLayout.HORIZONTAL
+        col.addView(android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            if (phone) setPadding(16.dp, 10.dp, 16.dp, 2.dp) else setPadding(32.dp, 12.dp, 32.dp, 2.dp)
+            clipToPadding = false
+            addView(chips)
+        })
 
         val scroll = ScrollView(context)
         content.orientation = LinearLayout.VERTICAL
-        content.setPadding(16.dp, 4.dp, 16.dp, 32.dp)
+        content.setPadding(if (context.narrow) 8.dp else 24.dp, 4.dp, if (context.narrow) 8.dp else 24.dp, 32.dp)
         scroll.addView(content)
         col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         addView(col, LayoutParams(-1, -1))
@@ -150,10 +221,12 @@ class GalleryView(
                 Filter.DRAWN -> entries.count { !it.imported }
                 Filter.IMPORTED -> entries.count { it.imported }
             }
-            val chip = Ui.button(context, "${f.label}  $n") { filter = f; render() }.apply {
-                textSize = 13f
-                background = Ui.rounded(if (filter == f) Ui.PANEL_ROW_ACTIVE else Ui.PANEL_ROW, 18f,
-                    if (filter == f) Ui.ACCENT else 0, if (filter == f) 1 else 0)
+            val on = filter == f
+            val chip = Ui.text(context, L10n.tr(f.label) + "  $n", 13f, if (on) Ui.ACCENT else Ui.TEXT_DIM, on).apply {
+                gravity = Gravity.CENTER
+                setPadding(12.dp, 6.dp, 12.dp, 6.dp)
+                background = if (on) Ui.rounded(Ui.ACCENT_SOFT, 14f) else null
+                setOnClickListener { filter = f; render() }
             }
             chips.addView(chip, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = 8.dp })
         }
@@ -183,21 +256,19 @@ class GalleryView(
                 Filter.IMPORTED -> it.imported
             } && (query.isEmpty() || it.title.contains(query, ignoreCase = true))
         }
-        shownNow = shown
-        if (shown.isEmpty()) {
+        val sorted = when (sort) {
+            Sort.RECENT -> shown.sortedByDescending { it.modified }
+            Sort.NAME -> shown.sortedBy { it.title.lowercase() }
+            Sort.SIZE -> shown.sortedByDescending { it.width.toLong() * it.height }
+        }
+        shownNow = sorted
+        if (sorted.isEmpty()) {
             content.addView(Ui.text(context, "Nothing here.", 15f, Ui.TEXT_DIM).apply { setPadding(12.dp, 24.dp, 0, 0) })
             return
         }
 
-        var rest = shown
+        val rest = sorted
         val stacked = filter == Filter.ALL && query.isEmpty()
-        // "Continue" hero card for the most recent artwork
-        if (stacked) {
-            content.addView(section("Continue"))
-            content.addView(hero(shown[0]), LinearLayout.LayoutParams(-1, -2).apply { setMargins(8.dp, 0, 8.dp, 8.dp) })
-            rest = shown.drop(1)
-            if (rest.isNotEmpty()) content.addView(section("Recent"))
-        }
         // stacks show as one card each, where their newest artwork would be
         val cards = ArrayList<(Int) -> View>()
         val seen = HashSet<String>()
@@ -211,40 +282,42 @@ class GalleryView(
     }
 
     private fun gridOf(cards: List<(Int) -> View>): View {
-        // on a phone: two across, whatever its width
-        val cardW = if (context.narrow && width > 0) ((width - 32.dp) / 2 - 16.dp).coerceIn(120.dp, 230.dp) else 230.dp
-        val cols = max(1, (width - 32.dp) / (cardW + 16.dp))
+        // two across on a phone, four on a wide tablet, three between
+        val side = if (context.narrow) 8.dp else 24.dp
+        val avail = width - 2 * side
+        val wdp = avail / resources.displayMetrics.density
+        val cols = when { context.narrow -> 2; wdp >= 1000 -> 4; else -> 3 }
+        val gap = if (context.narrow) 8.dp else 12.dp
+        val cardW = max(100.dp, avail / cols - 2 * gap)
         val grid = GridLayout(context).apply { columnCount = cols }
         for (make in cards) grid.addView(make(cardW), GridLayout.LayoutParams().apply {
             width = cardW
-            setMargins(8.dp, 8.dp, 8.dp, 8.dp)
+            setMargins(gap, gap, gap, gap)
         })
         return grid
     }
 
-    /** a stack: its newest artworks fanned out, its name and how many */
+    /** a stack: two cards fanned behind its newest artwork, its name and how many */
     private fun stackCard(name: String, list: List<Gallery.Entry>, w: Int): View {
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(8.dp, 8.dp, 8.dp, 10.dp)
-            background = Ui.rounded(Ui.PANEL_ROW, 14f)
-        }
-        val frame = FrameLayout(context)
-        val top = list.sortedByDescending { it.modified }.take(3)
-        for ((i, e) in top.withIndex().reversed()) {
-            val v = thumb(e)
-            val off = (i * 9).dp
-            v.rotation = if (i == 0) 0f else if (i == 1) -4f else 4f
-            v.elevation = (6 - i).toFloat()
-            frame.addView(v, LayoutParams(-1, -1).apply { setMargins(off, off / 2, off, 0) })
-        }
-        card.addView(frame, LinearLayout.LayoutParams(-1, (w * 0.7f).toInt()))
-        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        row.addView(IconView(context, Icon.FOLDER).apply { isClickable = false; tint = Ui.ACCENT }, LinearLayout.LayoutParams(22.dp, 22.dp))
-        row.addView(Ui.text(context, name, 15f, bold = true).apply { maxLines = 1; setPadding(6.dp, 0, 0, 0) }, LinearLayout.LayoutParams(0, -2, 1f))
-        card.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
-        card.addView(Ui.text(context, L10n.tr("Stack") + " · ${list.size}", 11.5f, Ui.TEXT_DIM).apply { setPadding(2.dp, 2.dp, 2.dp, 0) })
-        card.foreground = Ui.ripple(14f)
+        val card = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val frame = FrameLayout(context).apply { clipChildren = false; clipToPadding = false }
+        val th = (w * 0.68f).toInt()
+        for ((rot, dx) in listOf(-3f to -5f, 2.5f to 5f)) frame.addView(View(context).apply {
+            background = Ui.rounded(Ui.CARD_HI, 10f)
+            rotation = rot; translationX = dx.dp; translationY = 3f.dp
+            elevation = 3f.dp
+        }, LayoutParams(-1, -1))
+        val top = list.maxByOrNull { it.modified }
+        if (top != null) frame.addView(thumb(top).apply { elevation = 6f.dp }, LayoutParams(-1, -1))
+        frame.addView(Ui.text(context, L10n.tr("%d artworks").replace("%d", list.size.toString()), 12f, 0xFFFFFFFF.toInt(), true).apply {
+            setPadding(10.dp, 4.dp, 10.dp, 4.dp)
+            background = Ui.rounded(0x9E000000.toInt(), 10f)
+            elevation = 8f.dp
+        }, LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, 10.dp, 10.dp) })
+        card.addView(frame, LinearLayout.LayoutParams(-1, th))
+        card.addView(Ui.text(context, name, 14.5f, bold = true).apply { maxLines = 1; setPadding(2.dp, 10.dp, 2.dp, 0) })
+        card.addView(Ui.text(context, L10n.tr("Stack") + " · " + day(list.maxOf { it.modified }), 12f, Ui.TEXT_DIM).apply { setPadding(2.dp, 1.dp, 2.dp, 0) })
+        card.foreground = Ui.ripple(12f)
         card.setOnClickListener { openStack = name; render() }
         card.setOnLongClickListener {
             val pm = InkMenu(context, card)
@@ -260,6 +333,9 @@ class GalleryView(
         }
         return card
     }
+
+    /** "Today", "Yesterday" or the date */
+    private fun day(t: Long): String = DateUtils.getRelativeTimeSpanString(t, System.currentTimeMillis(), DateUtils.DAY_IN_MILLIS).toString()
 
     /** a small dialog asking for a name */
     private fun askName(title: String, start: String, done: (String) -> Unit) {
@@ -287,69 +363,37 @@ class GalleryView(
             .show()
     }
 
-    private fun section(t: String) = Ui.text(context, t.uppercase(), 12f, Ui.TEXT_DIM, true).apply {
-        setPadding(10.dp, 16.dp, 0, 6.dp)
-        letterSpacing = 0.08f
-    }
-
     private fun thumb(e: Gallery.Entry) = ImageView(context).apply {
-        scaleType = ImageView.ScaleType.FIT_CENTER
+        scaleType = ImageView.ScaleType.CENTER_CROP
         background = Ui.rounded(Ui.SUNKEN, 10f)
+        clipToOutline = true
+        elevation = 4f.dp
         val key = e.thumb.absolutePath + ":" + e.thumb.lastModified()
         val bmp = thumbCache.get(key) ?: runCatching { BitmapFactory.decodeFile(e.thumb.absolutePath) }.getOrNull()?.also { thumbCache.put(key, it) }
         bmp?.let { setImageBitmap(it) }
     }
 
-    private fun badge(e: Gallery.Entry): TextView = Ui.text(context, if (e.imported) "IMPORTED" else "DRAWN", 10f,
-        if (e.imported) 0xFFFFC86B.toInt() else 0xFF8FD3A8.toInt(), true).apply {
+    private fun badge(e: Gallery.Entry): TextView = Ui.text(context, if (e.imported) "Imported" else "Drawn", 10.5f,
+        0xFFFFFFFF.toInt(), true).apply {
         setPadding(8.dp, 3.dp, 8.dp, 3.dp)
         background = Ui.rounded(0xCC000000.toInt(), 8f)
     }
 
-    private fun subtitle(e: Gallery.Entry): String {
-        val ago = DateUtils.getRelativeTimeSpanString(e.modified, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
-        return "${e.width} × ${e.height} · edited $ago"
-    }
-
-    private fun hero(e: Gallery.Entry): View {
-        val row = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(12.dp, 12.dp, 20.dp, 12.dp)
-            background = Ui.rounded(if (e.id == currentId) Ui.PANEL_ROW_ACTIVE else Ui.PANEL_ROW, 18f)
-        }
-        val frame = FrameLayout(context)
-        frame.addView(thumb(e), LayoutParams(-1, -1))
-        frame.addView(badge(e), LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(8.dp, 8.dp, 0, 0) })
-        row.addView(frame, if (context.narrow) LinearLayout.LayoutParams(132.dp, 96.dp) else LinearLayout.LayoutParams(300.dp, 200.dp))
-        val info = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(22.dp, 0, 0, 0) }
-        info.addView(Ui.text(context, e.title, 22f, bold = true).apply { maxLines = 2 })
-        info.addView(Ui.text(context, subtitle(e), 13f, Ui.TEXT_DIM).apply { setPadding(0, 6.dp, 0, 14.dp) })
-        info.addView(Ui.button(context, "Continue drawing  ›") { onOpen(e.id) }.apply {
-            background = Ui.rounded(Ui.ACCENT, 12f)
-            textSize = 15f
-        }, LinearLayout.LayoutParams(-2, -2))
-        row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
-        row.foreground = Ui.ripple(18f)
-        row.setOnClickListener { onOpen(e.id) }
-        row.setOnLongClickListener { menu(row, e); true }
-        row.tag = e.id
-        return row
-    }
+    private fun subtitle(e: Gallery.Entry): String = day(e.modified) + " · ${e.width} × ${e.height}"
 
     private fun card(e: Gallery.Entry, w: Int): View {
-        val card = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(8.dp, 8.dp, 8.dp, 10.dp)
-            background = Ui.rounded(if (e.id == currentId) Ui.PANEL_ROW_ACTIVE else Ui.PANEL_ROW, 14f)
-        }
+        val card = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val frame = FrameLayout(context)
         frame.addView(thumb(e), LayoutParams(-1, -1))
-        frame.addView(badge(e), LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(6.dp, 6.dp, 0, 0) })
-        card.addView(frame, LinearLayout.LayoutParams(-1, (w * 0.7f).toInt()))
-        card.addView(Ui.text(context, e.title, 15f, bold = true).apply { maxLines = 1; setPadding(2.dp, 8.dp, 2.dp, 0) })
-        card.addView(Ui.text(context, subtitle(e), 11.5f, Ui.TEXT_DIM).apply { maxLines = 1; setPadding(2.dp, 2.dp, 2.dp, 0) })
-        card.foreground = Ui.ripple(14f)
+        // the artwork that is open: a ring in the accent
+        if (e.id == currentId) frame.addView(View(context).apply {
+            background = Ui.rounded(0, 10f, Ui.ACCENT, 3); elevation = 7f.dp
+        }, LayoutParams(-1, -1))
+        if (e.imported) frame.addView(badge(e).apply { elevation = 8f.dp }, LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(8.dp, 8.dp, 0, 0) })
+        card.addView(frame, LinearLayout.LayoutParams(-1, (w * 0.68f).toInt()))
+        card.addView(Ui.text(context, e.title, 14.5f, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(2.dp, 10.dp, 2.dp, 0) })
+        card.addView(Ui.text(context, subtitle(e), 12f, Ui.TEXT_DIM).apply { maxLines = 1; setPadding(2.dp, 1.dp, 2.dp, 0) })
+        card.foreground = Ui.ripple(12f)
         card.setOnClickListener { onOpen(e.id) }
         card.setOnLongClickListener { menu(card, e); true }
         card.tag = e.id
@@ -457,6 +501,7 @@ class GalleryView(
         box.addView(Ui.text(context, "Start a new canvas, or import a photo or project.", 15f, Ui.TEXT_DIM).apply { setPadding(0, 8.dp, 0, 20.dp) })
         box.addView(Ui.button(context, "＋  New canvas") { onNew() }.apply {
             background = Ui.rounded(Ui.ACCENT, 12f)
+            setTextColor(Ui.ON_ACCENT)
             textSize = 16f
             setPadding(24.dp, 12.dp, 24.dp, 12.dp)
         })
