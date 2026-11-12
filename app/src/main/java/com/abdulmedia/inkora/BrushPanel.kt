@@ -104,6 +104,9 @@ class BrushPanel(
     private val onReset: ((Brush) -> Unit)? = null
 ) : LinearLayout(context) {
 
+    /** what is typed in the search field ("" = show the chosen set) */
+    private var query = ""
+    private val search = android.widget.EditText(context)
     private val setsColumn = LinearLayout(context)
     private val list = LinearLayout(context)
     private val listScroll = ScrollView(context)
@@ -173,9 +176,6 @@ class BrushPanel(
         else -> Icon.BRUSH
     }
 
-    /** what is typed in the search field ("" = show the chosen set) */
-    private var query = ""
-    private val search = android.widget.EditText(context)
 
     /** the brushes the search finds, in every set */
     private fun matches(q: String): List<Brush> {

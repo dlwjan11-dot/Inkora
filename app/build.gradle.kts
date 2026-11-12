@@ -13,8 +13,8 @@ android {
         applicationId = "com.abdulmedia.inkora"
         minSdk = 29
         targetSdk = 36
-        versionCode = 66
-        versionName = "0.30.0"
+        versionCode = 67
+        versionName = "0.30.1"
         manifestPlaceholders["appLabel"] = "Inkora"
 
         // the living brushes' engine (MyPaint) is native code, built for tablets/phones (arm64)
