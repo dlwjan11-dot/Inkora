@@ -30,36 +30,69 @@ object Screen { var wDp = 0; var hDp = 0 }
 
 val Float.dp: Float get() = this * Resources.getSystem().displayMetrics.density
 
+/**
+ * The interface typefaces: Inter for Latin text with Noto Sans Arabic for Arabic and Kurdish, in
+ * three weights (400 text, 500 buttons, 600 titles). Shipped in assets/fonts (SIL Open Font License).
+ */
+object Fonts {
+    private val faces = HashMap<Int, Typeface>()
+
+    fun init(assets: android.content.res.AssetManager) {
+        if (faces.isNotEmpty()) return
+        runCatching {
+            fun family(prefix: String) = android.graphics.fonts.FontFamily.Builder(
+                android.graphics.fonts.Font.Builder(assets, "fonts/${prefix}_400.ttf").setWeight(400).build()).apply {
+                for (w in listOf(500, 600)) addFont(android.graphics.fonts.Font.Builder(assets, "fonts/${prefix}_$w.ttf").setWeight(w).build())
+            }.build()
+            val latin = family("inter")
+            val arabic = family("noto_ar")
+            for (w in listOf(400, 500, 600)) {
+                faces[w] = Typeface.CustomFallbackBuilder(latin)
+                    .addCustomFallback(arabic)
+                    .setSystemFallback("sans-serif")
+                    .setStyle(android.graphics.fonts.FontStyle(w, android.graphics.fonts.FontStyle.FONT_SLANT_UPRIGHT))
+                    .build()
+            }
+        }
+    }
+
+    /** 400, 500 or 600; the system font if the files could not be read */
+    fun get(weight: Int): Typeface = faces[weight] ?: faces[400]
+        ?: if (weight >= 500) Typeface.create("sans-serif-medium", Typeface.NORMAL) else Typeface.DEFAULT
+}
+
 object Ui {
     /** the light interface (Preferences); the colors below follow it. Set before the screen is built. */
     var light = false
 
     private fun pick(dark: Long, bright: Long) = (if (light) bright else dark).toInt()
 
-    val PANEL get() = pick(0xF51E1F25, 0xF7F7F8FB)
-    val PANEL_ROW get() = pick(0xFF2B2C33, 0xFFE8EAF0)
-    val PANEL_ROW_ACTIVE get() = pick(0xFF2B3A55, 0xFFD3E1FA)
-    val BAR get() = pick(0xF0141519, 0xF5FFFFFF)
+    // neutral greys (the accent is the only color in the interface)
+    val PANEL get() = pick(0xF71C1C1E, 0xFAFFFFFF)
+    val PANEL_ROW get() = pick(0xFF262628, 0xFFF2F2F3)
+    val PANEL_ROW_ACTIVE get() = pick(0xFF26334A, 0xFFDCE6F8)
+    /** the islands over the canvas */
+    val BAR get() = pick(0xF21C1C1E, 0xF5FFFFFF)
     val ACCENT get() = pick(0xFF6E9FF5, 0xFF2F6FE0)
     val ACCENT_SOFT get() = pick(0x2E6E9FF5, 0x2E2F6FE0)
-    val TEXT get() = pick(0xFFE8E9ED, 0xFF1C1E24)
-    val TEXT_DIM get() = pick(0xFF8D92A0, 0xFF5F6573)
-    val CARD get() = pick(0xFF27282F, 0xFFEEF0F4)
-    val CARD_HI get() = pick(0xFF30333A, 0xFFE2E5EB)
-    val DIVIDER get() = pick(0x16FFFFFF, 0x1A000000)
+    val TEXT get() = pick(0xFFEDEDED, 0xFF1A1A1A)
+    val TEXT_DIM get() = pick(0xFFA1A1A6, 0xFF5E5E63)
+    val CARD get() = pick(0xFF262628, 0xFFF2F2F3)
+    val CARD_HI get() = pick(0xFF2F2F32, 0xFFE8E8EA)
+    val DIVIDER get() = pick(0x1AFFFFFF, 0x1A000000)
     val DANGER get() = pick(0xFFF07178, 0xFFD64550)
     /** a whole page (gallery, brush studio, settings pages) */
-    val SURFACE get() = pick(0xFF101115, 0xFFF2F3F6)
+    val SURFACE get() = pick(0xFF141414, 0xFFE4E4E4)
     /** a page laid over the canvas */
-    val SCRIM get() = pick(0xF2101115, 0xF4F2F3F6)
+    val SCRIM get() = pick(0xF2141414, 0xF4E4E4E4)
     /** sunken fields: tabs, thumbnails, small windows */
-    val SUNKEN get() = pick(0xFF14151A, 0xFFDDE0E7)
+    val SUNKEN get() = pick(0xFF111112, 0xFFD9D9DB)
     /** around the canvas */
-    val CANVAS_BG get() = pick(0xFF2A2B31, 0xFFCDD0D6)
-    /** thin outlines of cards */
-    val OUTLINE get() = pick(0x1AFFFFFF, 0x1F000000)
+    val CANVAS_BG get() = pick(0xFF161616, 0xFFE4E4E4)
+    /** thin outlines of cards and islands */
+    val OUTLINE get() = pick(0x17FFFFFF, 0x14000000)
     /** the empty part of a slider */
-    val TRACK get() = pick(0x55FFFFFF, 0x33000000)
+    val TRACK get() = pick(0x40FFFFFF, 0x2A000000)
     /** text on the accent color */
     val ON_ACCENT = 0xFFFFFFFF.toInt()
 
@@ -80,12 +113,13 @@ object Ui {
         text = L10n.tr(s)
         textSize = sp
         setTextColor(color)
-        if (bold) typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        typeface = Fonts.get(if (bold) 600 else 400)
     }
 
     fun button(ctx: Context, label: String, onClick: () -> Unit) = TextView(ctx).apply {
         text = L10n.tr(label)
         textSize = 14f
+        typeface = Fonts.get(500)
         setTextColor(TEXT)
         gravity = Gravity.CENTER
         setPadding(12.dp, 8.dp, 12.dp, 8.dp)
@@ -228,6 +262,7 @@ object TipTexts {
     val byName = mapOf(
         "Gallery" to "All your artworks. Your work is saved on the way",
         "Actions" to "Add things, canvas settings, share and export, preferences, help",
+        "Focus mode" to "Focus mode: hide the islands",
         "Adjustments" to "Change colors and sharpness of the layer: hue, brightness, blur and more",
         "Selection" to "Mark a part of the artwork; painting and edits then stay inside it",
         "Transform" to "Move, scale, turn or bend the layer or the selection",
@@ -346,9 +381,40 @@ class ColorSwatchView(context: Context) : View(context) {
         p.color = color
         canvas.drawCircle(width / 2f, height / 2f, r, p)
         p.style = Paint.Style.STROKE
-        p.strokeWidth = 2f.dp
-        p.color = 0xCCFFFFFF.toInt()
-        canvas.drawCircle(width / 2f, height / 2f, r + 1f.dp, p)
+        p.strokeWidth = 1.5f.dp
+        p.color = Ui.TEXT
+        canvas.drawCircle(width / 2f, height / 2f, r + 2.5f.dp, p)
+    }
+}
+
+/** The color in hand (large) over the one before it (small): tap to go back to the one before. */
+class ColorPairView(context: Context) : View(context) {
+    var color = 0xFF000000.toInt()
+        set(v) { field = v; invalidate() }
+    /** null: no color before this one yet */
+    var previous: Int? = null
+        set(v) { field = v; invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    init { isClickable = true }
+
+    private fun dot(canvas: Canvas, cx: Float, cy: Float, r: Float, c: Int) {
+        p.style = Paint.Style.FILL
+        p.color = Ui.BAR or 0xFF000000.toInt()
+        canvas.drawCircle(cx, cy, r + 2f.dp, p)
+        p.color = c
+        canvas.drawCircle(cx, cy, r, p)
+        p.style = Paint.Style.STROKE
+        p.strokeWidth = 1f.dp
+        p.color = Ui.OUTLINE
+        canvas.drawCircle(cx, cy, r, p)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val s = minOf(width, height).toFloat()
+        val ox = (width - s) / 2f; val oy = (height - s) / 2f
+        previous?.let { dot(canvas, ox + s * 0.66f, oy + s * 0.66f, s * 0.22f, it) }
+        dot(canvas, ox + s * 0.4f, oy + s * 0.4f, s * 0.27f, color)
     }
 }
 
@@ -522,7 +588,7 @@ class HudView(context: Context) : View(context) {
         }
         val cx = width / 2f
         // under the top bar and the tool settings bar, never behind them
-        val top = 122f.dp
+        val top = 144f.dp
         canvas.drawRoundRect(RectF(cx - tw / 2 - 16f.dp, top, cx + tw / 2 + 16f.dp, top + 36f.dp), 18f.dp, 18f.dp, pill)
         canvas.drawText(m, cx, top + 24f.dp, textPaint)
         if (circle > 0f) {

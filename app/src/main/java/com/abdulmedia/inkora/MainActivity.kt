@@ -72,6 +72,16 @@ class MainActivity : Activity(), CanvasView.Listener {
     private val barButtons = ArrayList<View>()
     private var popupOwner: View? = null
     private lateinit var titleView: android.widget.TextView
+    /** under the title: the canvas size and the number of layers */
+    private lateinit var docInfo: android.widget.TextView
+    private lateinit var docIsland: LinearLayout
+    private lateinit var panelsIsland: LinearLayout
+    private lateinit var homeChevron: IconView
+    private lateinit var focusBtn: View
+    /** where the tool bar goes in the top row when it is "on top" */
+    private lateinit var toolsSlot: FrameLayout
+    private lateinit var colorPair: ColorPairView
+    private lateinit var handPaint: List<IconView>
     private lateinit var focusExit: IconView
     private var dockIds = mutableListOf<String>()
     private var leftHanded = false
@@ -119,6 +129,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         super.onCreate(savedInstanceState)
         installCrashReporter()
         Ui.light = prefs.getBoolean("light_ui", false)
+        Fonts.init(assets)
         LivingBrushes.init(this)
         // the layer limit follows this device's memory
         runCatching {
@@ -448,34 +459,79 @@ class MainActivity : Activity(), CanvasView.Listener {
         dockIds = ToolCatalog.decode(prefs.getString("dock", null))
         leftHanded = prefs.getBoolean("leftHanded", false)
 
-        // ---------- top bar ----------
-        //  [Home] [Menu] | [Creative] [Editing]      artwork title      [Brush] [Smudge] [Eraser] | [Layers] (Color)
+        // ---------- the islands at the top ----------
+        //  [‹ Gallery | title · size · layers | focus ⋯]  [tools ... ⋯]            [Brushes Layers (Color)]
+        // The row itself is see-through: only the islands in it cover the canvas.
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(8.dp, 0, 10.dp, 0)
-            setBackgroundColor(Ui.BAR)
-            elevation = 6f.dp
+            setPadding(12.dp, 0, 12.dp, 0)
+            clipChildren = false
+            clipToPadding = false
         }
         topBar = bar
-        // [Gallery] | [Actions] [Add] [Adjust] [Canvas]      artwork title      [Brushes] [Layers] (Color)
-        // Every button opens its panel right under itself, the same way (on a phone: a sheet from the bottom).
-        val homeBtn = Ui.text(this, "Gallery", 16f).apply {
-            contentDescription = "Gallery"
-            gravity = Gravity.CENTER
-            setPadding(10.dp, 0, 12.dp, 0)
+
+        // DOCUMENT island: the gallery, the artwork's name, focus mode and Actions
+        val docIsland = island()
+        this.docIsland = docIsland
+        val homeBtn = Ui.text(this, "Gallery", 14f, bold = false).apply {
+            contentDescription = L10n.tr("Gallery")
+            typeface = Fonts.get(500)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(6.dp, 0, 12.dp, 0)
+            compoundDrawablePadding = 2.dp
+            foreground = Ui.ripple(12f)
             setOnClickListener { if (!busy()) showGallery() }
         }
-        HoverTip.attach(homeBtn) { "Gallery" to TipTexts.byName["Gallery"] }
-        bar.addView(homeBtn, LinearLayout.LayoutParams(-2, 48.dp))
+        homeChevron = IconView(this, if (L10n.isRtl) Icon.CHEV_RIGHT else Icon.CHEV_LEFT).apply { isClickable = false; iconScale = 0.5f }
+        val home = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isClickable = true
+            foreground = Ui.ripple(12f)
+            setOnClickListener { if (!busy()) showGallery() }
+        }
+        homeBtn.isClickable = false; homeBtn.foreground = null
+        home.addView(homeChevron, LinearLayout.LayoutParams(28.dp, 44.dp))
+        home.addView(homeBtn, LinearLayout.LayoutParams(-2, 44.dp))
+        HoverTip.attach(home) { L10n.tr("Gallery") to TipTexts.byName["Gallery"] }
+        docIsland.addView(home, LinearLayout.LayoutParams(-2, 44.dp))
         this.homeBtn = homeBtn
-        bar.addView(barDivider())
-        menuBtn = barButton(Icon.MENU, "Menu") { v -> if (!busy()) showPhoneMenu(v) }
-        actionsBtn = barButton(Icon.WRENCH, "Actions") { v -> if (!busy()) showActions(v) }
-        addBtn = barButton(Icon.PLUS, "Add") { v -> if (!busy()) showAddPanel(v) }
-        adjustMenuBtn = barButton(Icon.ADJUST, "Adjust") { v -> if (adjustKind == null && !busy()) showAdjustPanel(v) }
-        canvasBtn = barButton(Icon.GRID, "Canvas") { v -> if (!busy()) showCanvasPanel(v) }
-        for (b in listOf(menuBtn, actionsBtn, addBtn, adjustMenuBtn, canvasBtn)) bar.addView(b)
+        docIsland.addView(View(this).apply { setBackgroundColor(Ui.DIVIDER) }, LinearLayout.LayoutParams(1.dp, 24.dp))
+
+        val titles = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12.dp, 0, 8.dp, 0)
+            isClickable = true
+            foreground = Ui.ripple(12f)
+            contentDescription = L10n.tr("Rename artwork")
+            setOnClickListener {
+                if (cv.isDocReady() && !busy()) renameDialog(cv.doc.title) { t ->
+                    cv.doc.title = t; cv.doc.revision++; autosave(force = true); refreshAll()
+                }
+            }
+        }
+        titleView = Ui.text(this, "", 13.5f, Ui.TEXT, true).apply {
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            isClickable = false
+        }
+        docInfo = Ui.text(this, "", 11f, Ui.TEXT_DIM).apply { maxLines = 1; isClickable = false }
+        titles.addView(titleView)
+        titles.addView(docInfo)
+        docIsland.addView(titles, LinearLayout.LayoutParams(-2, 44.dp).apply { weight = 1f })
+        focusBtn = islandButton(Icon.FOCUS, "Focus mode") { if (!busy()) setFocus(true) }
+        docIsland.addView(focusBtn)
+        actionsBtn = islandButton(Icon.MORE, "Actions") { v -> if (!busy()) showActions(v) }
+        docIsland.addView(actionsBtn)
+        bar.addView(docIsland, LinearLayout.LayoutParams(-2, 52.dp))
+        // older code paths open Add, Canvas and Adjust from these: they all live under ⋯ (and Adjust on the tool bar)
+        menuBtn = actionsBtn; addBtn = actionsBtn; canvasBtn = actionsBtn; adjustMenuBtn = actionsBtn
+
+        // TOOLS island: the tool bar sits here when it is "on top" (see applySides)
+        toolsSlot = FrameLayout(this).apply { clipChildren = false; clipToPadding = false }
+        bar.addView(toolsSlot, LinearLayout.LayoutParams(0, 52.dp, 1f).apply { marginStart = 12.dp; marginEnd = 12.dp })
 
         // the tools themselves live in the tool bar now; these keep their state for older code paths
         creativeBtn = View(this); editingBtn = View(this); moreBtn = View(this)
@@ -489,46 +545,45 @@ class MainActivity : Activity(), CanvasView.Listener {
         eraserBtn = IconView(this, Icon.ERASER)
         layerName = Ui.text(this, "", 9f, Ui.TEXT_DIM)
 
-        titleView = Ui.text(this, "", 13.5f, Ui.TEXT_DIM).apply {
-            gravity = Gravity.CENTER
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(12.dp, 0, 12.dp, 0)
-            contentDescription = "Rename artwork"
-            setOnClickListener {
-                if (cv.isDocReady() && !busy()) renameDialog(cv.doc.title) { t ->
-                    cv.doc.title = t; cv.doc.revision++; autosave(force = true); refreshAll()
-                }
-            }
-        }
-        bar.addView(titleView, LinearLayout.LayoutParams(0, 48.dp, 1f))
-
-        brushesBtn = barButton(Icon.BRUSHES, "Brushes") { if (!busy()) showBrushes(cv.tool) }
-        layersBtn = barButton(Icon.LAYERS, "Layers") { if (!busy()) showLayers() }
-        bar.addView(brushesBtn)
-        bar.addView(layersBtn)
-
+        // PANELS island: brushes, layers, color
+        val panelsIsland = island()
+        this.panelsIsland = panelsIsland
+        brushesBtn = islandButton(Icon.BRUSHES, "Brushes") { if (!busy()) showBrushes(cv.tool) }
+        layersBtn = islandButton(Icon.LAYERS, "Layers") { if (!busy()) showLayers() }
+        panelsIsland.addView(brushesBtn)
+        panelsIsland.addView(layersBtn)
         colorBtn = ColorSwatchView(this)
+        colorBtn.contentDescription = L10n.tr("Color")
         setupColorButton()
-        HoverTip.attach(colorBtn) { "Color" to TipTexts.byName["Color"] }
-        bar.addView(colorBtn, LinearLayout.LayoutParams(52.dp, 52.dp).apply { leftMargin = 6.dp })
+        HoverTip.attach(colorBtn) { L10n.tr("Color") to TipTexts.byName["Color"] }
+        panelsIsland.addView(colorBtn, LinearLayout.LayoutParams(48.dp, 44.dp))
+        bar.addView(panelsIsland, LinearLayout.LayoutParams(-2, 52.dp))
 
-        root.addView(bar, FrameLayout.LayoutParams(-1, 56.dp, Gravity.TOP))
-        // hairline under the bar
-        root.addView(View(this).apply { setBackgroundColor(0x14FFFFFF) }, FrameLayout.LayoutParams(-1, 1.dp, Gravity.TOP).apply { topMargin = 56.dp })
+        root.addView(bar, FrameLayout.LayoutParams(-1, TOP_H.dp, Gravity.TOP).apply { topMargin = ISLAND_GAP.dp })
 
         // ---------- side bar: size, eyedropper, opacity, undo, redo ----------
+        // HAND island: what the free hand reaches for every few seconds
         val side = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(4.dp, 10.dp, 4.dp, 8.dp)
-            background = Ui.rounded(Ui.BAR, 16f, 0x14FFFFFF, 1)
+            setPadding(6.dp, 8.dp, 6.dp, 8.dp)
+            background = Ui.rounded(Ui.BAR, 20f, Ui.OUTLINE, 1)
             elevation = 8f.dp
         }
         sideBar = side
+        // brush, smudge, eraser (here while the tool bar is on top; else they are on the tool bar)
+        handPaint = listOf("brush" to Icon.BRUSH, "smudge" to Icon.SMUDGE, "eraser" to Icon.ERASER).map { (id, ic) ->
+            IconView(this, ic).apply {
+                val def = RailTools.paint[id]
+                contentDescription = L10n.tr(def?.label ?: id)
+                tip = def?.hint?.let { L10n.tr(it) }
+                tag = id
+                setOnClickListener { v -> railPick(id, v, isToolActive(id)) }
+            }.also { side.addView(it, LinearLayout.LayoutParams(48.dp, 44.dp)) }
+        }
+        side.addView(View(this).apply { setBackgroundColor(Ui.DIVIDER); tag = "handDivider" }, LinearLayout.LayoutParams(28.dp, 1.dp).apply { topMargin = 6.dp; bottomMargin = 6.dp })
+        // the brush preview is kept for older code paths; the brush buttons above stand for it
         brushDot = BrushDotView(this).apply { setOnClickListener { if (!busy()) showBrushes(cv.tool) } }
-        HoverTip.attach(brushDot) { cv.currentBrush.preset.name to TipTexts.byName["Brush preview"] }
-        side.addView(brushDot, LinearLayout.LayoutParams(40.dp, 40.dp))
         sizeSlider = VerticalSlider(this)
         sizeSlider.onChange = { v ->
             cv.currentBrush.size = Brushes.sizeFromSlider(v)
@@ -538,7 +593,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         sizeSlider.onDragState = { dragging -> if (dragging) showSizeHud(true) else hud.hideSoon() }
         sliderPins(sizeSlider, "size_pins")
         sizeSlider.onExact = { exactValue(true) }
-        HoverTip.attach(sizeSlider) { "Brush size" to TipTexts.byName["Brush size"] }
+        sizeSlider.contentDescription = L10n.tr("Brush size")
+        HoverTip.attach(sizeSlider) { L10n.tr("Brush size") to TipTexts.byName["Brush size"] }
         side.addView(sizeSlider, LinearLayout.LayoutParams(44.dp, 180.dp))
 
         // the □ modify button: tapped, it does what "Tap □" is set to (the eyedropper at first);
@@ -583,12 +639,20 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         sliderPins(opacitySlider, "opacity_pins")
         opacitySlider.onExact = { exactValue(false) }
-        HoverTip.attach(opacitySlider) { "Brush opacity" to TipTexts.byName["Brush opacity"] }
+        opacitySlider.contentDescription = L10n.tr("Brush opacity")
+        HoverTip.attach(opacitySlider) { L10n.tr("Brush opacity") to TipTexts.byName["Brush opacity"] }
         side.addView(opacitySlider, LinearLayout.LayoutParams(44.dp, 180.dp))
         opacityLabel = Ui.text(this, "100%", 10f, Ui.TEXT_DIM, true).apply { gravity = Gravity.CENTER }
         side.addView(opacityLabel, LinearLayout.LayoutParams(-1, -2))
 
         side.addView(Ui.divider(this), LinearLayout.LayoutParams(28.dp, 1.dp).apply { topMargin = 8.dp; bottomMargin = 4.dp })
+        // the color in hand and the one before it: tap to go back
+        colorPair = ColorPairView(this).apply {
+            contentDescription = L10n.tr("Color and previous color")
+            setOnClickListener { swapColor(); refreshAll() }
+        }
+        HoverTip.attach(colorPair) { L10n.tr("Color and previous color") to L10n.tr("Tap to go back to the previous color") }
+        side.addView(colorPair, LinearLayout.LayoutParams(44.dp, 44.dp))
         undoBtn = IconView(this, Icon.UNDO).apply { contentDescription = "Undo" }
         undoBtn.setOnClickListener { cv.undo() }
         side.addView(undoBtn, LinearLayout.LayoutParams(44.dp, 44.dp))
@@ -628,7 +692,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             visibility = View.GONE
         }
         root.addView(doneBtn, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-            topMargin = 120.dp
+            topMargin = (STRIP_Y + 64).dp
         })
 
         // dot that follows the finger during ColorDrop
@@ -649,6 +713,34 @@ class MainActivity : Activity(), CanvasView.Listener {
         syncModifyIcon()
 
         setContentView(root)
+    }
+
+    /** "1 layer", "4 layers" in the interface language */
+    private fun layerCount(n: Int): String = when {
+        n == 1 -> L10n.tr("1 layer")
+        L10n.lang == L10n.AR && n > 10 -> L10n.tr("%d layers (11 and more)").replace("%d", n.toString())
+        else -> L10n.tr("%d layers").replace("%d", n.toString())
+    }
+
+    /** a rounded group of buttons over the canvas */
+    private fun island() = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(4.dp, 0, 4.dp, 0)
+        background = Ui.rounded(Ui.BAR, 18f, Ui.OUTLINE, 1)
+        elevation = 8f.dp
+    }
+
+    /** an icon button of an island; it opens its panel under itself */
+    private fun islandButton(icon: Icon, label: String, onClick: (View) -> Unit): IconView {
+        val b = IconView(this, icon)
+        b.iconScale = 0.5f
+        b.tip = TipTexts.byName[label]
+        b.contentDescription = L10n.tr(label)
+        b.setOnClickListener { onClick(b) }
+        b.layoutParams = LinearLayout.LayoutParams(48.dp, 44.dp)
+        barButtons.add(b)
+        return b
     }
 
     private fun barDivider() = View(this).apply { setBackgroundColor(0x16FFFFFF) }.also {
@@ -694,15 +786,10 @@ class MainActivity : Activity(), CanvasView.Listener {
         m.show()
     }
 
-    private fun showAddPanel(anchor: View) {
-        if (!cv.isDocReady()) return
-        showPanel(anchor, ActionsPanel(this, actionsHost, ActionsPanel.MODE_ADD), 380, null)
-    }
+    // Add and Canvas are tabs of Actions (the ⋯ of the document island)
+    private fun showAddPanel(anchor: View) = showActions(anchor, tab = ActionsPanel.Tab.ADD)
 
-    private fun showCanvasPanel(anchor: View) {
-        if (!cv.isDocReady()) return
-        showPanel(anchor, ActionsPanel(this, actionsHost, ActionsPanel.MODE_CANVAS), 420, 680)
-    }
+    private fun showCanvasPanel(anchor: View) = showActions(anchor, tab = ActionsPanel.Tab.CANVAS)
 
     private fun showAdjustPanel(anchor: View) {
         if (!cv.isDocReady()) return
@@ -911,31 +998,44 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private lateinit var homeBtn: android.widget.TextView
+
     private lateinit var moreBtn: View
 
-    /** Phones: a slimmer top bar when the screen is narrow, shorter sliders when it is low. */
+    /** Phones: one slim row on top, the tools along the bottom; shorter sliders when the screen is low. */
     private fun applyScreenSize() {
         val n = narrow
-        if (n) { homeBtn.setPadding(4.dp, 0, 6.dp, 0); homeBtn.textSize = 14f } else { homeBtn.setPadding(10.dp, 0, 12.dp, 0); homeBtn.textSize = 16f }
-        topBar.setPadding(if (n) 4.dp else 8.dp, 0, if (n) 4.dp else 10.dp, 0)
-        // a phone: one ☰ for Actions, Add, Adjust and Canvas, and icons without their names
-        menuBtn.visibility = if (n) View.VISIBLE else View.GONE
-        for (b in listOf(actionsBtn, addBtn, adjustMenuBtn, canvasBtn)) b.visibility = if (n) View.GONE else View.VISIBLE
-        for (b in barButtons) {
-            b.findViewWithTag<View>("label")?.visibility = if (n) View.GONE else View.VISIBLE
-            (b.layoutParams as LinearLayout.LayoutParams).width = if (n) 42.dp else 76.dp
+        // a phone: the chevron alone stands for the gallery; no size line under the title
+        homeBtn.visibility = if (n) View.GONE else View.VISIBLE
+        docInfo.visibility = if (n) View.GONE else View.VISIBLE
+        focusBtn.visibility = if (n) View.GONE else View.VISIBLE
+        titleView.maxWidth = if (n) Int.MAX_VALUE else 240.dp
+        (docIsland.layoutParams as LinearLayout.LayoutParams).apply { width = if (n) 0 else -2; weight = if (n) 1f else 0f }
+        (toolsSlot.layoutParams as LinearLayout.LayoutParams).apply {
+            width = if (n) 8.dp else 0; weight = if (n) 0f else 1f
+            marginStart = if (n) 0 else 12.dp; marginEnd = if (n) 0 else 12.dp
         }
-        (colorBtn.layoutParams as LinearLayout.LayoutParams).apply { width = if (n) 44.dp else 52.dp; height = width }
+        topBar.setPadding(if (n) 8.dp else 12.dp, 0, if (n) 8.dp else 12.dp, 0)
         topBar.requestLayout()
         if (::dock.isInitialized) applySides()
+        sizeHandIsland()
+    }
 
-        // the sliders take what height there is
-        val avail = (if (Screen.hDp > 0) Screen.hDp else resources.configuration.screenHeightDp) - 56 - 24 - (if (narrow) ToolRail.PHONE_H + 50 else 54)
-        val tight = avail < 430
-        brushDot.visibility = if (tight) View.GONE else View.VISIBLE
+    /** the sliders of the hand island take what height there is */
+    private fun sizeHandIsland() {
+        if (!::dock.isInitialized) return
+        val n = narrow
+        val h = if (Screen.hDp > 0) Screen.hDp else resources.configuration.screenHeightDp
+        val paintHere = dock.paintElsewhere
+        for (b in handPaint) b.visibility = if (paintHere) View.VISIBLE else View.GONE
+        sideBar.findViewWithTag<View>("handDivider")?.visibility = if (paintHere) View.VISIBLE else View.GONE
+        val lp = sideBar.layoutParams as FrameLayout.LayoutParams
+        val avail = h - (lp.topMargin + lp.bottomMargin) / resources.displayMetrics.density
+        var fixed = 16 + 52 + 16 + 13 + 44 + 88 + (if (paintHere) 145 else 0)
+        val tight = avail - fixed < 2 * 90
         opacityLabel.visibility = if (tight) View.GONE else View.VISIBLE
-        val fixed = if (tight) 175 else 235
-        val sh = ((avail - fixed) / 2).coerceIn(56, 180)
+        colorPair.visibility = if (tight && !n) View.GONE else View.VISIBLE
+        if (tight) fixed -= 16 + 44
+        val sh = ((avail - fixed) / 2).toInt().coerceIn(56, 180)
         (sizeSlider.layoutParams as LinearLayout.LayoutParams).height = sh.dp
         (opacitySlider.layoutParams as LinearLayout.LayoutParams).height = sh.dp
         sideBar.requestLayout()
@@ -951,46 +1051,82 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun applySides() {
         val side = railSide()
-        val sl = slidersEdge()
         val n = narrow
         dock.horizontal = n
+        val top = !n && dock.mode == ToolRail.TOP
+        // the tool bar goes into the top row when it is "on top", else straight on the screen
+        val wantParent: ViewGroup = if (top) toolsSlot else root
+        if (dock.parent !== wantParent) {
+            (dock.parent as? ViewGroup)?.removeView(dock)
+            if (top) wantParent.addView(dock, FrameLayout.LayoutParams(-2, -1, Gravity.START or Gravity.CENTER_VERTICAL))
+            else root.addView(dock, root.indexOfChild(optionsBar).coerceAtLeast(0), FrameLayout.LayoutParams(-2, -2))
+        }
+        val gap = ISLAND_GAP
         val railW = when {
-            n -> 0
+            n || top -> 0
             dock.mode == ToolRail.FLOAT -> 0
             dock.mode == ToolRail.WIDE -> ToolRail.WIDE_W
             else -> ToolRail.DOCK_W
         }
-        (dock.layoutParams as FrameLayout.LayoutParams).apply {
+        if (!top) (dock.layoutParams as FrameLayout.LayoutParams).apply {
             leftMargin = 0; rightMargin = 0; topMargin = 0; bottomMargin = 0
             when {
-                n -> { width = -1; height = ToolRail.PHONE_H.dp; gravity = Gravity.BOTTOM }
+                n -> { width = -1; height = ToolRail.PHONE_H.dp; gravity = Gravity.BOTTOM; leftMargin = 8.dp; rightMargin = 8.dp; bottomMargin = 8.dp }
                 dock.mode == ToolRail.FLOAT -> {
                     width = -2; height = -2; gravity = Gravity.TOP or Gravity.LEFT
                     val dm = resources.displayMetrics
                     leftMargin = prefs.getInt("rail_float_x", if (side == "Left") 16.dp else dm.widthPixels - 86.dp).coerceIn(0, (dm.widthPixels - 70.dp).coerceAtLeast(0))
-                    topMargin = prefs.getInt("rail_float_y", 130.dp).coerceIn(56.dp, (dm.heightPixels - 200.dp).coerceAtLeast(56.dp))
+                    topMargin = prefs.getInt("rail_float_y", 130.dp).coerceIn(STRIP_Y.dp, (dm.heightPixels - 200.dp).coerceAtLeast(STRIP_Y.dp))
                 }
-                else -> { width = railW.dp; height = -1; gravity = (if (side == "Left") Gravity.LEFT else Gravity.RIGHT) or Gravity.TOP; topMargin = 57.dp }
+                else -> { width = railW.dp; height = -1; gravity = (if (side == "Left") Gravity.LEFT else Gravity.RIGHT) or Gravity.TOP; topMargin = STRIP_Y.dp }
             }
             dock.layoutParams = this
         }
+        // the settings strip: a floating island under the top row (a phone: over the tool bar)
         (optionsBar.layoutParams as FrameLayout.LayoutParams).apply {
-            if (n) { gravity = Gravity.BOTTOM; topMargin = 0; bottomMargin = ToolRail.PHONE_H.dp; leftMargin = 0; rightMargin = 0 }
-            else {
-                gravity = Gravity.TOP; topMargin = 57.dp; bottomMargin = 0
-                leftMargin = if (side == "Left") railW.dp else 0
-                rightMargin = if (side == "Right") railW.dp else 0
+            if (n) {
+                width = -1; gravity = Gravity.BOTTOM; topMargin = 0
+                bottomMargin = (ToolRail.PHONE_H + 8 + 8).dp; leftMargin = 8.dp; rightMargin = 8.dp
+            } else {
+                width = -2; gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; topMargin = STRIP_Y.dp; bottomMargin = 0
+                leftMargin = (if (side == "Left") railW else 0).dp + gap.dp
+                rightMargin = (if (side == "Right") railW else 0).dp + gap.dp
             }
             optionsBar.layoutParams = this
         }
+        // the hand island: on the chosen side when the tool bar is on top, else across from the tool bar
+        val handSide = if (top || n) (if (n) slidersEdge() else side) else slidersEdge()
         (sideBar.layoutParams as FrameLayout.LayoutParams).apply {
-            gravity = (if (sl == "Right") Gravity.RIGHT else Gravity.LEFT) or Gravity.CENTER_VERTICAL
-            leftMargin = 8.dp; rightMargin = 8.dp
-            topMargin = if (n) 56.dp else 110.dp
-            bottomMargin = if (n) (ToolRail.PHONE_H + 50).dp else 8.dp
+            gravity = (if (handSide == "Right") Gravity.RIGHT else Gravity.LEFT) or Gravity.CENTER_VERTICAL
+            val besideRail = !n && !top && dock.mode != ToolRail.FLOAT && handSide == side
+            leftMargin = gap.dp + (if (besideRail && handSide == "Left") railW.dp else 0)
+            rightMargin = gap.dp + (if (besideRail && handSide == "Right") railW.dp else 0)
+            topMargin = if (n) (TOP_H + gap * 2).dp else (STRIP_Y + 52 + gap).dp
+            bottomMargin = if (n) (ToolRail.PHONE_H + 8 + 8 + 56).dp else gap.dp
             sideBar.layoutParams = this
         }
+        sizeHandIsland()
         updateOptions()
+    }
+
+    // ---------- the islands step back while you draw ----------
+
+    private val islandsOut = Runnable { islandsAlpha(0.3f) }
+    private val islandsBack = Runnable { islandsAlpha(1f) }
+
+    private fun islandsAlpha(a: Float) {
+        if (!::dock.isInitialized) return
+        for (v in listOf(topBar, sideBar, dock, optionsBar)) {
+            if (v.alpha != a) v.animate().alpha(a).setDuration(if (a < 1f) 200 else 150).start()
+        }
+    }
+
+    /** 300 ms into a stroke the islands fade; they come back 700 ms after the pen lifts (not between strokes) */
+    private fun fadeIslands(drawing: Boolean) {
+        if (!::dock.isInitialized) return
+        root.removeCallbacks(islandsOut); root.removeCallbacks(islandsBack)
+        if (drawing) { if (prefs.getBoolean("fade_islands", true)) root.postDelayed(islandsOut, 300) }
+        else root.postDelayed(islandsBack, 700)
     }
 
     /** closes a full-screen overlay (gesture controls, keyboard shortcuts) */
@@ -1041,7 +1177,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         focusMode = on
         val v = if (on) View.GONE else View.VISIBLE
         topBar.visibility = v
-        (root.getChildAt(root.indexOfChild(topBar) + 1))?.visibility = v // hairline
+        if (on) { root.removeCallbacks(islandsOut); root.removeCallbacks(islandsBack); islandsAlpha(1f) }
         sideBar.visibility = if (on || !prefs.getBoolean("sidebar", true)) View.GONE else View.VISIBLE
         dock.visibility = v
         dock.dismissEditor()
@@ -1113,7 +1249,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 hud.show(if (cv.quickShapeEnabled) "QuickShape on: hold the pen at the end of a stroke" else "QuickShape off")
             }
             id == "symmetry" -> showSymmetry(anchor)
-            id == "adjust" -> showToolsMenu(false, "adjust")
+            id == "adjust" -> if (adjustKind == null) showAdjustPanel(anchor ?: actionsBtn)
             id.startsWith("adj_") -> AdjustKind.values().firstOrNull { "adj_${it.name}" == id }?.let { startAdjust(it) }
             id == "fit" -> cv.fitToScreen()
             id == "flip" -> cv.flipHorizontal()
@@ -1504,7 +1640,15 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (cv.fillMode) { brushBtn.active = false; smudgeBtn.active = false; eraserBtn.active = false }
         if (::dock.isInitialized) dock.refresh()
         updateOptions()
-        if (::titleView.isInitialized && cv.isDocReady()) titleView.text = cv.doc.title
+        if (::titleView.isInitialized && cv.isDocReady()) {
+            titleView.text = cv.doc.title
+            docInfo.text = "${cv.doc.width} × ${cv.doc.height} · " + layerCount(cv.doc.layers.size)
+            if (::colorPair.isInitialized) {
+                colorPair.color = cv.color
+                colorPair.previous = recentColors.firstOrNull { it != cv.color }
+                for (b in handPaint) b.active = isToolActive(b.tag as String)
+            }
+        }
         if (::brushDot.isInitialized) {
             brushDot.sizePx = cv.currentBrush.size
             brushDot.opacity = cv.currentBrush.opacity
@@ -1935,6 +2079,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onDrawingChanged(drawing: Boolean) {
         drawingNow = drawing
         if (!drawing) lastDrawEnd = android.os.SystemClock.uptimeMillis()
+        fadeIslands(drawing)
         pinned.values.forEach { it.setDrawing(drawing) }
     }
 
@@ -2297,11 +2442,12 @@ class MainActivity : Activity(), CanvasView.Listener {
         showBeside(anchor, box, 340, null)
     }
 
-    private fun showActions(anchor: View, page: String? = null) {
+    private fun showActions(anchor: View, page: String? = null, tab: ActionsPanel.Tab? = null) {
         if (!cv.isDocReady()) return
         val panel = ActionsPanel(this, actionsHost)
+        if (tab != null) panel.openTab(tab)
         if (page != null) panel.openPage(page)
-        showPanel(anchor, panel, 420, 660, alignLeft = true)
+        showPanel(anchor, panel, 460, 680, alignLeft = true)
     }
 
     private val actionsHost = object : ActionsHost {
@@ -2377,7 +2523,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         }
         override var sidebarShown: Boolean
             get() = prefs.getBoolean("sidebar", true)
-            set(v) { prefs.edit().putBoolean("sidebar", v).apply(); sideBar.visibility = if (v && !focusMode) View.VISIBLE else View.GONE }
+            set(v) { prefs.edit().putBoolean("sidebar", v).apply(); sideBar.visibility = if (v && !focusMode) View.VISIBLE else View.GONE; dock.rebuild(); applySides() }
         override var watercolorDrying: Boolean
             get() = cv.watercolorDrying
             set(v) { cv.watercolorDrying = v; prefs.edit().putBoolean("watercolorDrying", v).apply() }
@@ -4744,6 +4890,11 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     companion object {
+        /** the row of islands at the top, and the space around the islands */
+        const val TOP_H = 52
+        const val ISLAND_GAP = 12
+        /** where the settings strip starts (under the top row) */
+        const val STRIP_Y = TOP_H + ISLAND_GAP * 2
         /** how often the artwork is saved while you work */
         private const val SAVE_EVERY_MS = 150_000L
         private const val REQ_OPEN = 101

@@ -125,6 +125,7 @@ class InkMenu(private val context: Context, private val anchor: View) {
         r.addView(android.widget.TextView(context).apply {
             text = title
             textSize = 15f
+            typeface = Fonts.get(400)
             setTextColor(color)
             maxLines = 2
             setPadding(if (withIcons) 6.dp else 0, 0, 12.dp, 0)

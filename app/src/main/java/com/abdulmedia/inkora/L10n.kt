@@ -1381,6 +1381,15 @@ object L10n {
         "Sensitivity: how different a color can be and still be filled. Higher fills over soft edges and shading.", "الحساسية: قديش ممكن يختلف اللون ويضل يتعبّى. الأعلى بيعبّي فوق الأطراف الناعمة والتظليل.", "هەستیاری: ڕەنگێک چەند جیاواز بێت و هێشتا پڕ بکرێتەوە. بەرزتر لێوارە نەرمەکان و سێبەریش پڕ دەکاتەوە.",
         "Close gaps: lines that do not quite meet still hold the color in, for gaps up to about twice this size. 0 = off. The same for the Fill tool and for dragging the color circle onto the artwork.", "سدّ الفراغات: الخطوط يلي مش مسكّرة منيح بتضل تحجز اللون جوّا، لفراغات لحد ضعف هالرقم تقريباً. 0 = مطفي. نفس الشي لأداة التعبئة ولما تسحب دائرة اللون عالرسمة.", "داخستنی کەلێن: ئەو هێڵانەی تەواو بەیەک ناگەن هێشتا ڕەنگ لە ناوەوە دەهێڵنەوە، بۆ کەلێن تا نزیکەی دوو هێندەی ئەم ژمارەیە. 0 = ناچالاک. هەمان شت بۆ ئامرازی پڕکردنەوە و ڕاکێشانی بازنەی ڕەنگ.",
         "Sensitivity", "الحساسية", "هەستیاری",
+        // ---- canvas workspace (islands) ----
+        "On top", "فوق", "لە سەرەوە",
+        "With the tool bar on top, the side moves the brush and color island.", "لما يكون شريط الأدوات فوق، الجانب بيحرّك جزيرة الفرشاة واللون.", "کاتێک شریتی ئامراز لە سەرەوەیە، لا دوورگەی فڵچە و ڕەنگ دەجوولێنێت.",
+        "Color and previous color", "اللون واللون السابق", "ڕەنگ و ڕەنگی پێشوو",
+        "Tap to go back to the previous color", "اكبس لترجع للون السابق", "لێی بدە بۆ گەڕانەوە بۆ ڕەنگی پێشوو",
+        "1 layer", "طبقة وحدة", "1 چین",
+        "%d layers", "%d طبقات", "%d چین",
+        "%d layers (11 and more)", "%d طبقة", "%d چین",
+        "Focus mode: hide the islands", "وضع التركيز: خبّي الجزر", "دۆخی سەرنج: دوورگەکان بشارەوە",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

@@ -35,19 +35,26 @@ object RailTools {
         RailSlot("eyedropper", "Eyedropper", "color", listOf("eyedropper")),
         RailSlot("select", "Selection tools", "edit", listOf("sel_free", "sel_rect", "sel_ellipse", "sel_wand", "sel_color", "sel_brush")),
         RailSlot("transform", "Transform tools", "edit", listOf("transform", "liquify", "canvas")),
+        RailSlot("liquify", "Liquify", "edit", listOf("liquify")),
+        RailSlot("adjust", "Adjustments", "edit", listOf("adjust")),
         RailSlot("shape", "Shape tools", "make", listOf("shapes", "vector")),
         RailSlot("text", "Text", "make", listOf("text")),
         RailSlot("measure", "Measure", "make", listOf("measure")),
         // not in the tool bar at first: add them from ⋯
-        RailSlot("view", "View tools", "view", listOf("fit", "actual_size", "flip", "grey_view")),
-        RailSlot("windows", "Floating windows", "view", listOf("reference", "navigator", "lighting")),
-        RailSlot("help", "Drawing help", "view", listOf("guides", "assisted", "quickshape", "symmetry")),
+        RailSlot("flip", "Flip view", "view", listOf("flip")),
+        RailSlot("symmetry", "Symmetry", "view", listOf("symmetry")),
+        RailSlot("reference", "Reference", "view", listOf("reference")),
+        RailSlot("view", "View tools", "view", listOf("fit", "actual_size", "grey_view")),
+        RailSlot("windows", "Floating windows", "view", listOf("navigator", "lighting")),
+        RailSlot("help", "Drawing help", "view", listOf("guides", "assisted", "quickshape")),
         RailSlot("copy", "Copy & paste", "more", listOf("copy_paste")),
         RailSlot("snapshots", "Snapshots", "more", listOf("snapshots")),
         RailSlot("focus", "Focus mode", "more", listOf("focus"))
     )
     val byKey = slots.associateBy { it.key }
-    val defaults = listOf("brush", "smudge", "eraser", "fill", "eyedropper", "select", "transform", "shape", "text", "measure")
+    /** the Painting workspace starts with these (flip, symmetry and reference on the bar) */
+    val painting = listOf("brush", "smudge", "eraser", "fill", "eyedropper", "select", "transform", "adjust", "flip", "symmetry", "reference")
+    val defaults = listOf("brush", "smudge", "eraser", "fill", "eyedropper", "select", "transform", "adjust", "shape", "text", "measure")
 }
 
 /**
@@ -73,6 +80,8 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
     }
 
     companion object {
+        /** in the islands at the top of the screen (the brush, smudge and eraser are in the hand island) */
+        const val TOP = "top"
         const val DOCK = "dock"
         const val WIDE = "wide"
         const val FLOAT = "float"
@@ -81,7 +90,7 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
         const val PHONE_H = 58
     }
 
-    var mode: String = prefs.getString("rail_mode", DOCK).let { if (it == WIDE || it == FLOAT) it else DOCK }
+    var mode: String = prefs.getString("rail_mode", TOP).let { if (it == WIDE || it == FLOAT || it == DOCK) it else TOP }
         private set
 
     /** a phone: the rail lies along the bottom */
@@ -94,12 +103,21 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
 
     private fun loadOrder(): MutableList<String> {
         val saved = prefs.getString("rail_order", null) ?: return RailTools.defaults.toMutableList()
-        return saved.split(',').filter { it in RailTools.byKey }.distinct().toMutableList()
+        val list = saved.split(',').filter { it in RailTools.byKey }.distinct().toMutableList()
+        // Adjustments left the top bar for the tool bar: put it in once, after Transform
+        if (!prefs.getBoolean("rail_adjust_added", false)) {
+            if ("adjust" !in list) list.add((list.indexOf("transform") + 1).coerceIn(0, list.size), "adjust")
+            prefs.edit().putBoolean("rail_adjust_added", true).putString("rail_order", list.joinToString(",")).apply()
+        }
+        return list
     }
 
     private fun saveOrder() = prefs.edit().putString("rail_order", order.joinToString(",")).apply()
 
-    private fun shown() = order.mapNotNull { RailTools.byKey[it] }
+    /** the brush, smudge and eraser live in the hand island when the tool bar is on top */
+    val paintElsewhere get() = mode == TOP && !horizontal && prefs.getBoolean("sidebar", true)
+
+    private fun shown() = order.mapNotNull { RailTools.byKey[it] }.filter { !(paintElsewhere && it.family == "paint") }
 
     fun variant(slot: RailSlot): String {
         val v = prefs.getString("rail_var_" + slot.key, null)
@@ -130,6 +148,7 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
         elevation = 0f
         when {
             horizontal -> buildPhone()
+            mode == TOP -> buildTop()
             mode == FLOAT -> buildFloat()
             mode == WIDE -> buildWide()
             else -> buildDock()
@@ -168,7 +187,7 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
     private fun showSisters(slot: RailSlot, anchor: View) {
         val cur = variant(slot)
         val m = InkMenu(context, anchor)
-        m.beside = !horizontal
+        m.beside = !horizontal && mode != TOP
         slot.tools.forEachIndexed { i, t ->
             val d = RailTools.def(t) ?: return@forEachIndexed
             m.menu.add(0, i, i, d.label).icon(d.icon).isChecked = t == cur
@@ -319,14 +338,37 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
         addView(sc, LayoutParams(-2, 0, 1f))
         addView(divider(true))
         addView(small(Icon.MORE, "Edit tool bar", null) { showEditor() }, LayoutParams(46.dp, 34.dp))
-        addView(small(Icon.DOCK, "Dock the tool bar", "Back to the edge of the screen") { setMode(DOCK) }, LayoutParams(46.dp, 34.dp))
+        addView(small(Icon.DOCK, "Dock the tool bar", "Back to the edge of the screen") { setMode(TOP) }, LayoutParams(46.dp, 34.dp))
+    }
+
+    /** an island: rounded, a little above the canvas */
+    private fun islandBackground() = Ui.rounded(Ui.BAR, 18f, Ui.OUTLINE, 1)
+
+    /** the tools island of the top row: the tools in one line, ⋯ at the end */
+    private fun buildTop() {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(4.dp, 0, 4.dp, 0)
+        background = islandBackground()
+        elevation = 8f.dp
+        val row = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        var family: String? = null
+        for (slot in shown()) {
+            if (family != null && slot.family != family) row.addView(divider(false))
+            family = slot.family
+            row.addView(slotButton(slot), LayoutParams(48.dp, 44.dp))
+        }
+        val hs = HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; overScrollMode = OVER_SCROLL_NEVER; addView(row) }
+        addView(hs, LayoutParams(-2, -1).apply { weight = 1f })
+        addView(moreButton(), LayoutParams(40.dp, 44.dp))
     }
 
     private fun buildPhone() {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         setPadding(4.dp, 0, 4.dp, 0)
-        background = edgeBackground()
+        background = islandBackground()
+        elevation = 8f.dp
         val row = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         addTools(row, false, 46)
         row.addView(moreButton(), LayoutParams(42.dp, 46.dp))
@@ -349,13 +391,14 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
             body.removeAllViews()
             if (!horizontal) {
                 body.addView(Ui.caption(context, "Tool bar").apply { setPadding(6.dp, 8.dp, 0, 6.dp) })
-                body.addView(segment(listOf(DOCK to "Docked", WIDE to "Wide", FLOAT to "Floating"), mode) { setMode(it); fill() })
+                body.addView(segment(listOf(TOP to "On top", DOCK to "Docked", WIDE to "Wide", FLOAT to "Floating"), mode) { setMode(it); fill() })
                 body.addView(Ui.caption(context, "Side").apply { setPadding(6.dp, 12.dp, 0, 6.dp) })
                 body.addView(segment(listOf("Left" to "Left", "Right" to "Right"), host.side()) { host.setSide(it); rebuild(); fill() })
+                if (mode == TOP) body.addView(Ui.text(context, "With the tool bar on top, the side moves the brush and color island.", 12f, Ui.TEXT_DIM).apply { setPadding(6.dp, 6.dp, 6.dp, 0) })
             }
             body.addView(Ui.text(context, "Tools you take out stay here: tap one to use it.", 12f, Ui.TEXT_DIM).apply { setPadding(6.dp, 14.dp, 6.dp, 2.dp) })
             body.addView(Ui.caption(context, "In the tool bar").apply { setPadding(6.dp, 10.dp, 0, 4.dp) })
-            val list = shown()
+            val list = order.mapNotNull { RailTools.byKey[it] }
             list.forEachIndexed { i, slot ->
                 body.addView(editRow(slot, true, i > 0, i < list.size - 1,
                     up = { order.removeAt(i); order.add(i - 1, slot.key); saveOrder(); rebuild(); fill() },
@@ -398,6 +441,11 @@ class ToolRail(context: Context, private val prefs: SharedPreferences, private v
         val w: Int; val h: Int; val x: Int; val y: Int
         if (horizontal) {
             w = rw; h = (rh * 0.7f).toInt(); x = 0; y = rh - h - height
+        } else if (mode == TOP) {
+            // under the tools island
+            w = minOf(400.dp, rw - 24.dp); h = minOf(660.dp, rh - loc[1] - height - 24.dp)
+            x = (loc[0] + width - w).coerceIn(12.dp, (rw - w - 12.dp).coerceAtLeast(12.dp))
+            y = loc[1] + height + 8.dp
         } else {
             w = minOf(380.dp, rw - 24.dp); h = minOf(660.dp, rh - 90.dp)
             val right = loc[0] + width + 8.dp

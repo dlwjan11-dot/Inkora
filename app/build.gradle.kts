@@ -13,8 +13,8 @@ android {
         applicationId = "com.abdulmedia.inkora"
         minSdk = 29
         targetSdk = 36
-        versionCode = 60
-        versionName = "0.25.7"
+        versionCode = 61
+        versionName = "0.26.0"
         manifestPlaceholders["appLabel"] = "Inkora"
 
         // the living brushes' engine (MyPaint) is native code, built for tablets/phones (arm64)
@@ -22,6 +22,11 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
+    }
+
+    // the interface fonts are read straight from the package: keep them uncompressed
+    androidResources {
+        noCompress += listOf("ttf")
     }
 
     // MyPaint brush engine + json-c, built with CMake (Android Studio installs NDK and CMake)

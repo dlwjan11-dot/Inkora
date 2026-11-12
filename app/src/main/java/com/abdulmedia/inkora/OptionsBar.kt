@@ -33,21 +33,18 @@ class OptionsBar(context: Context) : LinearLayout(context) {
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = 50.dp
-        setPadding(10.dp, 4.dp, 10.dp, 4.dp)
-        setBackgroundColor(Ui.BAR)
-        setWillNotDraw(false)
+        minimumHeight = 52.dp
+        setPadding(12.dp, 4.dp, 8.dp, 4.dp)
+        // a floating island, as wide as its settings (up to the screen's width)
+        background = Ui.rounded(Ui.BAR, 18f, Ui.OUTLINE, 1)
+        elevation = 8f.dp
         isClickable = true // touches here never reach the canvas
         addView(icon, LayoutParams(30.dp, 30.dp))
         addView(title, LayoutParams(-2, -2).apply { marginStart = 6.dp; marginEnd = 12.dp })
         addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1.dp, 26.dp).apply { marginEnd = 12.dp })
-        addView(scroll, LayoutParams(0, -2, 1f))
+        addView(scroll, LayoutParams(-2, -2))
     }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        canvas.drawRect(0f, height - 1f.dp, width.toFloat(), height.toFloat(), line)
-    }
 
     fun setTitle(ic: Icon, name: String) {
         icon.icon = ic

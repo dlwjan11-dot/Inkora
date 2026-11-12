@@ -87,6 +87,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
     }
 
     enum class Tab(val label: String, val icon: Icon) {
+        ADD("Add", Icon.PLUS), CANVAS("Canvas", Icon.GRID),
         FILE("File", Icon.FOLDER), SHARE("Share", Icon.SHARE),
         VIDEO("Video", Icon.VIDEO), PREFS("Settings", Icon.SETTINGS), HELP("Help", Icon.HELP)
     }
@@ -143,6 +144,8 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         if (mode == MODE_ADD) { buildAdd(); return }
         if (mode == MODE_CANVAS) { buildCanvas(); return }
         when (tab) {
+            Tab.ADD -> buildAdd()
+            Tab.CANVAS -> buildCanvas()
             Tab.FILE -> buildFile()
             Tab.SHARE -> buildShare()
             Tab.VIDEO -> buildVideo()
@@ -435,6 +438,14 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
 
     /** Settings › Fill and ColorDrop: for the Fill tool and for dragging the color onto the artwork */
     /** opens straight on a settings page ("fill", "pressure") */
+    /** opens on one tab (Add, Canvas, ...) */
+    fun openTab(t: Tab) {
+        tab = t
+        page = null
+        host.prefs.edit().putString("actions_tab", t.name).apply()
+        rebuild()
+    }
+
     fun openPage(p: String) {
         tab = Tab.PREFS
         page = p
