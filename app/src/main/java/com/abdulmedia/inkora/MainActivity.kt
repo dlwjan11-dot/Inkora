@@ -161,7 +161,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
         cv.gpuTiles = prefs.getBoolean("gpu_tiles", false)
-        cv.gpuBrushes = prefs.getBoolean("gpu_engine", false)
+        // the speed numbers showed the usual engine at 120 fps and about 4 ms behind the pen on the
+        // tablet: the GPU engine (GlStroke) is not needed and stays off
+        cv.gpuBrushes = false
         if (prefs.getBoolean("perf_numbers", false)) root.post { setPerf(true) }
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
