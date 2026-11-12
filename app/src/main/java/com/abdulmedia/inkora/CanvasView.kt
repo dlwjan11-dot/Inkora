@@ -76,8 +76,22 @@ class CanvasView(context: Context) : View(context) {
     /** the stroke picture as the tiles last saw it (a change the brush engine did not report → copy all) */
     private var tilesGen = -1
 
+    /** Settings › GPU brushes: the stroke being drawn is painted by the graphics chip (see [GpuStroke]) */
+    var gpuBrushes = false
+    private var gpuStroke: GpuStroke? = null
+    /** this stroke's dabs go to the graphics chip */
+    private var gpuActive = false
+
+    private fun useGpu(on: Boolean) {
+        gpuActive = on
+        val g = gpuStroke
+        engine.canvasProvider = if (on && g != null) ({ g.canvas() }) else null
+    }
+
     /** the stroke picture was emptied: so are the tiles */
     private fun strokeErased() {
+        gpuStroke?.clear()
+        if (gpuActive) useGpu(false)
         strokeTiles?.clear()
         engine.frameDirty.setEmpty()
         tilesGen = strokeBitmap?.generationId ?: -1
@@ -97,6 +111,7 @@ class CanvasView(context: Context) : View(context) {
     }
 
     private fun drawStrokePicture(c: Canvas, sb: Bitmap, paint: Paint?, tiled: Boolean) {
+        if (gpuActive && gpuStroke?.draw(c, paint) == true) return
         if (tiled) strokeTiles?.draw(c, paint) else c.drawBitmap(sb, 0f, 0f, paint)
     }
     private val engine = StrokeEngine()
@@ -471,6 +486,8 @@ class CanvasView(context: Context) : View(context) {
         strokeBitmap?.recycle()
         strokeBitmap = Bitmap.createBitmap(d.width, d.height, Bitmap.Config.ARGB_8888)
         strokeTiles = TileMirror(d.width, d.height)
+        gpuStroke?.release()
+        gpuStroke = GpuStroke(d.width, d.height)
         strokeErased()
         strokeActive = false
         if (width > 0) fitToScreen() else post { fitToScreen() }
@@ -646,7 +663,7 @@ class CanvasView(context: Context) : View(context) {
             val sel = selection
             val mask = strokeMask
             // the dual brush's mask changes every frame too: then the plain picture (no tiles)
-            val tiled = mask == null && syncTiles(sb)
+            val tiled = !gpuActive && mask == null && syncTiles(sb)
             doc.draw(canvas, filter, { c ->
                 if (grain == null && sel == null && mask == null && look == null) drawStrokePicture(c, sb, overlayPaint, tiled)
                 else {
@@ -1550,6 +1567,9 @@ class CanvasView(context: Context) : View(context) {
             engine.wetSource = null
         }
         engine.maskTarget = strokeMask
+        // plain brushes can be painted by the graphics chip; brushes that read pixels back cannot
+        useGpu(gpuBrushes && isHardwareAccelerated && gpuStroke != null && !smudging && !livingStroke &&
+            strokeMask == null && engine.wetSource == null && engine.dabHandler == null)
         engine.symmetry = symmetry
         engine.centerX = doc.width / 2f
         engine.centerY = doc.height / 2f
@@ -1911,6 +1931,19 @@ class CanvasView(context: Context) : View(context) {
         val r = Rect()
         engine.dirty.roundOut(r)
         if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return
+        if (gpuActive) {
+            // the chip painted it: bring its pixels into memory, or paint it again here if that fails
+            val g = gpuStroke
+            val ok = g != null && g.readInto(sb)
+            useGpu(false)
+            if (!ok) {
+                sb.eraseColor(0)
+                if (strokePoints.size >= 2) engine.renderPressurePoints(sb, ArrayList(strokePoints), shapeSeed)
+                engine.dirty.roundOut(r)
+                if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) { sb.eraseColor(0); strokeErased(); return }
+            }
+            g?.clear()
+        }
         val layer = doc.active
         if (watercolorDrying && engine.brush.dyn.watercolor > 0f && !strokeErasing && !layer.isLayerMask) dryWatercolor(sb, r, layer)
         // paint put down on paint that is still wet runs into it
