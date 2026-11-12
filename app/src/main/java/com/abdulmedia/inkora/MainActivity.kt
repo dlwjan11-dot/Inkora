@@ -1813,7 +1813,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun showBrushes(tool: Tool) {
-        showPanel(brushesBtn, brushPanelFor(tool, pinned = false), 540, 700)
+        showPanel(brushesBtn, brushPanelFor(tool, pinned = false), 580, 700)
     }
 
     private fun brushPanelFor(tool: Tool, pinned: Boolean): BrushPanel {

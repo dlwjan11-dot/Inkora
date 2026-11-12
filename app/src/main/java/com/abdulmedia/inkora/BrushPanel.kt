@@ -115,7 +115,7 @@ class BrushPanel(
         loadLists(context)
         orientation = VERTICAL
         setPadding(14.dp, 14.dp, 14.dp, 14.dp)
-        background = Ui.rounded(Ui.PANEL, 22f, 0x14FFFFFF, 1)
+        background = Ui.rounded(Ui.PANEL, 20f, Ui.OUTLINE, 1)
         isClickable = true
         setsColumn.orientation = VERTICAL
         list.orientation = VERTICAL
@@ -133,8 +133,8 @@ class BrushPanel(
 
     private fun sets(): List<String> {
         val seen = LinkedHashSet<String>()
-        if (brushes.any { it.preset.id in pins }) seen.add(PINNED)
         if (recents.any { id -> brushes.any { it.preset.id == id } }) seen.add(RECENT)
+        if (brushes.any { it.preset.id in pins }) seen.add(PINNED)
         for (b in brushes) if (!b.preset.imported) seen.add(b.preset.category)
         for (b in brushes) if (b.preset.imported) seen.add(b.preset.category)
         return seen.toList()
@@ -173,19 +173,93 @@ class BrushPanel(
         else -> Icon.BRUSH
     }
 
+    /** what is typed in the search field ("" = show the chosen set) */
+    private var query = ""
+    private val search = android.widget.EditText(context)
+
+    /** the brushes the search finds, in every set */
+    private fun matches(q: String): List<Brush> {
+        val t = q.trim().lowercase()
+        return brushes.filter {
+            it.preset.name.lowercase().contains(t) || L10n.tr(it.preset.name).lowercase().contains(t) ||
+                it.preset.category.lowercase().contains(t) || L10n.tr(it.preset.category).lowercase().contains(t)
+        }.distinctBy { it.preset.id }
+    }
+
+    /** the name a set shows: Pinned is "Favorites" (the star) */
+    private fun setLabel(set: String) = L10n.tr(if (set == PINNED) "Favorites" else set)
+
+    /** a short line under a brush's name: its set (in lists from several sets) or what it does */
+    private fun kindOf(b: Brush, mixed: Boolean): String {
+        if (mixed) return L10n.tr(b.preset.category)
+        val p = b.preset
+        val traits = ArrayList<String>()
+        if (p.living != null) traits.add("Living Paint")
+        if (p.imported) traits.add("Your brush")
+        if (p.minSize < 0.6f) traits.add("Pressure: size")
+        if (p.minFlow < 0.6f) traits.add("Pressure: opacity")
+        if (p.grain != GrainType.NONE) traits.add("Texture")
+        return traits.take(2).joinToString(" · ") { L10n.tr(it) }
+    }
+
     private fun rebuild() {
         removeAllViews()
+        // ---- header: name, search, Import ----
         val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(6.dp, 0, 0, 10.dp) }
-        head.addView(Ui.text(context, title, 22f, bold = true), LayoutParams(0, -2, 1f))
+        head.addView(Ui.text(context, title, 20f, bold = true), LayoutParams(-2, -2).apply { marginEnd = 10.dp })
+        val field = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(10.dp, 0, 8.dp, 0)
+            background = Ui.rounded(Ui.CARD, 12f)
+        }
+        field.addView(IconView(context, Icon.SEARCH).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.6f }, LayoutParams(24.dp, 24.dp))
+        (search.parent as? android.view.ViewGroup)?.removeView(search)
+        search.apply {
+            hint = L10n.tr("Search brushes")
+            setHintTextColor(Ui.TEXT_DIM)
+            setTextColor(Ui.TEXT)
+            textSize = 13.5f
+            typeface = Fonts.get(400)
+            background = null
+            setSingleLine()
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            setPadding(6.dp, 0, 0, 0)
+            if (text.toString() != query) setText(query)
+        }
+        if (search.tag == null) {
+            search.tag = "watch"
+            search.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(e: android.text.Editable?) {
+                    val q = e?.toString() ?: ""
+                    if (q == query) return
+                    query = q
+                    openActions = null
+                    buildList(); refreshSets()
+                }
+            })
+        }
+        field.addView(search, LayoutParams(0, -1, 1f))
+        head.addView(field, LayoutParams(0, 40.dp, 1f))
         if (onPin != null) {
             head.addView(IconView(context, Icon.PIN).apply {
+                iconScale = 0.5f
                 contentDescription = L10n.tr("Pin")
+                tip = L10n.tr("Keep the library open as a floating window")
                 setOnClickListener { onPin.invoke() }
-            }, LayoutParams(40.dp, 40.dp))
+            }, LayoutParams(40.dp, 40.dp).apply { marginStart = 4.dp })
         }
-        val plus = IconView(context, Icon.PLUS).apply { contentDescription = L10n.tr("Import brushes…") }
-        plus.setOnClickListener {
-            val pm = InkMenu(context, plus)
+        val import = Ui.text(context, "Import", 13.5f, Ui.TEXT, true).apply {
+            gravity = Gravity.CENTER
+            setPadding(14.dp, 0, 14.dp, 0)
+            background = Ui.rounded(Ui.CARD, 12f)
+            foreground = Ui.ripple(12f)
+            contentDescription = L10n.tr("Import brushes…")
+        }
+        import.setOnClickListener {
+            val pm = InkMenu(context, import)
             pm.menu.add(0, 1, 1, "Import file…")
             pm.menu.add(0, 2, 2, "Import from link…")
             if (onNewBrush != null) pm.menu.add(0, 3, 3, "New brush from this one")
@@ -195,16 +269,18 @@ class BrushPanel(
             }
             L10n.menu(pm.menu); pm.show()
         }
-        head.addView(plus, LayoutParams(44.dp, 44.dp))
+        head.addView(import, LayoutParams(-2, 40.dp).apply { marginStart = 6.dp })
         addView(head)
+        addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(-1, 1).apply { bottomMargin = 8.dp })
 
+        // ---- sets on the start side, brushes beside them ----
         val row = LinearLayout(context).apply { orientation = HORIZONTAL }
         val setScroll = ScrollView(context).apply { isVerticalScrollBarEnabled = false }
         setsColumn.removeAllViews()
         (setsColumn.parent as? android.view.ViewGroup)?.removeView(setsColumn)
         setScroll.addView(setsColumn)
-        row.addView(setScroll, LayoutParams(if (context.narrow) 112.dp else 172.dp, -1))
-        row.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1, -1).apply { marginStart = 8.dp; marginEnd = 8.dp })
+        row.addView(setScroll, LayoutParams(if (context.narrow) 116.dp else 178.dp, -1))
+        row.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1, -1).apply { marginStart = 6.dp; marginEnd = 10.dp })
         (listScroll.parent as? android.view.ViewGroup)?.removeView(listScroll)
         row.addView(listScroll, LayoutParams(0, -1, 1f))
         addView(row, LayoutParams(-1, 0, 1f))
@@ -214,14 +290,17 @@ class BrushPanel(
         for (set in all) {
             val virtual = set == PINNED || set == RECENT
             val imported = !virtual && brushes.any { it.preset.category == set && it.preset.imported } && brushes.none { it.preset.category == set && !it.preset.imported }
-            val on = set == currentSet
             val hasSelected = !virtual && selected.preset.category == set
             val item = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(10.dp, 0, 8.dp, 0)
-                background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
-                setOnClickListener { currentSet = set; openActions = null; buildList(); refreshSets() }
+                setPadding(10.dp, 0, 10.dp, 0)
+                foreground = Ui.ripple(10f)
+                setOnClickListener {
+                    currentSet = set; openActions = null
+                    if (query.isNotEmpty()) { query = ""; search.setText("") }
+                    buildList(); refreshSets()
+                }
                 // long-press a set: export it (any set), or delete it (yours)
                 setOnLongClickListener { v ->
                     val list = itemsOf(set)
@@ -237,30 +316,26 @@ class BrushPanel(
                 }
                 tag = set
             }
-            item.addView(IconView(context, iconFor(set, imported)).apply {
-                isClickable = false
-                tint = if (on) 0xFFFFFFFF.toInt() else Ui.TEXT_DIM
-            }, LayoutParams(30.dp, 30.dp))
-            item.addView(Ui.text(context, set, 14.5f, if (on) 0xFFFFFFFF.toInt() else Ui.TEXT, on).apply {
-                maxLines = 2
+            item.addView(Ui.text(context, setLabel(set), 13.5f).apply {
+                maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
-            }, LayoutParams(0, -2, 1f).apply { marginStart = 8.dp })
-            if (hasSelected && !on) item.addView(View(context).apply { background = Ui.rounded(Ui.ACCENT, 4f) }, LayoutParams(7.dp, 7.dp))
-            setsColumn.addView(item, LayoutParams(-1, 50.dp).apply { bottomMargin = 6.dp })
+            }, LayoutParams(0, -2, 1f))
+            if (hasSelected) item.addView(View(context).apply { background = Ui.rounded(Ui.ACCENT, 4f); tag = "dot" }, LayoutParams(6.dp, 6.dp).apply { marginEnd = 6.dp })
+            item.addView(Ui.text(context, itemsOf(set).size.toString(), 11.5f, Ui.TEXT_DIM))
+            setsColumn.addView(item, LayoutParams(-1, 40.dp).apply { bottomMargin = 2.dp })
         }
+        refreshSets()
         buildList()
     }
 
     private fun refreshSets() {
         for (i in 0 until setsColumn.childCount) {
             val item = setsColumn.getChildAt(i) as? LinearLayout ?: continue
-            val on = item.tag == currentSet
-            item.background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
-            (item.getChildAt(0) as? IconView)?.let { it.tint = if (on) 0xFFFFFFFF.toInt() else Ui.TEXT_DIM; it.invalidate() }
-            (item.getChildAt(1) as? android.widget.TextView)?.let {
-                it.setTextColor(if (on) 0xFFFFFFFF.toInt() else Ui.TEXT)
-                it.paint.isFakeBoldText = on
-                it.invalidate()
+            val on = query.isEmpty() && item.tag == currentSet
+            item.background = if (on) Ui.rounded(Ui.ACCENT_SOFT, 10f) else null
+            (item.getChildAt(0) as? android.widget.TextView)?.let {
+                it.setTextColor(if (on) Ui.ACCENT else Ui.TEXT)
+                it.typeface = Fonts.get(if (on) 600 else 400)
             }
         }
     }
@@ -268,23 +343,51 @@ class BrushPanel(
     private fun buildList() {
         list.removeAllViews()
         openCard = null
-        val items = itemsOf(currentSet)
+        val searching = query.isNotBlank()
+        val items = if (searching) matches(query) else itemsOf(currentSet)
+        val mixed = searching || currentSet == PINNED || currentSet == RECENT
+        val tintLight = if (Ui.light) android.graphics.PorterDuffColorFilter(Ui.TEXT, android.graphics.PorterDuff.Mode.SRC_IN) else null
+        if (searching && items.isEmpty())
+            list.addView(Ui.text(context, "No brush by that name", 13f, Ui.TEXT_DIM).apply { setPadding(8.dp, 16.dp, 8.dp, 8.dp) })
         for (b in items) {
             val on = b === selected
             val card = LinearLayout(context).apply {
-                orientation = VERTICAL
-                setPadding(14.dp, 9.dp, 12.dp, 4.dp)
+                orientation = HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(14.dp, 0, 6.dp, 0)
                 // solid, so the buttons behind it show only where it has slid away
-                background = Ui.rounded(if (on) Ui.ACCENT else Ui.SUNKEN, 14f)
+                background = if (on) Ui.rounded(Ui.CARD, 14f, Ui.ACCENT, 2) else Ui.rounded(Ui.CARD, 14f)
+                contentDescription = L10n.tr(b.preset.name)
             }
-            card.addView(Ui.text(context, b.preset.name, 14.5f, if (on) 0xFFFFFFFF.toInt() else Ui.TEXT, on).apply {
+            val texts = LinearLayout(context).apply { orientation = VERTICAL }
+            texts.addView(Ui.text(context, b.preset.name, 14f, Ui.TEXT, true).apply {
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
+            val kind = kindOf(b, mixed)
+            if (kind.isNotEmpty()) texts.addView(Ui.text(context, kind, 11.5f, Ui.TEXT_DIM).apply {
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            card.addView(texts, LayoutParams(if (context.narrow) 96.dp else 124.dp, -2))
             val img = ImageView(context)
             img.setImageBitmap(preview(b))
             img.scaleType = ImageView.ScaleType.FIT_XY
-            card.addView(img, LayoutParams(-1, 42.dp))
+            if (tintLight != null) img.colorFilter = tintLight
+            card.addView(img, LayoutParams(0, 44.dp, 1f).apply { marginStart = 8.dp; marginEnd = 4.dp })
+            // the star: a favorite (the same list as Pinned)
+            val fav = b.preset.id in pins
+            card.addView(IconView(context, if (fav) Icon.STAR_FILLED else Icon.STAR).apply {
+                iconScale = 0.46f
+                tint = if (fav) Ui.ACCENT else Ui.TEXT_DIM
+                contentDescription = L10n.tr(if (fav) "Remove from favorites" else "Add to favorites")
+                setOnClickListener {
+                    if (fav) pins.remove(b.preset.id) else pins.add(b.preset.id)
+                    saveLists(context)
+                    openActions = null
+                    rebuild()
+                }
+            }, LayoutParams(40.dp, 44.dp))
             card.setOnClickListener {
                 if (b === selected) {
                     // the brush in hand, tapped again: the Brush Studio
@@ -298,12 +401,12 @@ class BrushPanel(
             }
             if (b.preset.imported) card.setOnLongClickListener { onDelete(b); true }
             card.foreground = Ui.ripple(14f)
-            // the brush slides to the left and its buttons show where it was
+            // the brush slides to the side and its buttons show where it was
             val actions = actionsFor(b)
             val reach = actions.second.toFloat()
             val wrap = android.widget.FrameLayout(context)
             wrap.addView(actions.first, android.widget.FrameLayout.LayoutParams(actions.second, -1, Gravity.RIGHT))
-            wrap.addView(card, android.widget.FrameLayout.LayoutParams(-1, -2))
+            wrap.addView(card, android.widget.FrameLayout.LayoutParams(-1, 70.dp))
             val open = openActions == b.preset.id
             actions.first.visibility = if (open) View.VISIBLE else View.INVISIBLE
             card.translationX = if (open) -reach else 0f
@@ -317,15 +420,15 @@ class BrushPanel(
                 } else if (openActions == b.preset.id) { openActions = null; openCard = null }
             }
             wrap.tag = b.preset.id
-            list.addView(wrap, LayoutParams(-1, -2).apply { bottomMargin = 2.dp })
+            list.addView(wrap, LayoutParams(-1, 70.dp).apply { bottomMargin = 8.dp })
         }
         val hint = when {
             brushes.none { it.preset.imported } ->
-                "Tap + to import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
-            items.any { it.preset.imported } -> "Slide a brush to the left to pin, duplicate or delete it. Long-press the set to export or delete it."
-            else -> "Slide a brush to the left to pin, duplicate or reset it. Tap the brush you're using again to change its settings."
+                "Import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
+            items.any { it.preset.imported } -> "Tap the selected brush again for Brush Studio. Slide a brush to the side to duplicate or delete it."
+            else -> "Tap the selected brush again for Brush Studio. Slide a brush to the side to duplicate or reset it."
         }
-        list.addView(Ui.text(context, hint, 12f, Ui.TEXT_DIM).apply { setPadding(14.dp, 10.dp, 8.dp, 8.dp) })
+        list.addView(Ui.text(context, hint, 12f, Ui.TEXT_DIM).apply { setPadding(6.dp, 4.dp, 8.dp, 8.dp) })
     }
 
     /** the brush that is slid open, and its buttons */
@@ -357,7 +460,7 @@ class BrushPanel(
     }
 
     /**
-     * Pin, Duplicate and Reset (or Delete for a brush of your own): the buttons behind a brush,
+     * Find, Duplicate and Reset (or Delete for a brush of your own): the buttons behind a brush,
      * and how wide they are together.
      */
     private fun actionsFor(b: Brush): Pair<LinearLayout, Int> {
@@ -374,17 +477,10 @@ class BrushPanel(
             }, LayoutParams(tile - 6.dp, -1).apply { leftMargin = 6.dp; topMargin = 3.dp; bottomMargin = 3.dp })
             n++
         }
-        val pinned = b.preset.id in pins
-        add(if (pinned) "Unpin" else "Pin", 0xFF4C7BD9.toInt()) {
-            if (pinned) pins.remove(b.preset.id) else pins.add(b.preset.id)
-            saveLists(context)
-            openActions = null
-            rebuild()
-        }
         // in Pinned and Recent: where the brush lives in the library
-        if (currentSet == PINNED || currentSet == RECENT) add("Find", 0xFF3E8E6B.toInt()) { find(b) }
-        if (onDuplicate != null && b.preset.living == null) add("Duplicate", 0xFF4A4D57.toInt()) { openActions = null; onDuplicate.invoke(b) }
-        if (b.preset.imported) add("Delete", 0xFFD9534F.toInt()) { openActions = null; onDelete(b) }
+        if (currentSet == PINNED || currentSet == RECENT) add("Find", Ui.ACCENT) { find(b) }
+        if (onDuplicate != null && b.preset.living == null) add("Duplicate", 0xFF5E5E63.toInt()) { openActions = null; onDuplicate.invoke(b) }
+        if (b.preset.imported) add("Delete", Ui.DANGER) { openActions = null; onDelete(b) }
         else if (onReset != null) add("Reset", 0xFF8A6D3B.toInt()) {
             onReset.invoke(b)
             openActions = null
