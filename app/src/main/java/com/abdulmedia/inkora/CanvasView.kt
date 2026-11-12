@@ -232,7 +232,7 @@ class CanvasView(context: Context) : View(context) {
     private val loupePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // ---- input state ----
-    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG, GRADIENT_DRAG, MEASURE_DRAG, SHAPE_DRAG }
+    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG, GRADIENT_DRAG, MEASURE_DRAG, SHAPE_DRAG, PATH_DRAW }
 
     // ---- vector layers ----
     val vectorEditor: VectorEditor by lazy {
@@ -711,6 +711,15 @@ class CanvasView(context: Context) : View(context) {
         canvas.restore()
 
         if (t != null) drawTransformBox(canvas, t)
+        if (capturePts.size > 1) {
+            val pts = FloatArray(capturePts.size * 2)
+            capturePts.forEachIndexed { i, q -> pts[i * 2] = q.x; pts[i * 2 + 1] = q.y }
+            viewMatrix.mapPoints(pts)
+            val path = android.graphics.Path(); path.moveTo(pts[0], pts[1])
+            for (i in 1 until capturePts.size) path.lineTo(pts[i * 2], pts[i * 2 + 1])
+            boxPaint.style = Paint.Style.STROKE; boxPaint.strokeWidth = 2f * density
+            canvas.drawPath(path, boxPaint)
+        }
         if (interaction == Interaction.VECTOR && doc.active.vector != null) vectorEditor.drawOverlay(canvas)
         if (editingGuide) drawVpHandles(canvas)
 
@@ -1158,6 +1167,11 @@ class CanvasView(context: Context) : View(context) {
         downTime = e.eventTime
         strokeOverride = null
         gFired = false
+        if (pathCapture != null) {
+            mode = Mode.PATH_DRAW
+            capturePts.clear(); capturePts.add(toDoc(e.x, e.y))
+            return
+        }
         if (editingGuide) {
             dragVp = hitVp(e.x, e.y)
             mode = if (dragVp >= 0) Mode.VP_DRAG else Mode.IGNORE
@@ -1274,6 +1288,7 @@ class CanvasView(context: Context) : View(context) {
         val idx = e.actionIndex
         val newIsStylus = isStylusTool(e.getToolType(idx))
         when (mode) {
+            Mode.PATH_DRAW -> { capturePts.clear(); startGesture(e, -1); invalidate() }
             Mode.DRAW -> {
                 // QuickShape holds a shape: a finger on the screen makes it perfect (circle, square…)
                 val s = shape
@@ -1421,6 +1436,10 @@ class CanvasView(context: Context) : View(context) {
             Mode.LIQUIFY_DRAG -> moveLiquify(e)
             Mode.GRADIENT_DRAG -> { gradB = toDoc(e.x, e.y); invalidate() }
             Mode.MEASURE_DRAG -> measureMove(e.x, e.y)
+            Mode.PATH_DRAW -> {
+                for (h in 0 until e.historySize) capturePts.add(toDoc(e.getHistoricalX(h), e.getHistoricalY(h)))
+                capturePts.add(toDoc(e.x, e.y)); invalidate()
+            }
             Mode.SHAPE_DRAG -> {
                 val i = e.findPointerIndex(shapePointerId)
                 if (shapePen) shapeButton(e)
@@ -1489,6 +1508,12 @@ class CanvasView(context: Context) : View(context) {
             Mode.SELECT_DRAW -> finishSelect()
             Mode.GRADIENT_DRAG -> commitGradient()
             Mode.MEASURE_DRAG -> measureUp()
+            Mode.PATH_DRAW -> {
+                val f = pathCapture
+                // a tap is not a path: keep waiting for one
+                if (f != null && capturePts.size >= 4) { pathCapture = null; f(ArrayList(capturePts)) }
+                capturePts.clear()
+            }
             Mode.SHAPE_DRAG -> shapeUp()
             Mode.VECTOR_DRAG -> vectorEditor.onUp(e.x, e.y)
             else -> {}
@@ -3253,6 +3278,14 @@ class CanvasView(context: Context) : View(context) {
         interaction = Interaction.PAINT
         invalidate()
     }
+
+    /**
+     * When set, the next line drawn on the canvas is not painted: its points (in the document) are
+     * handed to this once, for things that follow a line (text on a path).
+     */
+    var pathCapture: ((List<PointF>) -> Unit)? = null
+        set(v) { field = v; capturePts.clear(); invalidate() }
+    private val capturePts = ArrayList<PointF>()
 
     /** Distort/Warp: the handle being dragged (-1: the whole piece) */
     private var shapeGrab = -1

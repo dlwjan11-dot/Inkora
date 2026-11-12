@@ -4512,6 +4512,25 @@ class MainActivity : Activity(), CanvasView.Listener {
             }
         }
         box.addView(alignBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 6.dp })
+        // Shape: in a block, on an arc, round a circle, or along a line drawn on the canvas
+        var shape = TextTool.STRAIGHT
+        var bend = 0.5f
+        val bendRow = Ui.sliderRow(this, "Bend", bend, { "${(20 + it * 160).roundToInt()}°" }) { bend = it }
+        val shapeBtn = Ui.button(this, L10n.tr("Shape") + ": " + L10n.tr(TextTool.shapeNames[shape])) {}
+        fun showShape() {
+            shapeBtn.text = L10n.tr("Shape") + ": " + L10n.tr(TextTool.shapeNames[shape])
+            alignBtn.visibility = if (shape == TextTool.STRAIGHT) View.VISIBLE else View.GONE
+            bendRow.visibility = if (shape == TextTool.ARC) View.VISIBLE else View.GONE
+        }
+        shapeBtn.setOnClickListener {
+            val pm = InkMenu(this, shapeBtn)
+            TextTool.shapeNames.forEachIndexed { i, n -> pm.menu.add(0, i, i, n) }
+            pm.setOnMenuItemClickListener { shape = it.itemId; showShape(); true }
+            L10n.menu(pm.menu); pm.show()
+        }
+        box.addView(shapeBtn, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 6.dp })
+        box.addView(bendRow)
+        showShape()
         var sizePx = cv.doc.height / 10f
         box.addView(Ui.sliderRow(this, "Size", 0.3f, { "${(cv.doc.height * (0.02f + it * 0.3f)).roundToInt()} px" }) {
             sizePx = cv.doc.height * (0.02f + it * 0.3f)
@@ -4519,7 +4538,19 @@ class MainActivity : Activity(), CanvasView.Listener {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle(L10n.tr("Add text"))
             .setView(box)
-            .setPositiveButton(L10n.tr("Add")) { _, _ -> addText(input.text.toString(), font, sizePx, align) }
+            .setPositiveButton(L10n.tr("Add")) { _, _ ->
+                val text = input.text.toString()
+                when (shape) {
+                    TextTool.STRAIGHT -> addText(text, font, sizePx, align)
+                    TextTool.LINE -> if (text.isNotBlank()) textAlongLine(text, font, sizePx)
+                    else -> if (text.isNotBlank()) {
+                        val d = cv.doc
+                        val path = if (shape == TextTool.ARC) TextTool.arcPath(d.width / 2f, d.height / 2f, d.width * 0.7f, bend)
+                            else TextTool.circlePath(d.width / 2f, d.height / 2f, min(d.width, d.height) * 0.3f)
+                        addTextOnPath(text, font, sizePx, path, place = true)
+                    }
+                }
+            }
             .setNegativeButton(L10n.tr("Cancel"), null)
             .show()
     }
@@ -4632,6 +4663,33 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.selection = null
         // place it right away
         enterTransform()
+    }
+
+    /** text on its own layer along [path] (document coordinates); [place] = then move it with Transform */
+    private fun addTextOnPath(text: String, font: TextFont, sizePx: Float, path: android.graphics.Path, place: Boolean) {
+        val doc = cv.doc
+        if (doc.layers.size >= doc.maxLayers()) { toast("Layer limit reached"); return }
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) { toast("Not enough memory for this right now"); return }
+        layer.name = "Text: " + text.trim().take(18)
+        TextTool.drawOnPath(Canvas(layer.bitmap), text, font, sizePx, cv.color or 0xFF000000.toInt(), path)
+        val cmd = AddLayerCmd(layer, doc.activeIndex + 1, doc.activeIndex)
+        cmd.redo(doc)
+        cv.pushCommand(cmd)
+        cv.selection = null
+        if (place) enterTransform() else refreshAll()
+    }
+
+    /** waits for one line drawn on the canvas, then writes the text along it */
+    private fun textAlongLine(text: String, font: TextFont, sizePx: Float) {
+        val bar = barRow()
+        bar.addBar(barButton("Cancel") { cv.pathCapture = null; hideBottomBar(); hud.hideSoon() })
+        showBottomBar(bar)
+        hud.show("Draw the line for the text to follow", sticky = true)
+        cv.pathCapture = { pts ->
+            hideBottomBar(); hud.hideSoon()
+            addTextOnPath(text, font, sizePx, TextTool.pathThrough(pts), place = false)
+            hud.show("Text added on a new layer")
+        }
     }
 
     private fun addText(text: String, font: TextFont, sizePx: Float, align: android.text.Layout.Alignment) {
