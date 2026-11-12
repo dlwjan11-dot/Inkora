@@ -1185,6 +1185,12 @@ class MainActivity : Activity(), CanvasView.Listener {
     /** closes a full-screen overlay (gesture controls, keyboard shortcuts) */
     /** a screen opened from Settings (gesture controls, the guide…): closing it goes back to Settings */
     private var settingsBehind = false
+    /** a settings row is opening something right now (set just before, cleared just after) */
+    private var leavingSettingsNow = false
+    /** the settings page to come back to ("" or null: the first one) */
+    private var settingsPage: String? = null
+    /** where the settings popup opened last (the gear in the Gallery, or ⋯) */
+    private var settingsAnchor: View? = null
 
     private fun closeSettings(): Boolean {
         val v = root.findViewWithTag<View>("overlay") ?: return false
@@ -1192,17 +1198,21 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (v is BrushStudioView && !v.closing) { v.finish(); return true }
         if (v is Scene3DEditor && !v.closing) { v.finish(); return true }
         root.removeView(v)
-        if (v is ActionsPanel && v.isSettings) settingsBehind = false
-        else if (settingsBehind) { settingsBehind = false; root.post { if (root.findViewWithTag<View>("overlay") == null) openSettingsScreen() } }
+        if (settingsBehind) {
+            settingsBehind = false
+            val back = settingsPage
+            root.post { if (root.findViewWithTag<View>("overlay") == null) openSettingsPopup(null, back) }
+        }
         return true
     }
 
     private fun showOverlay(v: View) {
         // opened from Settings, or from a screen that was: closing this one goes back to Settings
-        val keep = settingsBehind || (root.findViewWithTag<View>("overlay") as? ActionsPanel)?.isSettings == true
+        val keep = settingsBehind || leavingSettingsNow
+        leavingSettingsNow = false
         settingsBehind = false
         closeSettings()
-        settingsBehind = keep && !(v is ActionsPanel && v.isSettings)
+        settingsBehind = keep
         v.tag = "overlay"
         v.alpha = 0f
         // above the bars, the toolbar, the sliders and pinned windows (they are raised too)
@@ -2539,15 +2549,22 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     /** Settings, a whole screen (from Actions, the Gallery, or a tool's "settings" chip on a [page]) */
-    private fun openSettingsScreen(page: String? = null) {
+    /**
+     * The settings: from ⋯ they are the Settings tab of Actions; elsewhere (the Gallery, no artwork
+     * open) a popup of their own. [page]: a section ("sec:brushes") or a page ("fill") to open on.
+     */
+    private fun openSettingsPopup(anchor: View?, page: String? = null) {
         popup?.dismiss()
-        val sp = ActionsPanel(this, actionsHost, ActionsPanel.MODE_SETTINGS, onBack = { closeSettings() })
-        if (page != null) sp.openPage(page)
-        showOverlay(sp)
+        val a = anchor ?: settingsAnchor?.takeIf { it.isAttachedToWindow } ?: actionsBtn
+        settingsAnchor = a
+        val panel = if (a === actionsBtn && cv.isDocReady()) ActionsPanel(this, actionsHost)
+            else ActionsPanel(this, actionsHost, ActionsPanel.MODE_PREFS)
+        panel.openPage(page)
+        showPanel(a, panel, 460, 680, alignLeft = a === actionsBtn)
     }
 
     private fun showActions(anchor: View, page: String? = null, tab: ActionsPanel.Tab? = null) {
-        if (page != null) { openSettingsScreen(page); return }
+        if (page != null) { openSettingsPopup(anchor, page); return }
         if (!cv.isDocReady()) return
         val panel = ActionsPanel(this, actionsHost)
         if (tab != null) panel.openTab(tab)
@@ -2702,7 +2719,13 @@ class MainActivity : Activity(), CanvasView.Listener {
             get() = this@MainActivity.dock.mode
             set(v) { this@MainActivity.dock.setMode(v) }
         override fun runTool(id: String) { this@MainActivity.runTool(id, canvasBtn) }
-        override fun openSettings(page: String?) = openSettingsScreen(page)
+        override fun openSettings(page: String?) = openSettingsPopup(null, page)
+        override fun leavingSettings(page: String?) {
+            settingsPage = page
+            leavingSettingsNow = true
+            // nothing opened over the canvas (a dialog, the language): forget it again
+            root.post { leavingSettingsNow = false }
+        }
         override fun guideView(): View = guideContent()
         override fun symmetryView(picked: () -> Unit): View = symmetryContent(picked)
         override fun setLanguage(code: String) {
@@ -4668,7 +4691,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onClose = { closeGallery() },
                 onNewSize = { w, h -> newCanvas(w, h) },
                 onCustomSize = { customSizeDialog() },
-                onSettings = { openSettingsScreen() },
+                onSettings = { v -> openSettingsPopup(v) },
                 screen = screenSize())
             gallery = g
             topBar.visibility = View.GONE

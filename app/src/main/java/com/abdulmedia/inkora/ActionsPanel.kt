@@ -86,6 +86,8 @@ interface ActionsHost {
     fun runTool(id: String)
     /** the full-screen Settings (on a page: "fill", "pressure") */
     fun openSettings(page: String? = null)
+    /** a row of the settings opens something else: come back to [page] afterwards */
+    fun leavingSettings(page: String?)
     /** the drawing guide's settings and the symmetry picker, shown as pages of Canvas */
     fun guideView(): View
     fun symmetryView(picked: () -> Unit): View
@@ -111,6 +113,8 @@ class ActionsPanel(
         const val MODE_CANVAS = "canvas"
         /** the full-screen Settings: sections on the side, search on top */
         const val MODE_SETTINGS = "settings"
+        /** Settings on their own, in a popup (from the Gallery) */
+        const val MODE_PREFS = "prefs"
     }
 
     enum class Tab(val label: String, val icon: Icon) {
@@ -124,6 +128,8 @@ class ActionsPanel(
     private val cv get() = host.canvas
     /** this is the full-screen Settings */
     val isSettings get() = mode == MODE_SETTINGS
+    /** the settings are showing (their own popup, or the Settings tab) */
+    private val inSettings get() = mode == MODE_PREFS || (mode == MODE_ACTIONS && tab == Tab.PREFS)
     /** an open sub-page of a tab (for now: "pressure" in Prefs) */
     private var page: String? = null
     private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "FILE")!!) }.getOrDefault(Tab.FILE)
@@ -145,6 +151,12 @@ class ActionsPanel(
     private var query = ""
     private var advanced = false
     private val sectionList = LinearLayout(context).apply { orientation = VERTICAL }
+    /** where the row helpers put their rows (the body, or the search results under the search field) */
+    private var out: LinearLayout = LinearLayout(context)
+    /** a page opened from another page (Pressure from Brushes and Pen) goes back there */
+    private var parentPage: String? = null
+    private val prefsSearch = android.widget.EditText(context)
+    private val prefsResults = LinearLayout(context).apply { orientation = VERTICAL }
 
     /** the export formats: key, name, what it is for, icon */
     private class Format(val key: String, val name: String, val about: String, val icon: Icon)
@@ -296,7 +308,7 @@ class ActionsPanel(
         background = Ui.rounded(Ui.PANEL, 22f, Ui.OUTLINE, 1)
         setPadding(14.dp, 16.dp, 14.dp, 12.dp)
         isClickable = true
-        val (title, icon) = when (mode) { MODE_ADD -> "Add" to Icon.PLUS; MODE_CANVAS -> "Canvas" to Icon.GRID; else -> "Actions" to Icon.WRENCH }
+        val (title, icon) = when (mode) { MODE_ADD -> "Add" to Icon.PLUS; MODE_CANVAS -> "Canvas" to Icon.GRID; MODE_PREFS -> "Settings" to Icon.SETTINGS; else -> "Actions" to Icon.WRENCH }
         val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(6.dp, 0, 0, 10.dp) }
         head.addView(IconView(context, icon).apply { isClickable = false; tint = Ui.ACCENT; iconScale = 0.62f }, LayoutParams(32.dp, 32.dp))
         head.addView(Ui.text(context, title, 20f, bold = true).apply { setPadding(8.dp, 0, 0, 0) })
@@ -330,11 +342,14 @@ class ActionsPanel(
             tabsRow.addView(item, LayoutParams(0, -2, 1f))
         }
         body.removeAllViews()
+        out = body
+        page?.takeIf { it.startsWith("sec:") }?.let { sectionPage(it.removePrefix("sec:")); return }
         if (page == "pressure") { buildPressure(); return }
         if (page == "fill") { buildFill(); return }
         if (page == "guide") { subPage("Drawing guide", host.guideView()); return }
         if (page == "symmetry") { subPage("Symmetry", host.symmetryView { rebuild() }); return }
         if (mode == MODE_SETTINGS) { rebuildSettings(); return }
+        if (mode == MODE_PREFS) { buildPrefs(); return }
         if (mode == MODE_ADD) { buildAdd(); return }
         if (mode == MODE_CANVAS) { buildCanvas(); return }
         when (tab) {
@@ -359,7 +374,7 @@ class ActionsPanel(
             if (i > 0) card.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(-1, 1).apply { marginStart = 16.dp })
             card.addView(r)
         }
-        body.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 10.dp })
+        out.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 10.dp })
     }
 
     private fun row(label: String, detail: String? = null, enabled: Boolean = true, closes: Boolean = true, icon: Icon? = null, run: () -> Unit): View {
@@ -368,7 +383,12 @@ class ActionsPanel(
             setPadding(16.dp, 12.dp, 16.dp, 12.dp)
             alpha = if (enabled) 1f else 0.4f
             isEnabled = enabled
-            if (enabled) setOnClickListener { if (closes) host.close(); run() }
+            if (enabled) setOnClickListener {
+                // a screen opened from the settings comes back to this page of them when it closes
+                if (closes && inSettings) host.leavingSettings(page)
+                if (closes) host.close()
+                run()
+            }
             background = android.graphics.drawable.RippleDrawable(
                 android.content.res.ColorStateList.valueOf(0x22FFFFFF), null, Ui.rounded(0xFFFFFFFF.toInt(), 16f))
         }
@@ -393,7 +413,7 @@ class ActionsPanel(
 
     /** a small heading over a group of cards */
     private fun section(title: String) {
-        body.addView(Ui.caption(context, title).apply { setPadding(12.dp, 8.dp, 0, 6.dp) })
+        out.addView(Ui.caption(context, title).apply { setPadding(12.dp, 8.dp, 0, 6.dp) })
     }
 
     private fun switchRow(label: String, detail: String? = null, on: Boolean, icon: Icon? = null, onChange: (Boolean) -> Unit): View {
@@ -485,7 +505,7 @@ class ActionsPanel(
         Ui.sliderRow(context, label, value, format, onChange).apply { setPadding(16.dp, 10.dp, 16.dp, 10.dp) }
 
     private fun note(text: String) {
-        body.addView(Ui.text(context, text, 12.5f, Ui.TEXT_DIM).apply { setPadding(10.dp, 0, 10.dp, 12.dp) })
+        out.addView(Ui.text(context, text, 12.5f, Ui.TEXT_DIM).apply { setPadding(10.dp, 0, 10.dp, 12.dp) })
     }
 
     // ---------- tabs ----------
@@ -642,8 +662,61 @@ class ActionsPanel(
         )
     }
 
-    /** Actions › Settings: the settings changed most often; the rest is one tap away */
+    /** Actions › Settings: search, the settings changed most often, then every section as a page */
     private fun buildPrefs() {
+        val field = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12.dp, 0, 8.dp, 0)
+            background = Ui.rounded(Ui.PANEL_ROW, 12f)
+        }
+        field.addView(IconView(context, Icon.SEARCH).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.6f }, LayoutParams(24.dp, 24.dp))
+        (prefsSearch.parent as? android.view.ViewGroup)?.removeView(prefsSearch)
+        prefsSearch.apply {
+            hint = L10n.tr("Search settings")
+            setHintTextColor(Ui.TEXT_DIM)
+            setTextColor(Ui.TEXT)
+            textSize = 14f
+            typeface = Fonts.get(400)
+            background = null
+            setSingleLine()
+            setPadding(8.dp, 0, 4.dp, 0)
+            if (text.toString() != query) setText(query)
+        }
+        if (prefsSearch.tag == null) {
+            prefsSearch.tag = "watch"
+            prefsSearch.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun afterTextChanged(e: android.text.Editable?) {
+                    val q = e?.toString()?.trim() ?: ""
+                    if (q == query) return
+                    query = q
+                    // only the results change, so the field keeps the keyboard
+                    fillPrefs()
+                }
+            })
+        }
+        field.addView(prefsSearch, LayoutParams(0, -1, 1f))
+        body.addView(field, LayoutParams(-1, 44.dp).apply { bottomMargin = 10.dp })
+        (prefsResults.parent as? android.view.ViewGroup)?.removeView(prefsResults)
+        body.addView(prefsResults, LayoutParams(-1, -2))
+        fillPrefs()
+    }
+
+    private fun fillPrefs() {
+        prefsResults.removeAllViews()
+        out = prefsResults
+        if (query.isNotEmpty()) {
+            val found = sections.filter { matches(it) }
+            if (found.isEmpty()) note("Nothing found. Try another word, like \"pressure\" or \"left hand\".")
+            for (sec in found) {
+                out.addView(Ui.text(context, sec.label, 16f, bold = true).apply { setPadding(10.dp, 8.dp, 0, 6.dp) })
+                buildSection(sec.key)
+            }
+            out = body
+            return
+        }
         val spaces = Workspaces.presets + listOfNotNull(Workspaces.mine(host.prefs))
         group(
             switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it },
@@ -655,15 +728,28 @@ class ActionsPanel(
             },
             choiceRow("Style", listOf(ToolRail.TOP to "On top", ToolRail.DOCK to "Docked", ToolRail.WIDE to "Wide", ToolRail.FLOAT to "Floating"), host.railMode, icon = Icon.DOCK) { m ->
                 host.railMode = m; rebuild()
-            },
-            switchRow("Fade the islands while drawing", null, host.fadeIslands, icon = Icon.HIDE) { host.fadeIslands = it }
+            }
         )
-        group(
-            row("Pressure and Smoothing", closes = false, icon = Icon.PRESSURE) { page = "pressure"; rebuild() },
-            switchRow("Brush cursor", null, host.brushCursor, icon = Icon.BRUSH) { host.brushCursor = it },
-            switchRow("Keep my last eraser", null, host.rememberEraser, icon = Icon.ERASER) { host.rememberEraser = it }
-        )
-        group(row("All settings", "Every setting, with search", icon = Icon.SETTINGS) { host.openSettings() })
+        section("All settings")
+        val icons = mapOf("canvas" to Icon.GRID, "brushes" to Icon.BRUSH, "gestures" to Icon.TOUCH, "appearance" to Icon.SUN,
+            "workspaces" to Icon.LAYOUT, "language" to Icon.GLOBE, "files" to Icon.BACKUP, "about" to Icon.INFO)
+        group(*sections.map { sec ->
+            row(sec.label + "  ›", null, closes = false, icon = icons[sec.key]) { page = "sec:" + sec.key; advanced = false; rebuild() }
+        }.toTypedArray())
+        out = body
+    }
+
+    /** a section of the settings as a page of this panel, with ‹ back to the list */
+    private fun sectionPage(key: String) {
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 8.dp) }
+        head.addView(IconView(context, if (L10n.isRtl) Icon.CHEV_RIGHT else Icon.CHEV_LEFT).apply {
+            iconScale = 0.5f
+            contentDescription = L10n.tr("Back")
+            setOnClickListener { page = null; rebuild() }
+        }, LayoutParams(40.dp, 40.dp))
+        head.addView(Ui.text(context, sections.firstOrNull { it.key == key }?.label ?: "", 20f, bold = true).apply { setPadding(4.dp, 0, 0, 0) })
+        body.addView(head)
+        buildSection(key)
     }
 
     private fun setCanvas() {
@@ -679,8 +765,8 @@ class ActionsPanel(
 
     private fun setBrushes() {
         group(
-            row("Pressure and Smoothing", "The pressure curve, stabilization and motion filtering", closes = false, icon = Icon.PRESSURE) { page = "pressure"; rebuild() },
-            row("Fill and ColorDrop", "How far the color goes, and closing gaps in the lines", closes = false, icon = Icon.FILL) { page = "fill"; rebuild() },
+            row("Pressure and Smoothing", "The pressure curve, stabilization and motion filtering", closes = false, icon = Icon.PRESSURE) { parentPage = page; page = "pressure"; rebuild() },
+            row("Fill and ColorDrop", "How far the color goes, and closing gaps in the lines", closes = false, icon = Icon.FILL) { parentPage = page; page = "fill"; rebuild() },
             switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor, icon = Icon.BRUSH) { host.brushCursor = it },
             switchRow("Keep my last eraser", "The eraser you used last (its size too) is ready next time, in new artworks as well", host.rememberEraser, icon = Icon.ERASER) { host.rememberEraser = it },
             sliderRow("S Pen button hold time", ((cv.penHoldMs - 400L) / 1600f).coerceIn(0f, 1f),
@@ -798,7 +884,7 @@ class ActionsPanel(
         val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 8.dp) }
         head.addView(Ui.text(context, "‹", 30f).apply {
             setPadding(10.dp, 0, 14.dp, 0)
-            setOnClickListener { page = null; rebuild() }
+            setOnClickListener { page = parentPage; parentPage = null; rebuild() }
         })
         head.addView(Ui.text(context, "Pressure and Smoothing", 20f, bold = true))
         body.addView(head)
@@ -825,7 +911,7 @@ class ActionsPanel(
         rebuild()
     }
 
-    fun openPage(p: String) {
+    fun openPage(p: String?) {
         tab = Tab.PREFS
         page = p
         rebuild()
@@ -835,7 +921,7 @@ class ActionsPanel(
         val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 8.dp) }
         head.addView(Ui.text(context, "‹", 30f).apply {
             setPadding(10.dp, 0, 14.dp, 0)
-            setOnClickListener { page = null; rebuild() }
+            setOnClickListener { page = parentPage; parentPage = null; rebuild() }
         })
         head.addView(Ui.text(context, "Fill and ColorDrop", 20f, bold = true))
         body.addView(head)

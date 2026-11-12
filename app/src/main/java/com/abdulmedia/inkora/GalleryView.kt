@@ -38,7 +38,7 @@ class GalleryView(
     /** "Start new" with a size (width, height); null: ask for a size of your own */
     private val onNewSize: ((Int, Int) -> Unit)? = null,
     private val onCustomSize: (() -> Unit)? = null,
-    private val onSettings: (() -> Unit)? = null,
+    private val onSettings: ((View) -> Unit)? = null,
     /** this screen's size in pixels, for the "Screen" size */
     private val screen: Pair<Int, Int> = 2048 to 1536
 ) : FrameLayout(context) {
@@ -133,7 +133,7 @@ class GalleryView(
             iconScale = 0.5f
             background = Ui.rounded(Ui.CARD, 12f)
             contentDescription = L10n.tr("Settings")
-            setOnClickListener { onSettings.invoke() }
+            setOnClickListener { v -> onSettings.invoke(v) }
         }, LinearLayout.LayoutParams(44.dp, 44.dp).apply { marginEnd = 10.dp })
         val importBtn = quiet(L10n.tr("Import")) {}
         importBtn.setOnClickListener { onImport(importBtn) }
