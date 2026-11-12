@@ -144,6 +144,18 @@ class ActionsPanel(
     private var advanced = false
     private val sectionList = LinearLayout(context).apply { orientation = VERTICAL }
 
+    /** the export formats: key, name, what it is for, icon */
+    private class Format(val key: String, val name: String, val about: String, val icon: Icon)
+    private val formats = listOf(
+        Format("png", "PNG", "Full quality picture, can be see-through", Icon.PHOTO),
+        Format("jpeg", "JPEG", "Small file, for messages and the web", Icon.PHOTO),
+        Format("psd", "Photoshop", "With your layers", Icon.LAYERS),
+        Format("pdf", "PDF", "For printing and sending", Icon.EXPORT),
+        Format("tiff", "TIFF", "Full quality, for print shops", Icon.EXPORT),
+        Format("project", "Inkora", "Every layer, to open again here", Icon.FOLDER),
+        Format("svg", "SVG", "Vector layers, for logos", Icon.VECTOR)
+    )
+
     init {
         if (mode == MODE_SETTINGS) buildSettingsFrame() else buildPopupFrame()
         rebuild()
@@ -552,18 +564,6 @@ class ActionsPanel(
         val layers = d.layers.size
         note(String.format(Locale.US, "%d × %d px · %s %d / %d", d.width, d.height, L10n.tr("Layers"), layers, d.maxLayers()))
     }
-
-    /** the export formats: key, name, what it is for, icon */
-    private class Format(val key: String, val name: String, val about: String, val icon: Icon)
-    private val formats = listOf(
-        Format("png", "PNG", "Full quality picture, can be see-through", Icon.PHOTO),
-        Format("jpeg", "JPEG", "Small file, for messages and the web", Icon.PHOTO),
-        Format("psd", "Photoshop", "With your layers", Icon.LAYERS),
-        Format("pdf", "PDF", "For printing and sending", Icon.EXPORT),
-        Format("tiff", "TIFF", "Full quality, for print shops", Icon.EXPORT),
-        Format("project", "Inkora", "Every layer, to open again here", Icon.FOLDER),
-        Format("svg", "SVG", "Vector layers, for logos", Icon.VECTOR)
-    )
 
     /** Share: pick a format, its few options, then Share or Save */
     private fun buildShare() {
