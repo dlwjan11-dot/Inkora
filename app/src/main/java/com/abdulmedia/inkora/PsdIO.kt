@@ -336,7 +336,7 @@ object PsdIO {
                         val len = inp.u32()
                         val st = inp.pos
                         when (k) {
-                            "luni" -> { val n = inp.s32(); name = String(inp.bytes(n * 2), Charsets.UTF_16BE) }
+                            "luni" -> { val n = inp.s32(); if (n in 0..1024) name = String(inp.bytes(n * 2), Charsets.UTF_16BE) }
                             "lsct", "lsdk" -> divider = inp.s32()
                         }
                         inp.skip(len - (inp.pos - st))

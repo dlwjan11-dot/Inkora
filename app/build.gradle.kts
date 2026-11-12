@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// The Google Play upload key, when this computer has it: a keystore.properties file next to
+// settings.gradle.kts (never put in git) with storeFile, storePassword, keyAlias and keyPassword.
+// Without it, Build > Generate Signed App Bundle in Android Studio asks for the key instead.
+val uploadKey = java.util.Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
 android {
     namespace = "com.abdulmedia.inkora"
     compileSdk = 36
@@ -13,8 +21,8 @@ android {
         applicationId = "com.abdulmedia.inkora"
         minSdk = 29
         targetSdk = 36
-        versionCode = 86
-        versionName = "0.40.1"
+        versionCode = 87
+        versionName = "0.40.2"
         manifestPlaceholders["appLabel"] = "Inkora"
 
         // the living brushes' engine (MyPaint) is native code, built for tablets/phones (arm64)
@@ -47,6 +55,12 @@ android {
             keyAlias = "inkoradev"
             keyPassword = "inkoradev"
         }
+        if (uploadKey.getProperty("storeFile") != null) create("upload") {
+            storeFile = file(uploadKey.getProperty("storeFile"))
+            storePassword = uploadKey.getProperty("storePassword")
+            keyAlias = uploadKey.getProperty("keyAlias")
+            keyPassword = uploadKey.getProperty("keyPassword")
+        }
     }
 
     buildTypes {
@@ -60,9 +74,9 @@ android {
         }
         release {
             isMinifyEnabled = false
-            // For testing on your own tablet the debug key is fine.
-            // Before publishing on Google Play, create your own release key (Build > Generate Signed App Bundle).
-            signingConfig = signingConfigs.getByName("debug")
+            // signed with the upload key when keystore.properties is there (see the top of this file);
+            // never with a debug key, which Google Play refuses
+            signingConfig = signingConfigs.findByName("upload")
         }
     }
 

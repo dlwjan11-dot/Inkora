@@ -9,3 +9,7 @@
 .cxx/
 .kotlin/
 *.idsig
+# the Google Play upload key's passwords stay on the computer
+/keystore.properties
+*.jks
+!app/inkora-dev.jks

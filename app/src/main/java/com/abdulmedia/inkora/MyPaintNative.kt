@@ -122,6 +122,8 @@ class LivingPainter {
     /** paints what was added onto [layer]; returns the changed part (or null) */
     fun flush(layer: Bitmap): Rect? {
         if (!active || count == 0) return null
+        // the native engine writes straight into the pixels: a picture of another size is never handed to it
+        if (layer.width != sw || layer.height != sh || layer.isRecycled) { count = 0; return null }
         val changed = MyPaintNative.nStroke(surface, brush, layer, events, count, viewZoom, 0f, out)
         count = 0
         if (!changed) return null
@@ -133,7 +135,7 @@ class LivingPainter {
 
     /** the layer as it was before this stroke, for [r] */
     fun original(layer: Bitmap, r: Rect): Bitmap? {
-        if (r.isEmpty) return null
+        if (r.isEmpty || surface == 0L || layer.width != sw || layer.height != sh) return null
         val bmp = runCatching { Bitmap.createBitmap(r.width(), r.height(), Bitmap.Config.ARGB_8888) }.getOrNull() ?: return null
         return if (MyPaintNative.nOriginal(surface, layer, bmp, r.left, r.top)) bmp else { bmp.recycle(); null }
     }

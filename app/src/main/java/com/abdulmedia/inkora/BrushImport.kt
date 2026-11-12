@@ -93,11 +93,10 @@ object BrushImport {
             while (e != null) {
                 val name = e.name.replace('\\', '/')
                 if (!e.isDirectory && !name.startsWith("__MACOSX") && !name.substringAfterLast('/').startsWith("._")) {
-                    val bos = ByteArrayOutputStream()
-                    zip.copyTo(bos)
-                    total += bos.size()
-                    if (total > MAX_TOTAL) throw IllegalArgumentException("File is too large")
-                    entries[name] = bos.toByteArray()
+                    // counted while it is read, so one huge packed file can't fill the memory first
+                    val data = readLimited(zip, MAX_TOTAL - total)
+                    total += data.size
+                    entries[name] = data
                 }
                 e = zip.nextEntry
             }
@@ -616,6 +615,21 @@ object BrushImport {
     }
 
     /** Returns (bytes, file name). Runs on a background thread. */
+    /** all of [input], or an error when it is longer than [max] bytes */
+    fun readLimited(input: java.io.InputStream, max: Long = MAX_TOTAL): ByteArray {
+        val bos = ByteArrayOutputStream()
+        val buf = ByteArray(64 * 1024)
+        var total = 0L
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            total += n
+            if (total > max) throw IllegalArgumentException("File is too large")
+            bos.write(buf, 0, n)
+        }
+        return bos.toByteArray()
+    }
+
     fun download(link: String): Pair<ByteArray, String?> {
         var url = URL(directLink(link))
         var redirects = 0

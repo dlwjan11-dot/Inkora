@@ -29,5 +29,7 @@ target_include_directories(inkora_paint PRIVATE
 target_compile_options(inkora_paint PRIVATE -O3 -Wno-unused-parameter -Wno-sign-compare)
 # smaller library: only what the app calls stays
 target_link_options(inkora_paint PRIVATE -Wl,--gc-sections)
+# Google Play: native code must work on devices with 16 KB memory pages
+target_link_options(inkora_paint PRIVATE -Wl,-z,max-page-size=16384)
 
 target_link_libraries(inkora_paint PRIVATE json-c jnigraphics log m)

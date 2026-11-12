@@ -10,7 +10,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
@@ -166,22 +165,28 @@ object ProjectIO {
         }
     }
 
+    /** a project file bigger than this (unpacked) is not opened: a broken or hostile file can't fill the memory */
+    private const val MAX_PROJECT = 1_500L * 1024 * 1024
+
     fun read(input: InputStream): Document {
         val files = HashMap<String, ByteArray>()
+        var total = 0L
         ZipInputStream(input.buffered()).use { zip ->
             var e = zip.nextEntry
             while (e != null) {
                 if (!e.isDirectory) {
-                    val bos = ByteArrayOutputStream()
-                    zip.copyTo(bos)
-                    files[e.name] = bos.toByteArray()
+                    val data = BrushImport.readLimited(zip, MAX_PROJECT - total)
+                    total += data.size
+                    files[e.name] = data
                 }
                 e = zip.nextEntry
             }
         }
         val jsonBytes = files["document.json"] ?: throw IllegalArgumentException("Not an Inkora project")
         val json = JSONObject(String(jsonBytes))
-        val doc = Document(json.getInt("width"), json.getInt("height"))
+        val w = json.getInt("width"); val h = json.getInt("height")
+        require(w in 1..16384 && h in 1..16384 && w.toLong() * h <= 64_000_000L) { "This canvas is too large" }
+        val doc = Document(w, h)
         doc.backgroundColor = json.optInt("background", 0xFFFFFFFF.toInt())
         doc.backgroundVisible = json.optBoolean("backgroundVisible", true)
         guideFromJson(json.optJSONObject("guide"), doc.guide)

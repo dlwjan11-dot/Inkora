@@ -127,6 +127,9 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // after a crash the last artwork is not opened behind the gallery at once: if it is what
+        // made the app close, the app still starts (it opens when you pick it)
+        val crashedLastTime = crashFile().exists()
         installCrashReporter()
         Ui.light = prefs.getBoolean("light_ui", false)
         Ui.accent = prefs.getInt("accent", 0)
@@ -160,8 +163,10 @@ class MainActivity : Activity(), CanvasView.Listener {
         restoreEraser()
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
-        cv.gpuTiles = prefs.getBoolean("gpu_tiles", false)
-        if (prefs.getBoolean("perf_numbers", false)) root.post { setPerf(true) }
+        // the test switches count only in test builds (they are not shown in the Google Play version)
+        val devBuild = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        cv.gpuTiles = devBuild && prefs.getBoolean("gpu_tiles", false)
+        if (devBuild && prefs.getBoolean("perf_numbers", false)) root.post { setPerf(true) }
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
         cv.wetBleed = prefs.getBoolean("wetBleed", true)
@@ -186,9 +191,16 @@ class MainActivity : Activity(), CanvasView.Listener {
         // open the last artwork (older versions' single autosave moves into the gallery)
         val migrated = Gallery.migrateAutosave(this)
         val lastId = prefs.getString("current", null) ?: migrated
-        val doc = lastId?.let { Gallery.load(this, it) }
+        val doc = if (crashedLastTime) null else lastId?.let { Gallery.load(this, it) }
             ?: Gallery.list(this).firstOrNull()?.let { Gallery.load(this, it.id) }
-        if (doc != null) {
+        if (crashedLastTime) {
+            // an empty canvas that is not kept unless you draw on it
+            val (w, h) = screenSize()
+            val blank = newDocument(w, h)
+            openDocument(blank)
+            savedDoc = blank
+            savedRevision = blank.revision
+        } else if (doc != null) {
             openDocument(doc)
             savedDoc = doc
             savedRevision = doc.revision
@@ -303,6 +315,20 @@ class MainActivity : Activity(), CanvasView.Listener {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) goFullscreen()
+    }
+
+    /**
+     * Every file picker, save dialog and share sheet opens through here: a device without an app
+     * for it (files app turned off, say) gets a message instead of a crash.
+     */
+    @Deprecated("Activity API")
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        try {
+            @Suppress("DEPRECATION")
+            super.startActivityForResult(intent, requestCode, options)
+        } catch (e: android.content.ActivityNotFoundException) {
+            toast("No app on this device can do that")
+        }
     }
 
     override fun onPause() {
@@ -2197,7 +2223,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             for (uri in uris) {
                 runCatching {
                     val name = displayName(uri)
-                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching
+                    val bytes = contentResolver.openInputStream(uri)?.use { BrushImport.readLimited(it) } ?: return@runCatching
                     val r = BrushImport.importBytes(applicationContext, bytes, name)
                     all.addAll(r.presets)
                     if (r.presets.isEmpty()) messages.add(r.message)
@@ -2566,7 +2592,6 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (!cv.isDocReady()) return
         val panel = ActionsPanel(this, actionsHost)
         if (tab != null) panel.openTab(tab)
-        if (page != null) panel.openPage(page)
         showPanel(anchor, panel, 460, 680, alignLeft = true)
     }
 
@@ -2900,21 +2925,30 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun openProject(uri: Uri) {
         val head = runCatching { contentResolver.openInputStream(uri)?.use { s -> ByteArray(4).also { s.read(it) } } }.getOrNull()
         if (head != null && PsdIO.isPsd(head)) { openPsd(uri); return }
-        val d = runCatching { contentResolver.openInputStream(uri)?.use { ProjectIO.read(it) } }.getOrNull()
-        if (d == null) {
-            toast("This is not an Inkora project file")
-            return
+        // a big project takes a moment to read: off the main thread, so the app never stops answering
+        hud.show("Opening…", sticky = true)
+        val title = displayName(uri)?.substringBeforeLast('.') ?: "Imported artwork"
+        thread(name = "inkora-project-open") {
+            val d = runCatching { contentResolver.openInputStream(uri)?.use { ProjectIO.read(it) } }.getOrNull()
+            main.post {
+                hud.hideSoon()
+                if (isFinishing || isDestroyed) return@post
+                if (d == null) {
+                    toast("This is not an Inkora project file")
+                    return@post
+                }
+                // an opened project becomes a new artwork in the gallery
+                autosave()
+                closeGallery()
+                d.galleryId = Gallery.newId()
+                d.title = title
+                d.origin = "imported"
+                d.revision = 1
+                openDocument(d)
+                autosave(force = true)
+                toast("Project opened")
+            }
         }
-        // an opened project becomes a new artwork in the gallery
-        autosave()
-        closeGallery()
-        d.galleryId = Gallery.newId()
-        d.title = displayName(uri)?.substringBeforeLast('.') ?: "Imported artwork"
-        d.origin = "imported"
-        d.revision = 1
-        openDocument(d)
-        autosave(force = true)
-        toast("Project opened")
     }
 
     /** A Photoshop file becomes a new artwork, with its layers. Read on a background thread. */
@@ -2970,6 +3004,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val snap = runCatching { if (kind == "psd") ProjectIO.snapshot(doc) else null }.getOrNull()
         val flat = if (kind == "psd") null else runCatching { doc.flatten(withBackground = true, forceOpaque = kind == "pdf") }.getOrNull()
         if ((kind == "psd" && snap == null) || (kind != "psd" && flat == null)) { toast("Not enough memory to export it"); return }
+        if (kind == "psd" && doc.layers.any { it.adjust != null }) toast("Adjustment layers are left out of the PSD (merge them down first to keep their colors)")
         hud.show("Exporting…", sticky = true)
         thread(name = "inkora-export-file") {
             val ok = runCatching {
@@ -3122,8 +3157,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         toast("Reading the model…")
         thread(name = "inkora-model") {
             val result = runCatching {
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: throw IllegalArgumentException("Could not open that file")
-                if (bytes.size > 60_000_000) throw IllegalArgumentException("This file is too big")
+                val bytes = contentResolver.openInputStream(uri)?.use {
+                    runCatching { BrushImport.readLimited(it, 60_000_000) }.getOrElse { throw IllegalArgumentException("This file is too big") }
+                } ?: throw IllegalArgumentException("Could not open that file")
                 MeshIO.read(bytes, name)
             }
             main.post {
@@ -4888,13 +4924,26 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun openFromGallery(id: String) {
         if (id == cv.doc.galleryId) { closeGallery(); return }
-        val d = Gallery.load(this, id)
-        if (d == null) { toast("Could not open this artwork"); return }
-        openDocument(d)
-        savedDoc = d
-        savedRevision = d.revision
-        closeGallery()
+        if (openingArtwork) return
+        // read off the main thread: a big artwork takes a moment
+        openingArtwork = true
+        hud.show("Opening…", sticky = true)
+        // on the saving thread: never while that artwork is still being written
+        saver.execute {
+            val d = runCatching { Gallery.load(applicationContext, id) }.getOrNull()
+            main.post {
+                openingArtwork = false
+                hud.hideSoon()
+                if (isFinishing || isDestroyed) return@post
+                if (d == null) { toast("Could not open this artwork"); return@post }
+                openDocument(d)
+                savedDoc = d
+                savedRevision = d.revision
+                closeGallery()
+            }
+        }
     }
+    private var openingArtwork = false
 
     private fun confirmDeleteArtwork(e: Gallery.Entry) {
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)

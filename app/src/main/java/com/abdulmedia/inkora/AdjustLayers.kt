@@ -155,7 +155,7 @@ object AdjustRender {
             half4 c = content.eval(p);
             if (c.a <= 0.0) return c;
             half3 rgb = clamp(c.rgb / c.a, 0.0, 1.0);
-            half3 o;
+            half3 o = rgb;
             if (byLum > 0.5) {
                 float l = dot(float3(rgb), float3(0.30, 0.59, 0.11));
                 o = lut.eval(float2(l * 255.0 + 0.5, 0.5)).rgb;
@@ -177,11 +177,8 @@ object AdjustRender {
     }
     private val nodes = WeakHashMap<Layer, Nodes>()
 
-    private val outPaint = Paint()
-    private val plusPaint = Paint().apply { blendMode = BlendMode.PLUS }
-    private val maskIn = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_IN }
-    private val maskOut = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_OUT }
-    private val plain = Paint(Paint.FILTER_BITMAP_FLAG)
+    /** false after the graphics chip's version failed once: pixel by pixel from then on */
+    @Volatile private var gpuWorks = true
 
     /**
      * Draws onto [canvas] what [below] draws, changed by [layer]'s adjustment, through the layer's
@@ -190,7 +187,8 @@ object AdjustRender {
     fun draw(canvas: Canvas, bounds: RectF, layer: Layer, ov: ActiveOverlay?, below: (Canvas) -> Unit) {
         val a = layer.adjust ?: return below(canvas)
         val w = bounds.width().toInt(); val h = bounds.height().toInt()
-        val gpu = canvas.isHardwareAccelerated
+        // the graphics chip works on the whole canvas at once: only for sizes every chip can hold
+        val gpu = canvas.isHardwareAccelerated && w <= 8192 && h <= 8192
         val n = if (gpu) synchronized(nodes) { nodes.getOrPut(layer) { Nodes(RenderNode("adjust-below"), RenderNode("adjust-changed")) } } else null
         if (n != null) {
             n.plain.setPosition(0, 0, w, h)
@@ -200,6 +198,11 @@ object AdjustRender {
         }
         fun drawBelow(c: Canvas) { if (n != null) c.drawRenderNode(n.plain) else below(c) }
         val amount = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
+        // paints of its own each time: exports can draw on another thread at the same moment
+        val outPaint = Paint()
+        val plusPaint = Paint().apply { blendMode = BlendMode.PLUS }
+        val maskIn = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_IN }
+        val maskOut = Paint(Paint.FILTER_BITMAP_FLAG).apply { blendMode = BlendMode.DST_OUT }
 
         val outer = canvas.saveLayer(bounds, null)
         // the picture as it was, where the mask leaves it
@@ -219,7 +222,8 @@ object AdjustRender {
                 canvas.restoreToCount(s)
                 outPaint.colorFilter = null
             }
-            n != null && Build.VERSION.SDK_INT >= 33 -> drawChangedGpu(canvas, n, a, w, h)
+            n != null && Build.VERSION.SDK_INT >= 33 && gpuWorks && runCatching { drawChangedGpu(canvas, n, a, w, h) }
+                .onFailure { gpuWorks = false }.isSuccess -> {}
             else -> drawChangedCpu(canvas, bounds, a) { c -> drawBelow(c) }
         }
         maskIn.alpha = amount
@@ -231,7 +235,7 @@ object AdjustRender {
     private fun mask(canvas: Canvas, bounds: RectF, layer: Layer, ov: ActiveOverlay?, p: Paint) {
         if (ov == null) { canvas.drawBitmap(layer.bitmap, 0f, 0f, p); return }
         val s = canvas.saveLayer(bounds, p)
-        canvas.drawBitmap(layer.bitmap, 0f, 0f, plain)
+        canvas.drawBitmap(layer.bitmap, 0f, 0f, null)
         ov.draw(canvas)
         canvas.restoreToCount(s)
     }
