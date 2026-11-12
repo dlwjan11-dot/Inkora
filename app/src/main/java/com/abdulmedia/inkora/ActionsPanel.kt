@@ -264,7 +264,7 @@ class ActionsPanel(
     /** the row names of a section, so a search finds them in any language */
     private fun searchLabels(key: String): List<String> = when (key) {
         "canvas" -> listOf("Selection mask visibility")
-        "brushes" -> listOf("Pressure and Smoothing", "Brush cursor", "Keep my last eraser", "Fill and ColorDrop", "S Pen button hold time", "Faster drawing (test)", "GPU brushes (test)", "Watercolor drying", "Wet paint runs together")
+        "brushes" -> listOf("Pressure and Smoothing", "Brush cursor", "Keep my last eraser", "Fill and ColorDrop", "S Pen button hold time", "Faster drawing (test)", "Watercolor drying", "Wet paint runs together")
         "gestures" -> listOf("Gesture controls", "Shortcuts, shown", "Keyboard shortcuts")
         "appearance" -> listOf("Light interface", "Accent color", "Side", "Style", "Hand island", "Fade the islands while drawing")
         "workspaces" -> listOf("Workspace", "Save this layout as mine")
@@ -691,7 +691,6 @@ class ActionsPanel(
         advancedRow {
             group(
                 switchRow("Faster drawing (test)", "Sends only the part of the stroke that changed to the graphics chip. Turn it off if strokes look wrong", host.gpuTiles, icon = Icon.SPARKLE) { host.gpuTiles = it },
-                switchRow("GPU brushes (test)", "The graphics chip paints the stroke while you draw; best for big brushes. Not for smudge, living paint, wet mix or dual brushes. Turn it off if strokes look wrong", host.gpuBrushes, icon = Icon.SPARKLE) { host.gpuBrushes = it },
                 switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying, icon = Icon.DROP) { host.watercolorDrying = it },
                 switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed, icon = Icon.INK) { host.wetBleed = it }
             )
