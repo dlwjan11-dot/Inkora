@@ -71,6 +71,11 @@ object L10n {
     }
 
     /** translates every item (and sub-menu) of a popup menu */
+    fun menu(m: InkMenu.Items) {
+        if (lang == EN) return
+        for (it in m.list) it.title = tr(it.title.toString())
+    }
+
     fun menu(m: Menu) {
         if (lang == EN) return
         for (i in 0 until m.size()) {
@@ -1275,6 +1280,37 @@ object L10n {
         "Vector layer: its shape tools are in the bar", "طبقة فيكتور: أدوات الأشكال تبعها بالشريط", "چینی ڤێکتۆر: ئامرازەکانی شێوەی لە شریتەکەدان",
         "Living brushes can't trace shapes: pick another brush, or Filled", "فرش الألوان الحيّة ما بترسم حدود الأشكال: اختار فرشاة تانية، أو معبّى", "فڵچە زیندووەکان ناتوانن دەوری شێوە بکێشن: فڵچەیەکی تر هەڵبژێرە، یان پڕکراو",
         "Creative › Shapes: rectangle, circle, star, heart, arrow, drawn with your brush or filled", "Creative › أشكال: مستطيل، دائرة، نجمة، قلب، سهم، بفرشاتك أو معبّاية", "Creative › شێوەکان: لاکێشە، بازنە، ئەستێرە، دڵ، تیر، بە فڵچەکەت یان پڕکراو",
+        "All tools", "كل الأدوات", "هەموو ئامرازەکان",
+        "Move to the other side", "انقل للجهة الثانية", "بیگوازەوە بۆ لایەکەی تر",
+        "Open the toolbar wide, with every tool", "افتح الشريط عريض، فيه كل الأدوات", "شریتەکە پان بکەوە، بە هەموو ئامرازەکانەوە",
+        "Hide toolbar", "خبّي الشريط", "شریتەکە بشارەوە",
+        "Tuck the toolbar into a small tab on the edge", "خبّي الشريط بلسان صغير على الطرف", "شریتەکە بکە بە زمانەیەکی بچووک لە لێوارەکە",
+        "Show toolbar", "أظهر الشريط", "شریتەکە پیشان بدە",
+        "Hold a tool to add it to your favorites, or take it out", "اضغط مطوّل على أداة لتضيفها للمفضلة أو تشيلها", "ئامرازێک ڕابگرە بۆ زیادکردن بۆ دڵخوازەکان یان لابردنی",
+        "Where the toolbar sits", "وين بيكون الشريط", "شریتەکە لە کوێ بێت",
+        "The size and opacity sliders move to the other side. At the end of the toolbar: ⊞ shows every tool, « tucks it away.", "شريط الحجم والشفافية بينتقل للجهة الثانية. بآخر الشريط: ⊞ بيعرض كل الأدوات، و« بيخبّيه.", "خلیسکەی قەبارە و ڕوونی دەچێتە لایەکەی تر. لە کۆتایی شریتەکە: ⊞ هەموو ئامرازەکان پیشان دەدات، « دەیشارێتەوە.",
+        "Toolbar on the left", "الشريط على اليسار", "شریتەکە لە چەپ",
+        "Toolbar on the right", "الشريط على اليمين", "شریتەکە لە ڕاست",
+        "Frames for a comic page", "إطارات لصفحة كوميكس", "چوارچێوە بۆ لاپەڕەیەکی کۆمیک",
+        "Speech, thought, shout or caption", "كلام، تفكير، صراخ أو تعليق", "قسە، بیرکردنەوە، هاوار یان ڕوونکردنەوە",
+        "See the values in greys", "شوف الدرجات بالرمادي", "پلەکان بە خۆڵەمێشی ببینە",
+        "Keep this moment, come back later", "احفظ هاللحظة وارجعلها بعدين", "ئەم ساتە بپارێزە، دواتر بگەڕێوە",
+        "Fill, blend and pick colors", "تعبئة، تدرّج واختيار ألوان", "پڕکردنەوە، تێکەڵکردن و هەڵبژاردنی ڕەنگ",
+        "Bigger things", "أشياء أكبر", "شتی گەورەتر",
+        "Keep a moment", "احفظ لحظة", "ساتێک بپارێزە",
+        "Make and add things", "اعمل وضيف أشياء", "شت دروست بکە و زیادی بکە",
+        "Change what is there", "غيّر الموجود", "ئەوەی هەیە بیگۆڕە",
+        "Untitled Artwork", "رسمة بلا اسم", "کاری بێناو",
+        "In Transform: drag to move, the corners to scale, the green dot to turn, two fingers to pinch. Flip, turn 90° and fit are in the bar at the bottom. Tap the box without moving it for an exact angle and size.", "بالتحويل: اسحب لتحرّك، الزوايا للتكبير، النقطة الخضرا للتدوير، وإصبعين للقرص. القلب والتدوير 90° والملاءمة بالشريط تحت. اكبس على الصندوق بلا تحريك لزاوية وحجم دقيق.", "لە گۆڕین: ڕابکێشە بۆ جوولاندن، گۆشەکان بۆ قەبارە، خاڵە سەوزەکە بۆ سوڕاندن، دوو پەنجە بۆ گوشین. هەڵگێڕانەوە، سوڕاندنی 90° و گونجاندن لە شریتی خوارەوەن. بێ جوولاندن لە سندووقەکە بدە بۆ گۆشە و قەبارەی ورد.",
+        "Copy and paste", "نسخ ولصق", "لەبەرگرتنەوە و لکاندن",
+        "Drawing help", "مساعدة بالرسم", "یارمەتی وێنەکێشان",
+        "Windows and views", "نوافذ وعرض", "پەنجەرە و پیشاندان",
+        "Flip and fit", "قلب وملاءمة", "هەڵگێڕانەوە و گونجاندن",
+        "With layers", "مع الطبقات", "لەگەڵ چینەکان",
+        "Keep your artworks safe", "حافظ على رسوماتك", "کارەکانت بپارێزە",
+        "Interface", "الواجهة", "ڕووکار",
+        "Pen and touch", "القلم واللمس", "قەڵەم و دەستلێدان",
+        "Hide it if you only change them with gestures", "خبّيه إذا بتغيّرهن بالإيماءات بس", "بیشارەوە ئەگەر تەنها بە جووڵە دەیانگۆڕیت",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

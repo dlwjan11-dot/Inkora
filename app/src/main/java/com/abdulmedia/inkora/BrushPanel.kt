@@ -185,7 +185,7 @@ class BrushPanel(
         }
         val plus = IconView(context, Icon.PLUS).apply { contentDescription = L10n.tr("Import brushes…") }
         plus.setOnClickListener {
-            val pm = android.widget.PopupMenu(context, plus)
+            val pm = InkMenu(context, plus)
             pm.menu.add(0, 1, 1, "Import file…")
             pm.menu.add(0, 2, 2, "Import from link…")
             if (onNewBrush != null) pm.menu.add(0, 3, 3, "New brush from this one")
@@ -225,7 +225,7 @@ class BrushPanel(
                 // long-press a set: export it (any set), or delete it (yours)
                 setOnLongClickListener { v ->
                     val list = itemsOf(set)
-                    val pm = android.widget.PopupMenu(context, v)
+                    val pm = InkMenu(context, v)
                     if (onExportSet != null) pm.menu.add(0, 1, 1, "Export set (.brushset)…")
                     if (imported && onDeleteSet != null) pm.menu.add(0, 2, 2, "Delete set")
                     pm.setOnMenuItemClickListener {

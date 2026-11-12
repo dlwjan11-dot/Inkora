@@ -16,7 +16,6 @@ import android.view.ViewConfiguration
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.ScrollView
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -64,7 +63,7 @@ class LayersPanel(
         }
         val plus = IconView(context, Icon.PLUS)
         plus.setOnClickListener {
-            val pm = PopupMenu(context, plus)
+            val pm = InkMenu(context, plus)
             pm.menu.add(0, 1, 1, "Drawing layer")
             pm.menu.add(0, 2, 2, "Vector layer (pen, shapes, logos)")
             pm.setOnMenuItemClickListener {
@@ -196,7 +195,7 @@ class LayersPanel(
         row.addView(Ui.text(context, blendCode(layer.blend), 13f, Ui.TEXT_DIM, true).apply {
             gravity = Gravity.CENTER
             setOnClickListener { v ->
-                val pm = PopupMenu(context, v)
+                val pm = InkMenu(context, v)
                 LayerBlend.values().forEachIndexed { k, b -> pm.menu.add(0, k, k, b.label) }
                 pm.setOnMenuItemClickListener { item -> layer.blend = LayerBlend.values()[item.itemId]; changed(); true }
                 L10n.menu(pm.menu); pm.show()
@@ -559,7 +558,7 @@ class LayersPanel(
         })
         val blendBtn = Ui.button(context, "Blend mode: " + (if (g.blend == LayerBlend.NORMAL) "Pass Through" else g.blend.label)) {}
         blendBtn.setOnClickListener {
-            val pm = PopupMenu(context, blendBtn)
+            val pm = InkMenu(context, blendBtn)
             LayerBlend.values().forEachIndexed { i, b -> pm.menu.add(0, i, i, if (b == LayerBlend.NORMAL) "Pass Through" else b.label) }
             pm.setOnMenuItemClickListener { item ->
                 g.blend = LayerBlend.values()[item.itemId]
@@ -812,7 +811,7 @@ class LayersPanel(
 
         val blendBtn = Ui.button(context, "Blend mode: ${layer.blend.label}") {}
         blendBtn.setOnClickListener {
-            val pm = PopupMenu(context, blendBtn)
+            val pm = InkMenu(context, blendBtn)
             LayerBlend.values().forEachIndexed { i, b -> pm.menu.add(0, i, i, b.label) }
             pm.setOnMenuItemClickListener { item ->
                 layer.blend = LayerBlend.values()[item.itemId]

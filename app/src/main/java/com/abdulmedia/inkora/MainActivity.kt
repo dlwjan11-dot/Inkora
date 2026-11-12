@@ -26,7 +26,6 @@ import android.view.WindowManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.PopupWindow
 import android.widget.ScrollView
 import android.widget.Toast
@@ -482,22 +481,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val more = Ui.text(this, "•••", 18f, Ui.TEXT_DIM).apply {
             gravity = Gravity.CENTER
             contentDescription = "More tools"
-            setOnClickListener { v ->
-                if (busy()) return@setOnClickListener
-                val pm = PopupMenu(this@MainActivity, v)
-                pm.menu.add(0, 1, 0, "Creative tools")
-                pm.menu.add(0, 2, 1, "Editing tools")
-                pm.menu.add(0, 3, 2, "Rename artwork…")
-                pm.setOnMenuItemClickListener {
-                    when (it.itemId) {
-                        1 -> showToolsMenu(true)
-                        2 -> showToolsMenu(false)
-                        else -> titleView.performClick()
-                    }
-                    true
-                }
-                L10n.menu(pm.menu); pm.show()
-            }
+            setOnClickListener { v -> if (!busy()) showMoreMenu(v) }
         }
         bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
         HoverTip.attach(more) { "More tools" to TipTexts.byName["More tools"] }
@@ -645,7 +629,15 @@ class MainActivity : Activity(), CanvasView.Listener {
         dock = ToolDockView(this,
             onTool = { id, anchor -> runTool(id, anchor) },
             isActive = { id -> isToolActive(id) },
-            onCustomize = { if (!busy()) showToolbarEditor() })
+            onCustomize = { if (!busy()) showToolbarEditor() },
+            isFavorite = { id -> id in dockIds },
+            toggleFavorite = { id -> toggleDock(id) },
+            onSwapSide = { swapDockSide() },
+            onStateChange = { st ->
+                prefs.edit().putString("dock_state", st).apply()
+                applySides()
+            })
+        dock.restoreState(prefs.getString("dock_state", ToolDockView.NORMAL) ?: ToolDockView.NORMAL)
         dock.setTools(dockIds)
         root.addView(dock, FrameLayout.LayoutParams(-2, -2))
         applySides()
@@ -821,8 +813,13 @@ class MainActivity : Activity(), CanvasView.Listener {
                 else -> Gravity.RIGHT or Gravity.CENTER_VERTICAL
             }
             val isHoriz = (dockEdge == "Top" || dockEdge == "Bottom")
+            dock.edge = dockEdge
             dock.setDockOrientation(if (isHoriz) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL)
-            leftMargin = 8.dp; rightMargin = 8.dp; topMargin = if (dockEdge == "Top") 56.dp else 70.dp; bottomMargin = 14.dp
+            // tucked away, the small tab sits right on the edge
+            val m = if (dock.state == ToolDockView.HIDDEN) 0 else 8.dp
+            leftMargin = m; rightMargin = m
+            topMargin = if (dockEdge == "Top") (if (dock.state == ToolDockView.HIDDEN) 57.dp else 64.dp) else 70.dp
+            bottomMargin = if (dockEdge == "Bottom" && dock.state == ToolDockView.HIDDEN) 0 else 14.dp
             dock.layoutParams = this
         }
     }
@@ -900,14 +897,32 @@ class MainActivity : Activity(), CanvasView.Listener {
         saveDock()
     }
 
+    /** the toolbar goes to the other side; the size and opacity sliders swap with it */
+    private fun swapDockSide() {
+        val d = dockEdge()
+        val nd = when (d) { "Left" -> "Right"; "Right" -> "Left"; else -> if (slidersEdge() == "Left") "Right" else "Left" }
+        val ns = if (nd == "Left") "Right" else "Left"
+        prefs.edit().putString("dock_edge", nd).putString("sliders_edge", ns).putBoolean("leftHanded", ns == "Right").apply()
+        leftHanded = ns == "Right"
+        popup?.dismiss()
+        applySides()
+        hud.show(if (nd == "Left") "Toolbar on the left" else "Toolbar on the right")
+    }
+
+    private fun setDockEdge(e: String) {
+        val sl = slidersEdge()
+        val ns = if (e == sl) (if (e == "Left") "Right" else "Left") else sl
+        prefs.edit().putString("dock_edge", e).putString("sliders_edge", ns).putBoolean("leftHanded", ns == "Right").apply()
+        leftHanded = ns == "Right"
+        applySides()
+    }
+
     private fun showToolbarEditor() {
-        val ed = ToolbarEditor(this, dockIds, leftHanded,
+        val ed = ToolbarEditor(this, dockIds, dockEdge(),
             onChange = { list -> dockIds = list.toMutableList(); saveDock() },
-            onLeftHanded = { on ->
-                leftHanded = on
-                prefs.edit().putBoolean("leftHanded", on).remove("dock_edge").remove("sliders_edge").apply()
+            onEdge = { e ->
                 popup?.dismiss()
-                applySides()
+                setDockEdge(e)
                 root.postDelayed({ showToolbarEditor() }, 150)
             })
         showBeside(dock, ed, 380, 640)
@@ -928,7 +943,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun runTool(id: String, anchor: View? = null) {
         if (!cv.isDocReady()) return
         // looking around is always fine; "liquify" itself is how you leave liquify
-        val free = id in setOf("fit", "flip", "focus", "actual_size") || (id == "liquify" && cv.liquify != null)
+        val free = id in setOf("fit", "flip", "focus", "actual_size", "grey_view") || (id == "liquify" && cv.liquify != null)
         if (!free && busy()) return
         val isVector = cv.doc.active.vector != null
         when {
@@ -965,6 +980,10 @@ class MainActivity : Activity(), CanvasView.Listener {
                 addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
             }, REQ_SHADOW_IMAGE)
             id == "actual_size" -> cv.actualSize()
+            id == "comic" -> panelsDialog()
+            id == "bubble" -> bubbleDialog()
+            id == "snapshots" -> showSnapshots()
+            id == "grey_view" -> { cv.greyView = !cv.greyView; cv.invalidate(); hud.show(if (cv.greyView) "Grey view on" else "Grey view off") }
             id == "liquify" -> if (cv.liquify != null) leaveLiquify(true) else enterLiquify()
             id == "gradient" -> if (cv.interaction == Interaction.GRADIENT) leaveGradient() else enterGradient()
             id == "measure" -> if (cv.interaction == Interaction.MEASURE) leaveMeasure() else enterMeasure()
@@ -1019,6 +1038,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "shapes" -> cv.interaction == Interaction.SHAPE
             "fill" -> cv.fillMode
             "recolor" -> cv.recolorMode
+            "grey_view" -> cv.greyView
             "guides" -> cv.doc.guide.type != GuideType.OFF
             "assisted" -> cv.doc.guide.assisted && cv.doc.guide.type != GuideType.OFF
             "quickshape" -> cv.quickShapeEnabled
@@ -2780,7 +2800,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         actions.addBar(barButton("Fill") { cv.fillSelection(cv.color) })
         actions.addBar(barButton("Clear") { cv.clearSelection() })
         actions.addBar(barButton("Feather") {
-            val pm = PopupMenu(this, actions)
+            val pm = InkMenu(this, actions)
             listOf(4, 12, 30, 60).forEachIndexed { i, r -> pm.menu.add(0, r, i, "Feather $r px") }
             pm.setOnMenuItemClickListener { cv.featherSelection(it.itemId.toFloat()); true }
             L10n.menu(pm.menu); pm.show()
@@ -3562,6 +3582,94 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     /** Creative (make things) and Editing (change things), like professional painting apps. */
+    /**
+     * The ••• in the middle of the bar: Creative and Editing side by side, each with its sections
+     * as chips that open the panel right there, and the artwork's name underneath.
+     */
+    private fun showMoreMenu(anchor: View) {
+        popup?.dismiss()
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(10.dp, 10.dp, 10.dp, 8.dp)
+            background = Ui.rounded(Ui.PANEL, 20f, Ui.OUTLINE, 1)
+            layoutDirection = if (L10n.isRtl) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
+        }
+        var pw: PopupWindow? = null
+        val tiles = LinearLayout(this).apply { orientation = if (narrow) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL }
+        fun tile(creative: Boolean): View {
+            val t = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Ui.rounded(Ui.CARD, 16f, Ui.OUTLINE, 1)
+                setPadding(12.dp, 12.dp, 12.dp, 12.dp)
+                foreground = Ui.ripple(16f)
+                isClickable = true
+                setOnClickListener { pw?.dismiss(); showToolsMenu(creative) }
+            }
+            val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            head.addView(IconView(this, if (creative) Icon.SPARKLE else Icon.WAND).apply {
+                isClickable = false; tint = Ui.ACCENT; iconScale = 0.58f
+                background = Ui.rounded(Ui.ACCENT_SOFT, 12f)
+            }, LinearLayout.LayoutParams(44.dp, 44.dp))
+            val texts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(10.dp, 0, 0, 0) }
+            texts.addView(Ui.text(this, if (creative) "Creative" else "Editing", 17f, bold = true))
+            texts.addView(Ui.text(this, if (creative) "Make and add things" else "Change what is there", 12f, Ui.TEXT_DIM))
+            head.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+            t.addView(head)
+            val chips = android.widget.GridLayout(this).apply { columnCount = 3 }
+            val cats = if (creative) listOf("create" to "Create", "color" to "Color", "shapes" to "Shapes", "guides" to "Guides", "symmetry" to "Symmetry", "view" to "View")
+                else listOf("select" to "Select", "transform" to "Transform", "adjust" to "Adjust", "filters" to "Filters")
+            for ((key, label) in cats) {
+                chips.addView(Ui.text(this, label, 12.5f, Ui.TEXT).apply {
+                    gravity = Gravity.CENTER
+                    maxLines = 1
+                    setPadding(6.dp, 7.dp, 6.dp, 7.dp)
+                    background = Ui.rounded(Ui.SUNKEN, 10f)
+                    foreground = Ui.ripple(10f)
+                    setOnClickListener { pw?.dismiss(); showToolsMenu(creative, key) }
+                }, android.widget.GridLayout.LayoutParams().apply {
+                    width = 0
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    setMargins(2.dp, 2.dp, 2.dp, 2.dp)
+                })
+            }
+            t.addView(chips, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 10.dp })
+            return t
+        }
+        if (narrow) {
+            tiles.addView(tile(true), LinearLayout.LayoutParams(-1, -2))
+            tiles.addView(tile(false), LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
+        } else {
+            tiles.addView(tile(true), LinearLayout.LayoutParams(0, -2, 1f))
+            tiles.addView(tile(false), LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = 8.dp })
+        }
+        box.addView(tiles)
+        val rename = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(6.dp, 0, 10.dp, 0)
+            foreground = Ui.ripple(12f)
+            isClickable = true
+            setOnClickListener { pw?.dismiss(); titleView.performClick() }
+        }
+        rename.addView(IconView(this, Icon.EDIT).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.5f }, LinearLayout.LayoutParams(36.dp, 36.dp))
+        rename.addView(Ui.text(this, "Rename artwork…", 14.5f), LinearLayout.LayoutParams(-2, -2).apply { marginStart = 4.dp })
+        rename.addView(Ui.text(this, cv.doc.title.ifBlank { L10n.tr("Untitled Artwork") }, 13f, Ui.TEXT_DIM).apply {
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; gravity = Gravity.END
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = 10.dp })
+        box.addView(rename, LinearLayout.LayoutParams(-1, 44.dp).apply { topMargin = 6.dp })
+        val w = if (narrow) root.width - 16.dp else min(520.dp, root.width - 16.dp)
+        val p = PopupWindow(box, w, ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        p.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        p.isOutsideTouchable = true
+        p.elevation = 18f.dp
+        p.animationStyle = android.R.style.Animation_Dialog
+        pw = p
+        popup = p
+        val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
+        val x = ((root.width - w) / 2).coerceAtLeast(8.dp)
+        p.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x + rootLoc[0], 60.dp + rootLoc[1])
+    }
+
     private fun showToolsMenu(creative: Boolean, category: String? = null) {
         if (!cv.isDocReady()) return
         category?.let { ToolsPanel.select(creative, it) }
@@ -3583,10 +3691,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
         // opens under the Creative / Editing tabs (they sit on the right in Arabic and Kurdish),
         // beside the sliders rather than over them
-        val onRight = leftHanded != L10n.isRtl
-        val sl = slidersEdge()
-        val gap = if ((sl == "Left" && !onRight) || (sl == "Right" && onRight)) sideBar.width + 16.dp else 12.dp
-        val x = (if (onRight) root.width - w - gap else gap).coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
+        // under the ••• in the middle of the bar
+        val x = ((root.width - w) / 2).coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
         pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x + rootLoc[0], 64.dp + rootLoc[1])
     }
 
@@ -3656,7 +3762,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (sel > 0) {
             val combine = barButton("Combine ▾") {}
             combine.setOnClickListener {
-                val pm = PopupMenu(this, combine)
+                val pm = InkMenu(this, combine)
                 BoolOp.values().forEachIndexed { i, o -> pm.menu.add(0, i, i, o.label) }
                 pm.setOnMenuItemClickListener { ed.booleanOp(BoolOp.values()[it.itemId]); true }
                 L10n.menu(pm.menu); pm.show()
@@ -3664,7 +3770,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             acts.addBar(combine)
             val arrange = barButton("Arrange ▾") {}
             arrange.setOnClickListener {
-                val pm = PopupMenu(this, arrange)
+                val pm = InkMenu(this, arrange)
                 listOf("Bring to front" to "front", "Bring forward" to "forward", "Send backward" to "backward", "Send to back" to "back")
                     .forEachIndexed { i, (l, _) -> pm.menu.add(0, i, i, l) }
                 pm.setOnMenuItemClickListener { ed.arrange(listOf("front", "forward", "backward", "back")[it.itemId]); true }
@@ -3673,7 +3779,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             acts.addBar(arrange)
             val align = barButton("Align ▾") {}
             align.setOnClickListener {
-                val pm = PopupMenu(this, align)
+                val pm = InkMenu(this, align)
                 val opts = listOf("Left" to "left", "Center" to "hcenter", "Right" to "right", "Top" to "top", "Middle" to "vcenter", "Bottom" to "bottom")
                 opts.forEachIndexed { i, (l, _) -> pm.menu.add(0, i, i, "Align $l") }
                 pm.setOnMenuItemClickListener { ed.align(opts[it.itemId].second); true }
@@ -3877,7 +3983,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         var font = TextFont.SANS_BOLD
         val fontBtn = Ui.button(this, "Font: ${font.label}") {}
         fontBtn.setOnClickListener {
-            val pm = PopupMenu(this, fontBtn)
+            val pm = InkMenu(this, fontBtn)
             TextFont.values().forEachIndexed { i, f -> pm.menu.add(0, i, i, f.label) }
             pm.setOnMenuItemClickListener { font = TextFont.values()[it.itemId]; fontBtn.text = "Font: ${font.label}"; true }
             L10n.menu(pm.menu); pm.show()
@@ -3935,7 +4041,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         box.addView(preview, LinearLayout.LayoutParams(-1, 190.dp))
         val layoutBtn = Ui.button(this, layout.label) {}
         layoutBtn.setOnClickListener {
-            val pm = PopupMenu(this, layoutBtn)
+            val pm = InkMenu(this, layoutBtn)
             Comics.layouts.forEachIndexed { i, l -> pm.menu.add(0, i, i, l.label) }
             pm.setOnMenuItemClickListener { layout = Comics.layouts[it.itemId]; layoutBtn.text = L10n.tr(layout.label); preview.invalidate(); true }
             L10n.menu(pm.menu); pm.show()
@@ -3973,7 +4079,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         var kind = Comics.Bubble.SPEECH
         val kindBtn = Ui.button(this, kind.label) {}
         kindBtn.setOnClickListener {
-            val pm = PopupMenu(this, kindBtn)
+            val pm = InkMenu(this, kindBtn)
             Comics.Bubble.values().forEachIndexed { i, k -> pm.menu.add(0, i, i, k.label) }
             pm.setOnMenuItemClickListener { kind = Comics.Bubble.values()[it.itemId]; kindBtn.text = L10n.tr(kind.label); true }
             L10n.menu(pm.menu); pm.show()
@@ -3982,7 +4088,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         var font = TextFont.SANS_BOLD
         val fontBtn = Ui.button(this, "Font: ${font.label}") {}
         fontBtn.setOnClickListener {
-            val pm = PopupMenu(this, fontBtn)
+            val pm = InkMenu(this, fontBtn)
             TextFont.values().forEachIndexed { i, f -> pm.menu.add(0, i, i, f.label) }
             pm.setOnMenuItemClickListener { font = TextFont.values()[it.itemId]; fontBtn.text = "Font: ${font.label}"; true }
             L10n.menu(pm.menu); pm.show()
@@ -4056,7 +4162,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onOpen = { id -> openFromGallery(id) },
                 onNew = { newCanvasDialog() },
                 onImport = { anchor ->
-                    val pm = PopupMenu(this, anchor)
+                    val pm = InkMenu(this, anchor)
                     pm.menu.add(0, 1, 1, "Photo as a new artwork…")
                     pm.menu.add(0, 2, 2, "Inkora project or Photoshop file…")
                     pm.menu.add(0, 3, 3, "Restore a backup…")

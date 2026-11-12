@@ -115,7 +115,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             }
             item.addView(IconView(context, t.icon).apply {
                 isClickable = false
-                tint = if (on) Ui.ACCENT else 0xFFB8B8C0.toInt()
+                tint = if (on) Ui.ACCENT else Ui.TEXT_DIM
             }, LayoutParams(32.dp, 32.dp))
             item.addView(Ui.text(context, t.label, 12f, if (on) Ui.TEXT else Ui.TEXT_DIM, on).apply { gravity = Gravity.CENTER })
             tabsRow.addView(item, LayoutParams(0, -2, 1f))
@@ -140,35 +140,56 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             background = Ui.rounded(Ui.PANEL_ROW, 16f)
         }
         rows.forEachIndexed { i, r ->
-            if (i > 0) card.addView(View(context).apply { setBackgroundColor(0x14FFFFFF) }, LayoutParams(-1, 1).apply { marginStart = 16.dp })
+            if (i > 0) card.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(-1, 1).apply { marginStart = 16.dp })
             card.addView(r)
         }
         body.addView(card, LayoutParams(-1, -2).apply { bottomMargin = 10.dp })
     }
 
-    private fun row(label: String, detail: String? = null, enabled: Boolean = true, closes: Boolean = true, run: () -> Unit): View {
+    private fun row(label: String, detail: String? = null, enabled: Boolean = true, closes: Boolean = true, icon: Icon? = null, run: () -> Unit): View {
         val r = LinearLayout(context).apply {
             orientation = VERTICAL
-            setPadding(16.dp, 13.dp, 16.dp, 13.dp)
+            setPadding(16.dp, 12.dp, 16.dp, 12.dp)
             alpha = if (enabled) 1f else 0.4f
             isEnabled = enabled
             if (enabled) setOnClickListener { if (closes) host.close(); run() }
             background = android.graphics.drawable.RippleDrawable(
                 android.content.res.ColorStateList.valueOf(0x22FFFFFF), null, Ui.rounded(0xFFFFFFFF.toInt(), 16f))
         }
-        r.addView(Ui.text(context, label, 16f))
+        r.addView(Ui.text(context, label, 15.5f))
         if (detail != null) r.addView(Ui.text(context, detail, 12f, Ui.TEXT_DIM))
+        return withIcon(r, icon, enabled)
+    }
+
+    /** puts a small icon in front of a row (the row keeps its click and ripple) */
+    private fun withIcon(r: LinearLayout, icon: Icon?, enabled: Boolean = true): View {
+        if (icon == null) return r
+        val texts = LinearLayout(context).apply { orientation = r.orientation; gravity = r.gravity }
+        while (r.childCount > 0) { val c = r.getChildAt(0); val lp = c.layoutParams; r.removeViewAt(0); texts.addView(c, lp) }
+        r.orientation = HORIZONTAL
+        r.gravity = Gravity.CENTER_VERTICAL
+        r.setPadding(10.dp, r.paddingTop, r.paddingRight, r.paddingBottom)
+        r.addView(IconView(context, icon).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.56f; isEnabled = enabled },
+            LayoutParams(34.dp, 34.dp))
+        r.addView(texts, LayoutParams(0, -2, 1f).apply { marginStart = 10.dp })
         return r
     }
 
-    private fun switchRow(label: String, detail: String? = null, on: Boolean, onChange: (Boolean) -> Unit): View {
+    /** a small heading over a group of cards */
+    private fun section(title: String) {
+        body.addView(Ui.caption(context, title).apply { setPadding(12.dp, 8.dp, 0, 6.dp) })
+    }
+
+    private fun switchRow(label: String, detail: String? = null, on: Boolean, icon: Icon? = null, onChange: (Boolean) -> Unit): View {
         val r = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(16.dp, 10.dp, 14.dp, 10.dp)
+            setPadding(if (icon != null) 10.dp else 16.dp, 10.dp, 14.dp, 10.dp)
         }
+        if (icon != null) r.addView(IconView(context, icon).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.56f },
+            LayoutParams(34.dp, 34.dp).apply { marginEnd = 10.dp })
         val texts = LinearLayout(context).apply { orientation = VERTICAL }
-        texts.addView(Ui.text(context, label, 16f))
+        texts.addView(Ui.text(context, label, 15.5f))
         if (detail != null) texts.addView(Ui.text(context, detail, 12f, Ui.TEXT_DIM))
         r.addView(texts, LayoutParams(0, -2, 1f))
         val sw = SwitchView(context).apply { checked = on; onToggle = onChange }
@@ -178,9 +199,14 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     }
 
     /** a label over a row of choices, one of them chosen */
-    private fun choiceRow(label: String, options: List<Pair<String, String>>, chosen: String, onPick: (String) -> Unit): View {
+    private fun choiceRow(label: String, options: List<Pair<String, String>>, chosen: String, icon: Icon? = null, onPick: (String) -> Unit): View {
         val r = LinearLayout(context).apply { orientation = VERTICAL; setPadding(16.dp, 12.dp, 16.dp, 12.dp) }
-        r.addView(Ui.text(context, label, 16f))
+        if (icon != null) {
+            val h = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(-6.dp, 0, 0, 0) }
+            h.addView(IconView(context, icon).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.56f }, LayoutParams(34.dp, 34.dp).apply { marginEnd = 10.dp })
+            h.addView(Ui.text(context, label, 15.5f))
+            r.addView(h)
+        } else r.addView(Ui.text(context, label, 15.5f))
         val seg = LinearLayout(context).apply {
             orientation = HORIZONTAL
             background = Ui.rounded(Ui.SUNKEN, 12f)
@@ -213,134 +239,127 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
 
     private fun buildAdd() {
         group(
-            row("Insert a photo", "As a new layer") { host.insertPhoto() },
-            row("Add text", "Any language, 9 fonts") { host.addText() },
-            row("Open a project file", ".inkora from Inkora, or .psd from Photoshop") { host.openProjectFile() }
+            row("Insert a photo", "As a new layer", icon = Icon.PHOTO) { host.insertPhoto() },
+            row("Add text", "Any language, 9 fonts", icon = Icon.TEXT) { host.addText() },
+            row("Open a project file", ".inkora from Inkora, or .psd from Photoshop", icon = Icon.FOLDER) { host.openProjectFile() }
         )
         group(
-            row("Comic panels…", "Frames for a comic page, on a new layer") { host.comicPanels() },
-            row("Speech bubble…", "Speech, thought, shout or a caption box") { host.speechBubble() }
+            row("Comic panels…", "Frames for a comic page, on a new layer", icon = Icon.COMIC) { host.comicPanels() },
+            row("Speech bubble…", "Speech, thought, shout or a caption box", icon = Icon.BUBBLE) { host.speechBubble() }
         )
         group(
-            row("Import brushes…", "Procreate .brush and .brushset, .zip, or PNG stamps") { host.importBrushes() },
-            row("Import brushes from a link…", "Google Drive and Dropbox links work too") { host.importBrushesFromLink() }
+            row("Import brushes…", "Procreate .brush and .brushset, .zip, or PNG stamps", icon = Icon.IMPORT) { host.importBrushes() },
+            row("Import brushes from a link…", "Google Drive and Dropbox links work too", icon = Icon.GLOBE) { host.importBrushesFromLink() }
         )
         val hasSel = cv.selection != null
+        section("Copy and paste")
         group(
-            row("Cut", if (hasSel) "The selection" else "The whole layer") { host.copyPaste("cut") },
-            row("Copy", if (hasSel) "The selection" else "The whole layer") { host.copyPaste("copy") },
-            row("Paste", "As a new layer", enabled = cv.hasClipboard) { host.copyPaste("paste") },
-            row("Duplicate layer") { host.copyPaste("duplicate") }
+            row("Cut", if (hasSel) "The selection" else "The whole layer", icon = Icon.CLOSE) { host.copyPaste("cut") },
+            row("Copy", if (hasSel) "The selection" else "The whole layer", icon = Icon.COPY) { host.copyPaste("copy") },
+            row("Paste", "As a new layer", enabled = cv.hasClipboard, icon = Icon.EXPORT) { host.copyPaste("paste") },
+            row("Duplicate layer", icon = Icon.LAYERS) { host.copyPaste("duplicate") }
         )
     }
 
     private fun buildCanvas() {
         val d = cv.doc
         val g = d.guide
-        group(row("Crop & Resize", "Canvas size, resize, crop, rotate") { host.cropResize() })
         group(
-            row("New canvas…") { host.newCanvas() },
-            row("Rename artwork…", d.title.ifBlank { L10n.tr("Untitled Artwork") }) { host.renameArtwork() },
-            row("Snapshots", "Keep this moment of the artwork, and come back to it later") { host.openSnapshots() }
+            row("Crop & Resize", "Canvas size, resize, crop, rotate", icon = Icon.CROP) { host.cropResize() },
+            row("New canvas…", icon = Icon.NEW_CANVAS) { host.newCanvas() },
+            row("Rename artwork…", d.title.ifBlank { L10n.tr("Untitled Artwork") }, icon = Icon.EDIT) { host.renameArtwork() },
+            row("Snapshots", "Keep this moment of the artwork, and come back to it later", icon = Icon.SNAPSHOT) { host.openSnapshots() }
         )
+        section("Drawing help")
         group(
-            switchRow("Drawing guide", "Grids and perspective", g.type != GuideType.OFF) { on ->
+            switchRow("Drawing guide", "Grids and perspective", g.type != GuideType.OFF, icon = Icon.GRID) { on ->
                 if (on) { host.close(); host.editGuide() } else { g.type = GuideType.OFF; d.revision++; cv.invalidate(); rebuild() }
             },
-            row("Edit drawing guide", enabled = true) { host.editGuide() },
-            switchRow("Assisted drawing", "Strokes follow the drawing guide", g.assisted && g.type != GuideType.OFF) { on ->
+            row("Edit drawing guide", enabled = true, icon = Icon.EDIT) { host.editGuide() },
+            switchRow("Assisted drawing", "Strokes follow the drawing guide", g.assisted && g.type != GuideType.OFF, icon = Icon.RULER) { on ->
                 if (g.type == GuideType.OFF) { host.close(); host.editGuide() }
                 else { g.assisted = on; d.revision++; cv.invalidate() }
             },
-            row("Symmetry…") { host.showSymmetry() }
+            row("Symmetry…", icon = Icon.SYMMETRY) { host.showSymmetry() }
         )
+        section("Windows and views")
         group(
-            switchRow("Reference", "A window with a photo to look at", host.isWindowOpen("reference")) { host.toggleWindow("reference") },
-            switchRow("Navigator", "The whole artwork in a small window", host.isWindowOpen("navigator")) { host.toggleWindow("navigator") },
-            switchRow("Lighting", "A light to check your shading", host.isWindowOpen("lighting")) { host.toggleWindow("lighting") },
-            switchRow("Grey view", "Shows the artwork in greys, to check values", cv.greyView) { cv.greyView = it }
+            switchRow("Reference", "A window with a photo to look at", host.isWindowOpen("reference"), icon = Icon.REFERENCE) { host.toggleWindow("reference") },
+            switchRow("Navigator", "The whole artwork in a small window", host.isWindowOpen("navigator"), icon = Icon.NAVIGATOR) { host.toggleWindow("navigator") },
+            switchRow("Lighting", "A light to check your shading", host.isWindowOpen("lighting"), icon = Icon.ORB) { host.toggleWindow("lighting") },
+            switchRow("Grey view", "Shows the artwork in greys, to check values", cv.greyView, icon = Icon.BW) { cv.greyView = it }
         )
+        section("Flip and fit")
         group(
-            row("Flip horizontal") { host.flipCanvasContent(true) },
-            row("Flip vertical") { host.flipCanvasContent(false) },
-            row("Flip the view", "Only how you see it, to check your drawing", closes = false) { host.flipCanvas() },
-            row("Fit canvas to screen") { host.fitCanvas() }
+            row("Flip horizontal", icon = Icon.FLIP) { host.flipCanvasContent(true) },
+            row("Flip vertical", icon = Icon.FLIP) { host.flipCanvasContent(false) },
+            row("Flip the view", "Only how you see it, to check your drawing", closes = false, icon = Icon.EYE) { host.flipCanvas() },
+            row("Fit canvas to screen", icon = Icon.FIT) { host.fitCanvas() }
         )
-        group(row("Canvas information") { host.canvasInfo() })
+        group(row("Canvas information", icon = Icon.INFO) { host.canvasInfo() })
         val layers = d.layers.size
         note(String.format(Locale.US, "%d × %d px · %s %d / %d", d.width, d.height, L10n.tr("Layers"), layers, d.maxLayers()))
     }
 
     private fun buildShare() {
         group(
-            row("Share image…", "PNG, to any app") { host.export("share") },
-            row("Save PNG to Gallery") { host.export("png") },
-            row("Save JPEG to Gallery") { host.export("jpeg") },
-            row("Export SVG…", "Vector layers, for logos") { host.export("svg") }
+            row("Share image…", "PNG, to any app", icon = Icon.SHARE) { host.export("share") },
+            row("Save PNG to Gallery", icon = Icon.PHOTO) { host.export("png") },
+            row("Save JPEG to Gallery", icon = Icon.PHOTO) { host.export("jpeg") },
+            row("Export SVG…", "Vector layers, for logos", icon = Icon.VECTOR) { host.export("svg") }
         )
+        section("With layers")
         group(
-            row("Save project (.inkora)…", "Keeps every layer, to open again in Inkora") { host.export("project") },
-            row("Photoshop (.psd)…", "With your layers, for Photoshop and other apps") { host.export("psd") },
-            row("PDF…", "For printing and sending") { host.export("pdf") },
-            row("TIFF…", "Full quality, with transparency, for print shops") { host.export("tiff") }
+            row("Save project (.inkora)…", "Keeps every layer, to open again in Inkora", icon = Icon.FOLDER) { host.export("project") },
+            row("Photoshop (.psd)…", "With your layers, for Photoshop and other apps", icon = Icon.LAYERS) { host.export("psd") },
+            row("PDF…", "For printing and sending", icon = Icon.EXPORT) { host.export("pdf") },
+            row("TIFF…", "Full quality, with transparency, for print shops", icon = Icon.EXPORT) { host.export("tiff") }
         )
+        section("Keep your artworks safe")
         group(
-            row("Back up all artworks…", host.backupNote()) { host.backupAll() },
-            row("Restore a backup…", "Brings artworks back from a backup file; nothing here is lost") { host.restoreBackup() }
+            row("Back up all artworks…", host.backupNote(), icon = Icon.BACKUP) { host.backupAll() },
+            row("Restore a backup…", "Brings artworks back from a backup file; nothing here is lost", icon = Icon.SNAPSHOT) { host.restoreBackup() }
         )
     }
 
     private fun buildVideo() {
         group(
-            switchRow("Time-lapse recording", "Records every stroke of this artwork", host.timeLapseOn) { on ->
+            switchRow("Time-lapse recording", "Records every stroke of this artwork", host.timeLapseOn, icon = Icon.CLOCK) { on ->
                 host.timeLapseOn = on
                 host.prefs.edit().putBoolean("timelapse", on).apply()
             },
-            row("Export time-lapse video…", "An MP4 of how the artwork was made") { host.exportTimeLapse() }
+            row("Export time-lapse video…", "An MP4 of how the artwork was made", icon = Icon.VIDEO) { host.exportTimeLapse() }
         )
     }
 
     private fun buildPrefs() {
         val langs = listOf(L10n.EN to "English", L10n.AR to "العربية", L10n.CKB to "کوردی")
-        group(choiceRow("Language", langs, L10n.lang) { code -> host.close(); host.setLanguage(code) })
-
         val dock = host.dockEdge()
         val sliders = host.slidersEdge()
+
+        section("Interface")
         group(
-            choiceRow("Toolbar", listOf("Left" to "Left", "Right" to "Right", "Top" to "Top", "Bottom" to "Bottom"), dock) { e ->
+            choiceRow("Language", langs, L10n.lang, icon = Icon.GLOBE) { code -> host.close(); host.setLanguage(code) },
+            switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it }
+        )
+        section("Layout")
+        group(
+            choiceRow("Toolbar", listOf("Left" to "Left", "Right" to "Right", "Top" to "Top", "Bottom" to "Bottom"), dock, icon = Icon.LAYOUT) { e ->
                 // the toolbar and the sliders never share a side
                 val s = if (e == sliders) (if (e == "Left") "Right" else "Left") else sliders
                 host.setEdges(e, s); rebuild()
             },
-            choiceRow("Size and opacity sliders", listOf("Left" to "Left", "Right" to "Right"), sliders) { e ->
+            choiceRow("Size and opacity sliders", listOf("Left" to "Left", "Right" to "Right"), sliders, icon = Icon.ADJUST) { e ->
                 val dk = if (dock == e) (if (e == "Left") "Right" else "Left") else dock
                 host.setEdges(dk, e); rebuild()
-            }
-        )
-
-        group(
-            switchRow("Right-hand interface", "Size and opacity sliders on the right", sliders == "Right") { on ->
-                val s = if (on) "Right" else "Left"
-                val dk = if (dock == s) (if (s == "Left") "Right" else "Left") else dock
-                host.setEdges(dk, s); rebuild()
             },
-            switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface) { host.lightInterface = it },
-            switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor) { host.brushCursor = it },
-            switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying) { host.watercolorDrying = it },
-            switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed) { host.wetBleed = it },
-            switchRow("Size & Opacity sidebar", null, host.sidebarShown) { host.sidebarShown = it }
+            switchRow("Size & Opacity sidebar", "Hide it if you only change them with gestures", host.sidebarShown, icon = Icon.EYE) { host.sidebarShown = it }
         )
+        section("Painting")
         group(
-            row("Pressure and Smoothing", closes = false) { page = "pressure"; rebuild() },
-            row("Gesture controls", "What fingers, the S Pen and □ do") { host.openGestureControls() }
-        )
-        group(
-            sliderRow("S Pen button hold time", ((cv.penHoldMs - 400L) / 1600f).coerceIn(0f, 1f),
-                { String.format(Locale.US, "%.2f s", it * 1.6f + 0.4f) }) { v ->
-                val ms = ((v * 1.6f + 0.4f) * 1000).toLong()
-                cv.penHoldMs = ms
-                host.prefs.edit().putLong("penHoldMs", ms).apply()
-            },
+            switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor, icon = Icon.BRUSH) { host.brushCursor = it },
+            switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying, icon = Icon.DROP) { host.watercolorDrying = it },
+            switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed, icon = Icon.INK) { host.wetBleed = it },
             sliderRow("ColorDrop fill sensitivity", cv.fillThreshold, { "${(it * 100).roundToInt()}%" }) { v ->
                 cv.fillThreshold = v
                 host.prefs.edit().putFloat("fillThreshold", v).apply()
@@ -351,7 +370,17 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
                 host.prefs.edit().putFloat("selectionShade", cv.selectionShade).apply()
             }
         )
-        group(row("Keyboard shortcuts") { host.openShortcuts() })
+        section("Pen and touch")
+        group(
+            row("Pressure and Smoothing", closes = false, icon = Icon.PRESSURE) { page = "pressure"; rebuild() },
+            row("Gesture controls", "What fingers, the S Pen and □ do", icon = Icon.TOUCH) { host.openGestureControls() },
+            sliderRow("S Pen button hold time", ((cv.penHoldMs - 400L) / 1600f).coerceIn(0f, 1f),
+                { String.format(Locale.US, "%.2f s", it * 1.6f + 0.4f) }) { v ->
+                val ms = ((v * 1.6f + 0.4f) * 1000).toLong()
+                cv.penHoldMs = ms
+                host.prefs.edit().putLong("penHoldMs", ms).apply()
+            }
+        )
     }
 
     /** Prefs › Pressure and Smoothing */
@@ -378,12 +407,13 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
 
     private fun buildHelp() {
         group(
-            row("Guide", "Everything Inkora can do, and the gestures that get you there") { host.openGuide() },
-            row("Shortcuts, shown", "Every gesture as a small moving picture") { host.openDemos() },
-            row("Gesture controls", "Change what each gesture does") { host.openGestureControls() },
-            row("Keyboard shortcuts", "Or hold Ctrl on a keyboard") { host.openShortcuts() },
-            row("Take the tour again") { host.showTips() },
-            row("Open-source licenses", "The MyPaint brush engine and json-c") { host.openLicenses() }
+            row("Guide", "Everything Inkora can do, and the gestures that get you there", icon = Icon.LIGHTBULB) { host.openGuide() },
+            row("Shortcuts, shown", "Every gesture as a small moving picture", icon = Icon.VIDEO) { host.openDemos() },
+            row("Keyboard shortcuts", "Or hold Ctrl on a keyboard", icon = Icon.KEYBOARD) { host.openShortcuts() },
+            row("Take the tour again", icon = Icon.HELP) { host.showTips() }
+        )
+        group(
+            row("Open-source licenses", "The MyPaint brush engine and json-c", icon = Icon.INFO) { host.openLicenses() }
         )
         val lines = listOf(
             "Two-finger pinch" to "Zoom, move and turn the canvas",

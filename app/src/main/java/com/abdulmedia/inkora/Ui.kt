@@ -111,8 +111,8 @@ object Ui {
 
     fun toast(ctx: Context, s: String) = android.widget.Toast.makeText(ctx, L10n.tr(s), android.widget.Toast.LENGTH_SHORT).show()
 
-    /** small uppercase section label */
-    fun caption(ctx: Context, s: String) = text(ctx, s.uppercase(), 10.5f, TEXT_DIM, true).apply { letterSpacing = 0.08f }
+    /** small section label */
+    fun caption(ctx: Context, s: String) = text(ctx, s, 12.5f, TEXT_DIM, true)
 
     /** thin divider line */
     fun divider(ctx: Context) = View(ctx).apply { setBackgroundColor(DIVIDER) }
@@ -150,7 +150,8 @@ enum class Icon { BRUSH, ERASER, LAYERS, ACTIONS, UNDO, REDO, SYMMETRY, EYEDROPP
     RULER, SHAPE, BLUR, INVERT, CONTRAST, NOISE, POSTERIZE, BW, SHARPEN, HUE, BALANCE,
     SEL_RECT, SEL_ELLIPSE, SEL_ALL, DESELECT, SEL_INVERT, FEATHER, ROTATE, CUSTOMIZE, DRAG, EXPORT, CLOCK, COPY,
     NAVIGATOR, ORB, REFERENCE, GLOBE, LIGHTBULB,
-    WHEEL, HAND, KEYBOARD, VIDEO, HELP, MODIFY, INK, PENCIL, NIB, PALETTE, DROP, SPRAY, TEXTURE, PIXEL, FOLDER, CLEAR, WRENCH, CURSOR, CUBE }
+    WHEEL, HAND, KEYBOARD, VIDEO, HELP, MODIFY, INK, PENCIL, NIB, PALETTE, DROP, SPRAY, TEXTURE, PIXEL, FOLDER, CLEAR, WRENCH, CURSOR, CUBE,
+    GRADIENT, RECOLOR, MEASURE, QUICKSHAPE, TRACE, CROP, ACTUAL, SEL_COLOR, SEL_BRUSH, LIQUIFY, COMIC, BUBBLE, SNAPSHOT, BACKUP, IMPORT, NEW_CANVAS, INFO, PRESSURE, CHEV_LEFT, CHEV_RIGHT, EXPAND, SWAP_SIDE, HIDE, TOUCH, LAYOUT, SUN }
 
 
 /** Toolbar button showing one icon. */

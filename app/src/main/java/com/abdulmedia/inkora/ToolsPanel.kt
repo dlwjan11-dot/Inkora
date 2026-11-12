@@ -59,10 +59,11 @@ class ToolsPanel(
 
     private val creativeCats = listOf(
         Cat("create", "Create", Icon.SPARKLE, "Add new things to your artwork"),
-        Cat("guides", "Guides", Icon.GRID, "Grids and perspective help you draw straight"),
+        Cat("color", "Color", Icon.PALETTE, "Fill, blend and pick colors"),
         Cat("shapes", "Shapes", Icon.SHAPE, "Perfect lines, circles and vector shapes"),
+        Cat("guides", "Guides", Icon.GRID, "Grids and perspective help you draw straight"),
         Cat("symmetry", "Symmetry", Icon.SYMMETRY, "Every stroke is mirrored live"),
-        Cat("view", "View", Icon.FIT, "See your canvas differently")
+        Cat("view", "View", Icon.EYE, "See your canvas differently")
     )
     private val editingCats = listOf(
         Cat("select", "Select", Icon.SELECT, "Pick a part of the layer to work on"),
@@ -103,16 +104,26 @@ class ToolsPanel(
         addView(Ui.divider(context), LayoutParams(-1, 1.dp))
 
         // ---- body ----
-        val body = LinearLayout(context).apply { orientation = HORIZONTAL }
-        catColumn.orientation = VERTICAL
-        catColumn.setPadding(8.dp, 10.dp, 8.dp, 10.dp)
-        body.addView(catColumn, LayoutParams(if (context.narrow) 104.dp else 150.dp, -1))
-        body.addView(Ui.divider(context), LayoutParams(1.dp, -1))
+        val body = LinearLayout(context).apply { orientation = if (context.narrow) VERTICAL else HORIZONTAL }
+        if (context.narrow) {
+            // phones: the categories are a row of chips you can slide
+            catColumn.orientation = HORIZONTAL
+            catColumn.setPadding(8.dp, 8.dp, 8.dp, 8.dp)
+            val hs = android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(catColumn) }
+            body.addView(hs, LayoutParams(-1, -2))
+            body.addView(Ui.divider(context), LayoutParams(-1, 1.dp))
+        } else {
+            catColumn.orientation = VERTICAL
+            catColumn.setPadding(10.dp, 12.dp, 10.dp, 10.dp)
+            catColumn.background = android.graphics.drawable.ColorDrawable((Ui.SUNKEN and 0x00FFFFFF) or 0x55000000)
+            body.addView(catColumn, LayoutParams(168.dp, -1))
+            body.addView(Ui.divider(context), LayoutParams(1.dp, -1))
+        }
         content.orientation = VERTICAL
-        if (context.narrow) content.setPadding(8.dp, 10.dp, 8.dp, 14.dp) else content.setPadding(16.dp, 14.dp, 16.dp, 18.dp)
+        if (context.narrow) content.setPadding(10.dp, 12.dp, 10.dp, 16.dp) else content.setPadding(18.dp, 16.dp, 18.dp, 20.dp)
         scroll.addView(content)
         scroll.isVerticalScrollBarEnabled = false
-        body.addView(scroll, LayoutParams(0, -1, 1f))
+        body.addView(scroll, if (context.narrow) LayoutParams(-1, 0, 1f) else LayoutParams(0, -1, 1f))
         addView(body, LayoutParams(-1, 0, 1f))
 
         rebuild()
@@ -152,24 +163,29 @@ class ToolsPanel(
             val row = LinearLayout(context).apply {
                 orientation = HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(6.dp, 0, 6.dp, 0)
-                background = if (on) Ui.rounded(Ui.ACCENT_SOFT, 12f) else null
+                setPadding(6.dp, 0, if (context.narrow) 14.dp else 6.dp, 0)
+                background = if (on) Ui.rounded(Ui.ACCENT_SOFT, if (context.narrow) 18f else 12f)
+                    else if (context.narrow) Ui.rounded(Ui.CARD, 18f) else null
+                foreground = Ui.ripple(12f)
                 setOnClickListener {
                     if (creative) lastCreative = c.key else lastEditing = c.key
                     rebuild()
                 }
             }
-            row.addView(IconView(context, c.icon).apply { isClickable = false; tint = if (on) Ui.ACCENT else Ui.TEXT }, LayoutParams(34.dp, 34.dp))
-            row.addView(Ui.text(context, c.label, 14f, if (on) Ui.ACCENT else Ui.TEXT, on), LayoutParams(0, -2, 1f).apply { leftMargin = 4.dp })
-            catColumn.addView(row, LayoutParams(-1, 46.dp).apply { bottomMargin = 2.dp })
+            row.addView(IconView(context, c.icon).apply { isClickable = false; tint = if (on) Ui.ACCENT else Ui.TEXT_DIM }, LayoutParams(34.dp, 34.dp))
+            row.addView(Ui.text(context, c.label, 14.5f, if (on) Ui.ACCENT else Ui.TEXT, on),
+                if (context.narrow) LayoutParams(-2, -2) else LayoutParams(0, -2, 1f).apply { leftMargin = 6.dp })
+            if (context.narrow) catColumn.addView(row, LayoutParams(-2, 38.dp).apply { marginEnd = 6.dp })
+            else catColumn.addView(row, LayoutParams(-1, 48.dp).apply { bottomMargin = 3.dp })
         }
         // content
         content.removeAllViews()
         val cat = cats().firstOrNull { it.key == cur } ?: cats().first()
-        content.addView(Ui.text(context, cat.label, 20f, bold = true))
-        content.addView(Ui.text(context, cat.hint, 12.5f, Ui.TEXT_DIM).apply { setPadding(0, 2.dp, 0, 12.dp) })
+        if (!context.narrow) content.addView(Ui.text(context, cat.label, 21f, bold = true).apply { setPadding(4.dp, 0, 0, 0) })
+        content.addView(Ui.text(context, cat.hint, 12.5f, Ui.TEXT_DIM).apply { setPadding(4.dp, 2.dp, 0, 10.dp) })
         when (cur) {
             "create" -> buildCreate()
+            "color" -> buildColor()
             "guides" -> buildGuides()
             "shapes" -> buildShapes()
             "symmetry" -> buildSymmetry()
@@ -224,7 +240,7 @@ class ToolsPanel(
         }, FrameLayout.LayoutParams(46.dp, 46.dp, Gravity.CENTER))
         if (id != null) {
             val star = IconView(context, if (host.inDock(id)) Icon.STAR_FILLED else Icon.STAR).apply {
-                tint = if (host.inDock(id)) Ui.ACCENT else 0x99FFFFFF.toInt()
+                tint = if (host.inDock(id)) Ui.ACCENT else Ui.TEXT_DIM
                 iconScale = 0.55f
                 contentDescription = "Add to toolbar"
             }
@@ -232,7 +248,7 @@ class ToolsPanel(
                 host.toggleDock(id)
                 val on = host.inDock(id)
                 star.icon = if (on) Icon.STAR_FILLED else Icon.STAR
-                star.tint = if (on) Ui.ACCENT else 0x99FFFFFF.toInt()
+                star.tint = if (on) Ui.ACCENT else Ui.TEXT_DIM
             }
             top.addView(star, FrameLayout.LayoutParams(34.dp, 34.dp, Gravity.TOP or Gravity.END))
         }
@@ -247,6 +263,65 @@ class ToolsPanel(
         if (sub.isNotEmpty()) box.addView(Ui.text(context, sub, 11f, Ui.TEXT_DIM).apply { maxLines = 2; setPadding(4.dp, 1.dp, 4.dp, 0) })
         return box
     }
+
+    /**
+     * A tool as one tidy row: its icon in a soft square, the name and what it does, and ☆ to keep
+     * it in the toolbar. Tapping runs it.
+     */
+    private fun toolRow(id: String, closeAfter: Boolean = true): View {
+        val d = ToolCatalog.byId.getValue(id)
+        val active = host.isActive(id)
+        val row = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.rounded(if (active) Ui.PANEL_ROW_ACTIVE else Ui.CARD, 14f, if (active) Ui.ACCENT else Ui.OUTLINE, 1)
+            setPadding(8.dp, 8.dp, 4.dp, 8.dp)
+            foreground = Ui.ripple(14f)
+            isClickable = true
+            setOnClickListener {
+                if (closeAfter) host.close()
+                host.run(id)
+                if (!closeAfter) rebuild()
+            }
+        }
+        row.addView(IconView(context, d.icon).apply {
+            isClickable = false
+            background = Ui.rounded(if (active) Ui.ACCENT_SOFT else Ui.SUNKEN, 11f)
+            tint = if (active) Ui.ACCENT else Ui.TEXT
+            iconScale = 0.56f
+        }, LayoutParams(42.dp, 42.dp))
+        val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(10.dp, 0, 4.dp, 0) }
+        texts.addView(Ui.text(context, d.label, 14f, if (active) Ui.ACCENT else Ui.TEXT, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        if (d.hint.isNotEmpty()) texts.addView(Ui.text(context, d.hint, 11.5f, Ui.TEXT_DIM).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        row.addView(texts, LayoutParams(0, -2, 1f))
+        val inDock = host.inDock(id)
+        val star = IconView(context, if (inDock) Icon.STAR_FILLED else Icon.STAR).apply {
+            tint = if (inDock) Ui.ACCENT else Ui.TEXT_DIM
+            iconScale = 0.5f
+            contentDescription = "Add to toolbar"
+        }
+        star.setOnClickListener {
+            host.toggleDock(id)
+            val on = host.inDock(id)
+            star.icon = if (on) Icon.STAR_FILLED else Icon.STAR
+            star.tint = if (on) Ui.ACCENT else Ui.TEXT_DIM
+        }
+        row.addView(star, LayoutParams(38.dp, 38.dp))
+        return row
+    }
+
+    /** tool rows, two side by side on a tablet */
+    private fun rows(ids: List<String>, closeAfter: Boolean = true) {
+        val g = GridLayout(context).apply { columnCount = if (context.narrow) 1 else 2 }
+        for (id in ids) g.addView(toolRow(id, closeAfter), GridLayout.LayoutParams().apply {
+            width = 0
+            columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1f)
+            setMargins(4.dp, 4.dp, 4.dp, 4.dp)
+        })
+        content.addView(g, LayoutParams(-1, -2))
+    }
+
+    private fun tip(s: String) = content.addView(Ui.text(context, s, 12f, Ui.TEXT_DIM).apply { setPadding(6.dp, 10.dp, 6.dp, 0) })
 
     private fun toolCard(id: String, active: Boolean = host.isActive(id), closeAfter: Boolean = true): View {
         val d = ToolCatalog.byId.getValue(id)
@@ -271,13 +346,13 @@ class ToolsPanel(
         row.addView(texts, LayoutParams(0, -2, 1f))
         if (dockId != null) {
             val star = IconView(context, if (host.inDock(dockId)) Icon.STAR_FILLED else Icon.STAR).apply {
-                tint = if (host.inDock(dockId)) Ui.ACCENT else 0x99FFFFFF.toInt(); iconScale = 0.55f
+                tint = if (host.inDock(dockId)) Ui.ACCENT else Ui.TEXT_DIM; iconScale = 0.55f
             }
             star.setOnClickListener {
                 host.toggleDock(dockId)
                 val on = host.inDock(dockId)
                 star.icon = if (on) Icon.STAR_FILLED else Icon.STAR
-                star.tint = if (on) Ui.ACCENT else 0x99FFFFFF.toInt()
+                star.tint = if (on) Ui.ACCENT else Ui.TEXT_DIM
             }
             row.addView(star, LayoutParams(36.dp, 36.dp))
         }
@@ -290,9 +365,14 @@ class ToolsPanel(
     // =========================================================
 
     private fun buildCreate() {
-        grid(listOf(toolCard("shapes"), toolCard("text"), toolCard("photo"), toolCard("vector"), toolCard("pose3d"), toolCard("shadow_photo"), toolCard("fill"), toolCard("gradient"), toolCard("recolor"), toolCard("eyedropper"), toolCard("palette_photo"), toolCard("measure")))
-        content.addView(Ui.text(context, "Tip: drag the color circle (top right) onto an area to fill it with ColorDrop.", 12f, Ui.TEXT_DIM)
-            .apply { setPadding(4.dp, 12.dp, 4.dp, 0) })
+        rows(listOf("shapes", "text", "photo", "shadow_photo"))
+        caption("Bigger things")
+        rows(listOf("vector", "pose3d", "comic", "bubble"))
+    }
+
+    private fun buildColor() {
+        rows(listOf("fill", "gradient", "recolor", "eyedropper", "palette_photo"))
+        tip("Tip: drag the color circle (top right) onto an area to fill it with ColorDrop.")
     }
 
     private fun buildGuides() {
@@ -313,16 +393,17 @@ class ToolsPanel(
         }, LayoutParams(-1, -2).apply { topMargin = 12.dp })
         content.addView(Ui.pill(context, "Size, color & vanishing points…") { host.openGuideSettings() },
             LayoutParams(-1, -2).apply { topMargin = 10.dp })
+        caption("Measure")
+        rows(listOf("measure"))
     }
 
     private fun buildShapes() {
-        content.addView(switchRow(Icon.SHAPE, "QuickShape", "Hold the pen still at the end of a stroke", host.quickShape, "quickshape") {
+        rows(listOf("shapes"))
+        content.addView(switchRow(Icon.QUICKSHAPE, "QuickShape", "Hold the pen still at the end of a stroke", host.quickShape, "quickshape") {
             host.run("quickshape")
-        })
+        }, LayoutParams(-1, -2).apply { topMargin = 8.dp; leftMargin = 4.dp; rightMargin = 4.dp })
         caption("Vector")
-        grid(listOf(
-            card("vector", "Pen & shapes", "Bézier pen, rectangles, stars…", Icon.V_PEN, host.isVectorLayer) { host.close(); host.run("vector") }
-        ))
+        rows(listOf("vector"))
     }
 
     private fun buildSymmetry() {
@@ -359,9 +440,11 @@ class ToolsPanel(
     }
 
     private fun buildView() {
-        grid(listOf(toolCard("fit"), toolCard("actual_size"), toolCard("flip"), toolCard("focus")), 4)
+        rows(listOf("fit", "actual_size", "flip", "grey_view", "focus"))
         caption("Floating windows")
-        grid(listOf(toolCard("navigator"), toolCard("reference"), toolCard("lighting")))
+        rows(listOf("navigator", "reference", "lighting"))
+        caption("Keep a moment")
+        rows(listOf("snapshots"))
     }
 
     // =========================================================
@@ -370,12 +453,10 @@ class ToolsPanel(
 
     private fun buildSelect() {
         caption("Selection mode")
-        grid(listOf(toolCard("sel_free"), toolCard("sel_rect"), toolCard("sel_ellipse"),
-            toolCard("sel_wand"), toolCard("sel_color"), toolCard("sel_brush")))
-        content.addView(Ui.text(context, "New, Add and Subtract are in the selection bar at the bottom.", 12f, Ui.TEXT_DIM)
-            .apply { setPadding(4.dp, 6.dp, 4.dp, 0) })
+        rows(listOf("sel_free", "sel_rect", "sel_ellipse", "sel_wand", "sel_color", "sel_brush"))
+        tip("New, Add and Subtract are in the selection bar at the bottom.")
         caption("Actions")
-        grid(listOf(toolCard("sel_all", false), toolCard("sel_invert", false), toolCard("deselect", false), toolCard("copy_paste", false)), 4)
+        rows(listOf("sel_all", "sel_invert", "deselect", "copy_paste"))
         if (host.hasSelection) {
             caption("Feather (soft edge)")
             val row = LinearLayout(context).apply { orientation = HORIZONTAL }
@@ -387,10 +468,9 @@ class ToolsPanel(
     }
 
     private fun buildTransform() {
-        grid(listOf(toolCard("transform"), toolCard("liquify"), toolCard("canvas", false), toolCard("copy_paste", false), toolCard("flip", false)))
-        content.addView(Ui.text(context,
-            "In Transform: drag to move · corners to scale · the green dot to rotate · two fingers to pinch. " +
-                "Flip, rotate 90° and fit are in the bar at the bottom.", 12f, Ui.TEXT_DIM).apply { setPadding(4.dp, 12.dp, 4.dp, 0) })
+        rows(listOf("transform", "liquify", "canvas"))
+        tip("In Transform: drag to move, the corners to scale, the green dot to turn, two fingers to pinch. " +
+            "Flip, turn 90° and fit are in the bar at the bottom. Tap the box without moving it for an exact angle and size.")
     }
 
     private fun buildAdjust(kinds: List<AdjustKind>) {
@@ -409,7 +489,7 @@ class ToolsPanel(
                 isClickable = false; iconScale = 0.6f
                 background = Ui.rounded(0xB0141417.toInt(), 9f)
             }, FrameLayout.LayoutParams(28.dp, 28.dp, Gravity.BOTTOM or Gravity.START).apply { leftMargin = 5.dp; bottomMargin = 5.dp })
-            card("adj_${k.name}", k.label, sliderHint(k), null, art = art, artHeight = 86) { host.close(); host.run("adj_${k.name}") }
+            card("adj_${k.name}", k.label, sliderHint(k), null, art = art, artHeight = 92) { host.close(); host.run("adj_${k.name}") }
         })
         loadPreviews(previews)
     }

@@ -66,7 +66,7 @@ class ColorPanel(
 
         val harmBtn = Ui.button(context, "Harmony: ${disc.disc.harmony.label}") {}
         harmBtn.setOnClickListener {
-            val pm = android.widget.PopupMenu(context, harmBtn)
+            val pm = InkMenu(context, harmBtn)
             HarmonyMode.values().forEachIndexed { i, m -> pm.menu.add(0, i, i, m.label) }
             pm.setOnMenuItemClickListener { item ->
                 disc.disc.harmony = HarmonyMode.values()[item.itemId]
@@ -137,7 +137,7 @@ class ColorPanel(
             sw.color = c
             sw.setOnClickListener { setColor(c, true) }
             sw.setOnLongClickListener {
-                val pm = android.widget.PopupMenu(context, sw)
+                val pm = InkMenu(context, sw)
                 pm.menu.add(0, 1, 0, "Remove color")
                 pm.menu.add(0, 2, 1, "Replace with current color")
                 pm.setOnMenuItemClickListener { item ->
@@ -154,7 +154,7 @@ class ColorPanel(
     }
 
     private fun paletteMenu() {
-        val pm = android.widget.PopupMenu(context, paletteBtn)
+        val pm = InkMenu(context, paletteBtn)
         PaletteStore.palettes.forEachIndexed { i, p -> pm.menu.add(0, i, i, (if (i == PaletteStore.active) "✓ " else "") + L10n.tr(p.name)) }
         val base = 1000
         pm.menu.add(1, base, 900, "New palette…")

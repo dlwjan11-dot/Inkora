@@ -15,7 +15,6 @@ import android.widget.FrameLayout
 import android.widget.GridLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
 import kotlin.math.max
@@ -248,7 +247,7 @@ class GalleryView(
         card.foreground = Ui.ripple(14f)
         card.setOnClickListener { openStack = name; render() }
         card.setOnLongClickListener {
-            val pm = PopupMenu(context, card)
+            val pm = InkMenu(context, card)
             pm.menu.add(0, 1, 1, "Rename stack")
             pm.menu.add(0, 2, 2, "Unstack")
             pm.setOnMenuItemClickListener { item ->
@@ -427,7 +426,7 @@ class GalleryView(
     }
 
     private fun menu(anchor: View, e: Gallery.Entry) {
-        val pm = PopupMenu(context, anchor)
+        val pm = InkMenu(context, anchor)
         pm.menu.add(0, 9, 0, "Preview")
         pm.menu.add(0, 1, 1, "Rename")
         pm.menu.add(0, 2, 2, "Duplicate")
