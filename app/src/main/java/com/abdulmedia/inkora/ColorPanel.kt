@@ -31,6 +31,8 @@ class ColorPanel(
     private val artwork: (() -> android.graphics.Bitmap?)? = null,
     /** "Palette from photo": the host opens the photo picker */
     private val onPalettePhoto: (() -> Unit)? = null,
+    /** the eyedropper button in the header: pick a color from the artwork */
+    private val onEyedropper: (() -> Unit)? = null,
     private val onColor: (Int) -> Unit
 ) : LinearLayout(context) {
 
@@ -43,6 +45,7 @@ class ColorPanel(
     private val sliders = ArrayList<HsvSlider>()
     private val paletteGrid = GridLayout(context).apply { columnCount = 10 }
     private val paletteBtn = Ui.button(context, "") {}
+    private val hexChip = android.widget.TextView(context)
     private val harmonyRow = LinearLayout(context)
 
     /** the harmony's colors as swatches: each group is lighter, the color, darker */
@@ -92,25 +95,80 @@ class ColorPanel(
         }
     }
 
+    private val pages = LinkedHashMap<String, LinearLayout>()
+    private val tabRow = LinearLayout(context)
+
+    private fun showTab(t: String) {
+        lastTab = t
+        for ((k, v) in pages) v.visibility = if (k == t) View.VISIBLE else View.GONE
+        for (i in 0 until tabRow.childCount) {
+            val tv = tabRow.getChildAt(i) as? android.widget.TextView ?: continue
+            val on = tv.tag == t
+            tv.background = if (on) Ui.rounded(Ui.PANEL, 8f) else null
+            tv.setTextColor(if (on) Ui.TEXT else Ui.TEXT_DIM)
+            tv.typeface = Fonts.get(if (on) 600 else 400)
+        }
+    }
+
     init {
         orientation = VERTICAL
-        setPadding(16.dp, 14.dp, 16.dp, 16.dp)
-        background = Ui.rounded(Ui.PANEL, 18f)
+        setPadding(14.dp, 8.dp, 14.dp, 14.dp)
+        background = Ui.rounded(Ui.PANEL, 20f)
         Color.colorToHSV(initial, hsv)
 
-        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(Ui.text(context, "Color", 17f, bold = true), LayoutParams(0, -2, 1f))
-        if (onWheel != null) head.addView(Ui.button(context, "Swatch wheel") { onWheel.invoke() }.apply { textSize = 12f },
-            LayoutParams(-2, -2).apply { rightMargin = 8.dp })
-        previewOld.color = initial
-        previewOld.setOnClickListener { setColor(previewOld.color, true) }
-        head.addView(previewOld, LayoutParams(40.dp, 40.dp))
-        head.addView(previewNew, LayoutParams(40.dp, 40.dp))
+        // ---- header: name, eyedropper, swatch wheel ----
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(4.dp, 0, 0, 8.dp) }
+        head.addView(Ui.text(context, "Color", 20f, bold = true), LayoutParams(0, -2, 1f))
+        fun headButton(icon: Icon, label: String, run: () -> Unit) = IconView(context, icon).apply {
+            iconScale = 0.46f
+            background = Ui.rounded(Ui.CARD, 12f)
+            contentDescription = L10n.tr(label)
+            setOnClickListener { run() }
+        }
+        if (onEyedropper != null) head.addView(headButton(Icon.EYEDROPPER, "Eyedropper") { onEyedropper.invoke() }, LayoutParams(44.dp, 44.dp))
+        if (onWheel != null) head.addView(headButton(Icon.WHEEL, "Swatch wheel") { onWheel.invoke() }, LayoutParams(44.dp, 44.dp).apply { marginStart = 6.dp })
         addView(head)
+        addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(-1, 1))
 
+        // ---- tabs: Disc, Sliders, Palettes ----
+        tabRow.orientation = HORIZONTAL
+        tabRow.background = Ui.rounded(Ui.CARD, 10f)
+        tabRow.setPadding(3.dp, 3.dp, 3.dp, 3.dp)
+        for ((key, label) in listOf("disc" to "Disc", "sliders" to "Sliders", "palettes" to "Palettes")) {
+            tabRow.addView(Ui.text(context, label, 13f).apply {
+                tag = key
+                gravity = Gravity.CENTER
+                setPadding(0, 7.dp, 0, 7.dp)
+                setOnClickListener { showTab(key) }
+            }, LayoutParams(0, -2, 1f))
+            pages[key] = LinearLayout(context).apply { orientation = VERTICAL }
+        }
+        addView(tabRow, LayoutParams(-1, -2).apply { topMargin = 10.dp })
+        val discPage = pages["disc"]!!; val sliderPage = pages["sliders"]!!; val palPage = pages["palettes"]!!
+
+        // ---- Disc: the disc, the color and the one before it, hex, harmony ----
         disc.onColor = { c -> Color.colorToHSV(c, hsv); emit() }
         disc.onCommit = { commitRecent() }
-        addView(disc, LayoutParams(-1, -2).apply { topMargin = 10.dp })
+        discPage.addView(disc, LayoutParams(-1, -2).apply { topMargin = 8.dp })
+        val pair = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        previewOld.color = initial
+        previewOld.contentDescription = L10n.tr("The color before")
+        previewOld.setOnClickListener { setColor(previewOld.color, true) }
+        pair.addView(previewNew, LayoutParams(44.dp, 44.dp))
+        pair.addView(previewOld, LayoutParams(34.dp, 34.dp).apply { marginStart = 2.dp })
+        pair.addView(View(context), LayoutParams(0, 1, 1f))
+        hexChip.apply {
+            textSize = 12.5f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextColor(Ui.TEXT)
+            setPadding(12.dp, 7.dp, 12.dp, 7.dp)
+            background = Ui.rounded(Ui.CARD, 9f)
+            contentDescription = L10n.tr("Hex")
+            // tap: type a hex code (on the Sliders page)
+            setOnClickListener { showTab("sliders"); hex.requestFocus() }
+        }
+        pair.addView(hexChip)
+        discPage.addView(pair, LayoutParams(-1, -2).apply { topMargin = 4.dp })
 
         // color harmony: pick a kind, its colors (each a little lighter and darker too) are a tap away
         disc.disc.harmony = lastHarmony
@@ -119,10 +177,10 @@ class ColorPanel(
             modes.removeAllViews()
             for (m in HarmonyMode.values()) {
                 val on = m == disc.disc.harmony
-                modes.addView(Ui.text(context, m.label, 12.5f, if (on) Ui.ON_ACCENT else Ui.TEXT_DIM, on).apply {
+                modes.addView(Ui.text(context, m.label, 12.5f, if (on) Ui.ACCENT else Ui.TEXT_DIM, on).apply {
                     gravity = Gravity.CENTER
                     setPadding(12.dp, 7.dp, 12.dp, 7.dp)
-                    background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
+                    background = Ui.rounded(if (on) Ui.ACCENT_SOFT else Ui.CARD, 14f)
                     setOnClickListener {
                         disc.disc.harmony = m; lastHarmony = m
                         fillModes(); refreshHarmony(); disc.invalidate()
@@ -131,33 +189,33 @@ class ColorPanel(
             }
         }
         fillModes()
-        addView(Ui.text(context, "Harmony", 12f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 8.dp })
-        addView(android.widget.HorizontalScrollView(context).apply {
+        discPage.addView(Ui.caption(context, "Harmony"), LayoutParams(-2, -2).apply { topMargin = 12.dp })
+        discPage.addView(android.widget.HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false; overScrollMode = OVER_SCROLL_NEVER; addView(modes)
-        }, LayoutParams(-1, -2).apply { topMargin = 4.dp })
+        }, LayoutParams(-1, -2).apply { topMargin = 6.dp })
         harmonyRow.orientation = HORIZONTAL
         harmonyRow.gravity = Gravity.CENTER_VERTICAL
-        addView(android.widget.HorizontalScrollView(context).apply {
+        discPage.addView(android.widget.HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false; overScrollMode = OVER_SCROLL_NEVER; addView(harmonyRow)
         }, LayoutParams(-1, -2).apply { topMargin = 6.dp })
 
-        // Hue / Saturation / Brightness sliders
+        // ---- Sliders: hue, saturation, brightness, hex ----
         for ((ch, label) in listOf(0 to "Hue", 1 to "Saturation", 2 to "Brightness")) {
-            addView(Ui.text(context, label, 12f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = if (ch == 0) 10.dp else 2.dp })
+            sliderPage.addView(Ui.caption(context, label), LayoutParams(-2, -2).apply { topMargin = if (ch == 0) 14.dp else 8.dp })
             val sl = HsvSlider(context, hsv, ch)
             sl.onChange = { disc.setColor(Color.HSVToColor(hsv)); emit() }
             sl.onCommit = { commitRecent() }
             sliders.add(sl)
-            addView(sl, LayoutParams(-1, -2))
+            sliderPage.addView(sl, LayoutParams(-1, -2))
         }
-
         hex.apply {
             setTextColor(Ui.TEXT)
             textSize = 15f
+            typeface = android.graphics.Typeface.MONOSPACE
             setSingleLine()
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = EditorInfo.IME_ACTION_DONE
-            background = Ui.rounded(Ui.PANEL_ROW, 8f)
+            background = Ui.rounded(Ui.CARD, 10f)
             setPadding(12.dp, 8.dp, 12.dp, 8.dp)
             setOnEditorActionListener { _, _, _ ->
                 parseHex(text.toString())?.let { setColor(it, true) }
@@ -167,27 +225,31 @@ class ColorPanel(
         val hexRow = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         hexRow.addView(Ui.text(context, "Hex  #", 14f, Ui.TEXT_DIM))
         hexRow.addView(hex, LayoutParams(0, -2, 1f))
-        addView(hexRow, LayoutParams(-1, -2).apply { topMargin = 12.dp })
+        sliderPage.addView(hexRow, LayoutParams(-1, -2).apply { topMargin = 14.dp })
 
-        // your palettes
+        // ---- Palettes ----
         val palHead = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        palHead.addView(Ui.text(context, "Palette", 13f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { rightMargin = 8.dp })
         paletteBtn.textSize = 13f
+        paletteBtn.background = Ui.rounded(Ui.CARD, 10f)
         paletteBtn.setOnClickListener { paletteMenu() }
         palHead.addView(paletteBtn, LayoutParams(0, -2, 1f))
         palHead.addView(Ui.button(context, "+ Add color") {
             if (!PaletteStore.addColor(Color.HSVToColor(hsv))) Ui.toast(context, "This palette is full")
             refreshPalette()
-        }.apply { textSize = 12.5f }, LayoutParams(-2, -2).apply { leftMargin = 6.dp })
-        addView(palHead, LayoutParams(-1, -2).apply { topMargin = 12.dp })
-        addView(paletteGrid, LayoutParams(-2, -2).apply { topMargin = 4.dp })
-        addView(Ui.text(context, "Tap a color to use it · long-press to remove it", 11f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 2.dp })
+        }.apply { textSize = 12.5f; background = Ui.rounded(Ui.CARD, 10f) }, LayoutParams(-2, -2).apply { leftMargin = 6.dp })
+        palPage.addView(palHead, LayoutParams(-1, -2).apply { topMargin = 14.dp })
+        palPage.addView(paletteGrid, LayoutParams(-2, -2).apply { topMargin = 8.dp })
+        palPage.addView(Ui.text(context, "Tap a color to use it · long-press to remove it", 11f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 4.dp })
         refreshPalette()
 
-        addView(Ui.text(context, "Recent", 13f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 10.dp })
+        for (pg in pages.values) addView(pg, LayoutParams(-1, -2))
+
+        // ---- History, on every page ----
+        addView(Ui.caption(context, "History"), LayoutParams(-2, -2).apply { topMargin = 14.dp })
         recentRow.orientation = HORIZONTAL
-        addView(recentRow, LayoutParams(-1, 30.dp).apply { topMargin = 4.dp })
+        addView(recentRow, LayoutParams(-1, 30.dp).apply { topMargin = 6.dp })
         refreshRecent()
+        showTab(lastTab)
         sync()
     }
 
@@ -290,6 +352,7 @@ class ColorPanel(
         disc.invalidate()
         sliders.forEach { it.invalidate() }
         if (!hex.hasFocus()) hex.setText(String.format(Locale.US, "%06X", c and 0xFFFFFF))
+        hexChip.text = String.format(Locale.US, "#%06X", c and 0xFFFFFF)
         refreshHarmony()
     }
 
@@ -314,6 +377,8 @@ class ColorPanel(
             0xFF0D1B2A.toInt(), 0xFF1B263B.toInt(), 0xFF415A77.toInt(), 0xFF778DA9.toInt(), 0xFFE0E1DD.toInt()
         )
 
+        /** the page chosen last: disc, sliders or palettes */
+        var lastTab = "disc"
         /** the harmony chosen last (kept while the app runs) */
         var lastHarmony = HarmonyMode.COMPLEMENTARY
 

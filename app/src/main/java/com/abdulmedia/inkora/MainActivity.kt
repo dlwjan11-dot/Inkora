@@ -2416,7 +2416,8 @@ class MainActivity : Activity(), CanvasView.Listener {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
                 }, REQ_PALETTE_PHOTO)
-            }) { c ->
+            },
+            onEyedropper = { popup?.dismiss(); cv.armEyedropper() }) { c ->
             cv.color = c
             colorBtn.color = c
             if (recolor) cv.vectorEditor.recolorLive(c)
@@ -2426,7 +2427,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val holder = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         holder.addView(colorGrabber(), LinearLayout.LayoutParams(-1, 26.dp))
         holder.addView(ScrollView(this).apply { addView(panel) }, LinearLayout.LayoutParams(-1, 0, 1f))
-        showPanel(colorBtn, holder, 340, 846)
+        showPanel(colorBtn, holder, 360, 846)
         if (recolor) popup?.setOnDismissListener { cv.vectorEditor.endStyle(); refreshAll() }
     }
 
