@@ -9,7 +9,11 @@ object FloodFill {
 
     class Result(val rect: Rect, val bitmap: Bitmap)
 
-    fun compute(reference: Bitmap, sx: Int, sy: Int, color: Int, threshold: Float): Result? {
+    /**
+     * [gap]: close gaps in the lines up to about twice this many pixels, so a shape that is not quite
+     * closed still fills inside instead of running out (0 = off).
+     */
+    fun compute(reference: Bitmap, sx: Int, sy: Int, color: Int, threshold: Float, gap: Int = 0): Result? {
         val w = reference.width
         val h = reference.height
         if (sx !in 0 until w || sy !in 0 until h) return null
@@ -28,6 +32,17 @@ object FloodFill {
                 abs(((c shr 8) and 0xFF) - tG) <= tol &&
                 abs((c and 0xFF) - tB) <= tol
 
+        // gap closing: thicken the lines by [gap] pixels, fill inside them, then grow the fill back
+        // over the thickened part (only where the original picture lets it go), so it reaches the lines
+        var blocked: ByteArray? = null
+        if (gap > 0) {
+            val wall = ByteArray(w * h)
+            for (i in 0 until w * h) if (!match(px[i])) wall[i] = 1
+            val thick = dilate(wall, w, h, gap)
+            if (thick[sy * w + sx].toInt() == 0) blocked = thick // a tap right on a line fills the plain way
+        }
+        fun ok(i: Int, c: Int) = (blocked == null || blocked[i].toInt() == 0) && match(c)
+
         val mask = ByteArray(w * h)
         var stack = IntArray(4096)
         var sp = 0
@@ -45,9 +60,9 @@ object FloodFill {
             val x = i - y * w
             val row = y * w
             var lx = x
-            while (lx > 0 && mask[row + lx - 1].toInt() == 0 && match(px[row + lx - 1])) lx--
+            while (lx > 0 && mask[row + lx - 1].toInt() == 0 && ok(row + lx - 1, px[row + lx - 1])) lx--
             var rx = x
-            while (rx < w - 1 && mask[row + rx + 1].toInt() == 0 && match(px[row + rx + 1])) rx++
+            while (rx < w - 1 && mask[row + rx + 1].toInt() == 0 && ok(row + rx + 1, px[row + rx + 1])) rx++
             for (xx in lx..rx) mask[row + xx] = 1
             if (lx < minX) minX = lx
             if (rx > maxX) maxX = rx
@@ -58,10 +73,25 @@ object FloodFill {
                 val nrow = ny * w
                 var xx = lx
                 while (xx <= rx) {
-                    if (mask[nrow + xx].toInt() == 0 && match(px[nrow + xx])) {
+                    if (mask[nrow + xx].toInt() == 0 && ok(nrow + xx, px[nrow + xx])) {
                         push(nrow + xx)
-                        while (xx <= rx && mask[nrow + xx].toInt() == 0 && match(px[nrow + xx])) xx++
+                        while (xx <= rx && mask[nrow + xx].toInt() == 0 && ok(nrow + xx, px[nrow + xx])) xx++
                     } else xx++
+                }
+            }
+        }
+
+        if (blocked != null) {
+            // grow back over the thickened lines, never onto the lines themselves
+            val grown = dilate(mask, w, h, gap)
+            for (i in 0 until w * h) if (grown[i].toInt() != 0 && match(px[i])) {
+                if (mask[i].toInt() == 0) {
+                    mask[i] = 1
+                    val y = i / w; val x = i - y * w
+                    if (x < minX) minX = x
+                    if (x > maxX) maxX = x
+                    if (y < minY) minY = y
+                    if (y > maxY) maxY = y
                 }
             }
         }
@@ -92,5 +122,35 @@ object FloodFill {
         val bmp = Bitmap.createBitmap(rw, rh, Bitmap.Config.ARGB_8888)
         bmp.setPixels(out, 0, rw, 0, 0, rw, rh)
         return Result(r, bmp)
+    }
+
+    /** every pixel within [r] (a square) of a marked one is marked: two running counts, rows then columns */
+    private fun dilate(src: ByteArray, w: Int, h: Int, r: Int): ByteArray {
+        val tmp = ByteArray(w * h)
+        for (y in 0 until h) {
+            val row = y * w
+            var count = 0
+            for (x in 0 until minOf(r, w)) count += src[row + x]
+            for (x in 0 until w) {
+                val add = x + r
+                if (add < w) count += src[row + add]
+                val rem = x - r - 1
+                if (rem >= 0) count -= src[row + rem]
+                if (count > 0) tmp[row + x] = 1
+            }
+        }
+        val out = ByteArray(w * h)
+        for (x in 0 until w) {
+            var count = 0
+            for (y in 0 until minOf(r, h)) count += tmp[y * w + x]
+            for (y in 0 until h) {
+                val add = y + r
+                if (add < h) count += tmp[add * w + x]
+                val rem = y - r - 1
+                if (rem >= 0) count -= tmp[rem * w + x]
+                if (count > 0) out[y * w + x] = 1
+            }
+        }
+        return out
     }
 }

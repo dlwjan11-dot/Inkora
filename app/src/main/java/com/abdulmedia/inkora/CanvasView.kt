@@ -676,6 +676,8 @@ class CanvasView(context: Context) : View(context) {
     }
 
     /** how dark what is outside the selection looks (0 = only the marching ants) */
+    /** fill gap closing, in canvas pixels (0 = off): a shape with small gaps in its lines still fills inside */
+    var fillGap = 0
     var selectionShade = 0.3f
     private val shadePaint = Paint()
 
@@ -2163,7 +2165,7 @@ class CanvasView(context: Context) : View(context) {
         val layer = doc.active
         val result = try {
             val ref = doc.fillReference()
-            try { FloodFill.compute(ref, x, y, if (layer.isLayerMask) Color.WHITE else fillColor, fillThreshold) } finally { ref.recycle() }
+            try { FloodFill.compute(ref, x, y, if (layer.isLayerMask) Color.WHITE else fillColor, fillThreshold, fillGap) } finally { ref.recycle() }
         } catch (e: OutOfMemoryError) {
             listener?.onMessage("Not enough memory for this right now")
             return false

@@ -394,7 +394,11 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
                 cv.fillThreshold = v
                 host.prefs.edit().putFloat("fillThreshold", v).apply()
             },
-            sliderRow("Selection mask visibility", cv.selectionShade / 0.8f, { "${(it * 100).roundToInt()}%" }) { v ->
+            sliderRow("Fill: close gaps", (cv.fillGap / 30f).coerceIn(0f, 1f), { if (it < 0.02f) L10n.tr("Off") else "${(it * 30).roundToInt()} px" }) { v ->
+                cv.fillGap = if (v < 0.02f) 0 else (v * 30).roundToInt()
+                host.prefs.edit().putInt("fillGap", cv.fillGap).apply()
+            },
+                        sliderRow("Selection mask visibility", cv.selectionShade / 0.8f, { "${(it * 100).roundToInt()}%" }) { v ->
                 cv.selectionShade = v * 0.8f
                 cv.invalidate()
                 host.prefs.edit().putFloat("selectionShade", cv.selectionShade).apply()

@@ -156,6 +156,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.pressureGamma = prefs.getFloat("pressureGamma", 1f)
         timeLapseOn = prefs.getBoolean("timelapse", true)
         cv.fillThreshold = prefs.getFloat("fillThreshold", cv.fillThreshold)
+        cv.fillGap = prefs.getInt("fillGap", 0)
         cv.selectionShade = prefs.getFloat("selectionShade", cv.selectionShade)
         cv.quickShapeEnabled = prefs.getBoolean("quickShape", true)
         if (prefs.contains("fingerDrawing")) {
@@ -767,7 +768,17 @@ class MainActivity : Activity(), CanvasView.Listener {
             row.addView(c, LinearLayout.LayoutParams(-2, 32.dp).apply { marginEnd = 8.dp })
         }
         if (cv.fillMode) {
-            row.addView(Ui.text(this, "Tap an area to fill it with the color", 13f, Ui.TEXT_DIM))
+            // close gaps: Off → Small → Medium → Large, for lines that do not quite meet
+            val steps = listOf(0 to "Off", 4 to "Small", 10 to "Medium", 20 to "Large")
+            val cur = steps.indexOfFirst { it.first == cv.fillGap }.let { if (it < 0) -1 else it }
+            val label = if (cur >= 0) steps[cur].second else "${cv.fillGap} px"
+            chip("Close gaps", L10n.tr(label)) {
+                val next = steps[(cur + 1).mod(steps.size)].first
+                cv.fillGap = next
+                prefs.edit().putInt("fillGap", next).apply()
+                updateOptions()
+            }
+            row.addView(Ui.text(this, "Tap an area to fill it with the color", 13f, Ui.TEXT_DIM).apply { setPadding(4.dp, 0, 0, 0) })
             return row
         }
         chip("", cv.currentBrush.preset.name + "  ▾") { showBrushes(cv.tool) }

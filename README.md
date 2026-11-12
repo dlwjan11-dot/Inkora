@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.4.apk"><img src="https://img.shields.io/badge/Download_APK-0.25.4-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.25.4"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.5.apk"><img src="https://img.shields.io/badge/Download_APK-0.25.5-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.25.5"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
@@ -40,19 +40,19 @@ I'm a designer and artist. I looked for a long time for a drawing app on Android
 
 | Platform | File | Install |
 |---|---|---|
-| Android 10+ tablets and phones | [`Inkora-0.25.4.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.4.apk) (0.25.4, everything included: Living Paint brushes too) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
+| Android 10+ tablets and phones | [`Inkora-0.25.5.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.5.apk) (0.25.5, everything included: Living Paint brushes too) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
 | iPad and iPhone | the `ios/` folder (Xcode project, version 1.0) | Open `ios/Inkora.xcodeproj` on a Mac, pick your team, press **Run ▶**; see `ios/README.md` |
-| Android Studio | this repository (source is at **0.25.4**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
+| Android Studio | this repository (source is at **0.25.5**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too (the layout slims down for them, upright or on the side), with a finger or the S Pen of an Ultra. Inkora is not on Google Play yet.
-SHA-256 of the 0.25.4 APK: `d1f2c4dba86691ecbe122a9b0bd70c1cba1a9e88f2ab2b5b4d860e4234d10555`
+SHA-256 of the 0.25.5 APK: `bbecfb4ea07b98ba76650b1c9119eebb99a9f01014b39b66bcfff68cf8bbe16e`
 
 ## New in 0.25: a new way around the app
 
 - **Tool bar** on the left or right, like desktop painting programs: every tool always visible. A small corner triangle means sister tools: hold it (or tap it again) to pick one. Tap the brush, smudge or eraser again for the brush library.
 - **»** opens it wide with every tool named; the **floating** button hides the bars and keeps only your tools in a small bar you drag anywhere; **⋯** adds tools, takes them out and changes the order.
 - **One settings bar** under the top bar for the tool in hand (brush, size, opacity; selection modes; shapes; Apply and Cancel), in place of the bars that used to float at the bottom.
-- **0.25.1**: every tool bar has **Cancel** next to Done (takes back all the tool did); a finger down (or the S Pen button held) while drawing a shape makes it even, and free again when let go; your last eraser stays for next time (Settings); messages no longer hide behind the bars.
+- **0.25.1**: every tool bar has **Cancel** next to Done (takes back all the tool did); a finger down (or the S Pen button held) while drawing a shape makes it even, and free again when let go; your last eraser stays for next time (Settings); Fill can **close gaps** in lines that do not quite meet (in the settings bar while filling, or Settings); messages no longer hide behind the bars.
 - **Top bar**: Actions, Add, Adjust, Canvas on the left; Brushes, Layers, Color on the right. Every panel opens right under its button with a small arrow, and the same button closes it. On a phone the panels come up from the bottom and the tools sit along the bottom.
 
 ## New in 0.24: tidier menus and new icons
@@ -401,7 +401,7 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Inkora-0.25.4.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.4.apk)** على جهازك.
+1. حمّل **[Inkora-0.25.5.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.5.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
 4. افتح Inkora وابدأ الرسم.
@@ -504,7 +504,7 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Inkora-0.25.4.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.4.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Inkora-0.25.5.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.25.5.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
 4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.
