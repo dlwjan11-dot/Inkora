@@ -161,8 +161,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
         cv.gpuTiles = prefs.getBoolean("gpu_tiles", false)
-        // GPU brushes (0.36) played every recorded dab back each frame: slower than painting them; off until a real GPU engine
-        cv.gpuBrushes = false
+        cv.gpuBrushes = prefs.getBoolean("gpu_engine", false)
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
         cv.wetBleed = prefs.getBoolean("wetBleed", true)
@@ -2610,7 +2609,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             }
         override var gpuBrushes: Boolean
             get() = cv.gpuBrushes
-            set(v) { cv.gpuBrushes = v; prefs.edit().putBoolean("gpu_brushes", v).apply() }
+            set(v) { cv.gpuBrushes = v; prefs.edit().putBoolean("gpu_engine", v).apply() }
         override var gpuTiles: Boolean
             get() = cv.gpuTiles
             set(v) { cv.gpuTiles = v; prefs.edit().putBoolean("gpu_tiles", v).apply() }
