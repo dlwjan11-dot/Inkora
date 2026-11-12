@@ -116,6 +116,8 @@ class ActionsPanel(
     private val tabsRow = LinearLayout(context).apply { orientation = HORIZONTAL }
     private val body = LinearLayout(context).apply { orientation = VERTICAL }
     private val cv get() = host.canvas
+    /** this is the full-screen Settings */
+    val isSettings get() = mode == MODE_SETTINGS
     /** an open sub-page of a tab (for now: "pressure" in Prefs) */
     private var page: String? = null
     private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "FILE")!!) }.getOrDefault(Tab.FILE)

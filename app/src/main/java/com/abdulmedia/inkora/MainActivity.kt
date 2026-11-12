@@ -1147,17 +1147,26 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     /** closes a full-screen overlay (gesture controls, keyboard shortcuts) */
+    /** a screen opened from Settings (gesture controls, the guide…): closing it goes back to Settings */
+    private var settingsBehind = false
+
     private fun closeSettings(): Boolean {
         val v = root.findViewWithTag<View>("overlay") ?: return false
         // the Brush Studio saves its changes on the way out (it calls back here to be removed)
         if (v is BrushStudioView && !v.closing) { v.finish(); return true }
         if (v is Scene3DEditor && !v.closing) { v.finish(); return true }
         root.removeView(v)
+        if (v is ActionsPanel && v.isSettings) settingsBehind = false
+        else if (settingsBehind) { settingsBehind = false; root.post { if (root.findViewWithTag<View>("overlay") == null) openSettingsScreen() } }
         return true
     }
 
     private fun showOverlay(v: View) {
+        // opened from Settings, or from a screen that was: closing this one goes back to Settings
+        val keep = settingsBehind || (root.findViewWithTag<View>("overlay") as? ActionsPanel)?.isSettings == true
+        settingsBehind = false
         closeSettings()
+        settingsBehind = keep && !(v is ActionsPanel && v.isSettings)
         v.tag = "overlay"
         v.alpha = 0f
         // above the bars, the toolbar, the sliders and pinned windows (they are raised too)
