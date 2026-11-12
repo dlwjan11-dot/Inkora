@@ -1000,7 +1000,8 @@ class CanvasView(context: Context) : View(context) {
         if (penButtonDown) return
         penButtonDown = true
         penHoldFired = false
-        penConsumed = mode == Mode.DRAW
+        // pressed while drawing (a stroke, or a shape: then it makes the shape even) it does nothing else
+        penConsumed = mode == Mode.DRAW || mode == Mode.SHAPE_DRAG
         removeCallbacks(penHoldRunnable)
         postDelayed(penHoldRunnable, penHoldMs)
     }
@@ -1313,6 +1314,7 @@ class CanvasView(context: Context) : View(context) {
             Mode.MEASURE_DRAG -> measureMove(e.x, e.y)
             Mode.SHAPE_DRAG -> {
                 val i = e.findPointerIndex(shapePointerId)
+                if (shapePen) shapeButton(e)
                 if (i >= 0) shapeMove(toDoc(e.getX(i), e.getY(i)))
             }
             Mode.VECTOR_DRAG -> vectorEditor.onMove(e.x, e.y)
@@ -2516,6 +2518,7 @@ class CanvasView(context: Context) : View(context) {
     var shapeEven = false
     /** a finger is down while the shape is drawn: it is even for as long as the finger stays */
     private var shapeFingerEven = false
+    private var shapeButtonEven = false
     private var shapePointerId = -1
     private var shapePen = false
     private var shapeA: PointF? = null
@@ -2533,29 +2536,34 @@ class CanvasView(context: Context) : View(context) {
 
     private fun shapeMove(p: PointF) {
         if (shapeA == null) return
-        val old = shapeB
         shapeB = p
-        // holding the pen still for a moment also makes it even, like QuickShape
-        if (old == null || hypot(p.x - old.x, p.y - old.y) * zoom() > 3f * density) {
-            removeCallbacks(shapeHoldRunnable)
-            if (!shapeFingerEven) postDelayed(shapeHoldRunnable, 600)
-        }
         renderShapeTool()
     }
 
-    private val shapeHoldRunnable = Runnable { if (mode == Mode.SHAPE_DRAG && shapeA != null) makeShapeEven() }
-
-    private fun makeShapeEven() {
-        if (shapeFingerEven || shapeEven) return
-        shapeFingerEven = true
-        removeCallbacks(shapeHoldRunnable)
-        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-        listener?.onMessage(when (shapeKind) { ShapeKind.RECT -> "Square"; ShapeKind.ELLIPSE -> "Circle"; ShapeKind.LINE, ShapeKind.ARROW -> "Straight line"; else -> "Even shape" })
+    /** the S Pen button held while drawing a shape: even while it is held, free again when let go */
+    private fun shapeButton(e: MotionEvent) {
+        val held = (e.buttonState and (MotionEvent.BUTTON_STYLUS_PRIMARY or MotionEvent.BUTTON_STYLUS_SECONDARY or MotionEvent.BUTTON_SECONDARY)) != 0
+        if (held == shapeButtonEven) return
+        shapeButtonEven = held
+        if (held) evenFeedback()
         if (shapeA != null) renderShapeTool()
     }
 
+    private fun makeShapeEven() {
+        if (shapeFingerEven) return
+        shapeFingerEven = true
+        evenFeedback()
+        if (shapeA != null) renderShapeTool()
+    }
+
+    private fun evenFeedback() {
+        if (shapeEven) return
+        performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+        listener?.onMessage(when (shapeKind) { ShapeKind.RECT -> "Square"; ShapeKind.ELLIPSE -> "Circle"; ShapeKind.LINE, ShapeKind.ARROW -> "Straight line"; else -> "Even shape" })
+    }
+
     private fun shapeUp() {
-        removeCallbacks(shapeHoldRunnable)
+        shapeButtonEven = false
         val a = shapeA; val b = shapeB
         shapeA = null; shapeB = null
         strokeActive = false
@@ -2568,7 +2576,7 @@ class CanvasView(context: Context) : View(context) {
     }
 
     private fun shapeCancel() {
-        removeCallbacks(shapeHoldRunnable)
+        shapeButtonEven = false
         shapeA = null; shapeB = null
         strokeActive = false
         strokeBitmap?.eraseColor(0)
@@ -2578,7 +2586,7 @@ class CanvasView(context: Context) : View(context) {
     /** the corners (or the run of points) of the shape between where the finger came down and where it is */
     private fun shapeOutline(a: PointF, b0: PointF): Pair<List<PointF>, Boolean> {
         var b = b0
-        val even = shapeEven || shapeFingerEven
+        val even = shapeEven || shapeFingerEven || shapeButtonEven
         val kind = shapeKind
         if (kind == ShapeKind.LINE || kind == ShapeKind.ARROW) {
             if (even) b = (Shape.Line(a, b).perfected() as Shape.Line).b
