@@ -115,7 +115,7 @@ class ActionsPanel(
     private val cv get() = host.canvas
     /** an open sub-page of a tab (for now: "pressure" in Prefs) */
     private var page: String? = null
-    private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "FILE")!!) }.getOrDefault(Tab.FILE).let { if (it == Tab.PREFS) Tab.FILE else it }
+    private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "FILE")!!) }.getOrDefault(Tab.FILE)
 
     // ---- the Settings screen ----
     /** a section: its key, its name, and words that find it in the search */
@@ -293,8 +293,6 @@ class ActionsPanel(
                 gravity = Gravity.CENTER_HORIZONTAL
                 setPadding(0, 4.dp, 0, 4.dp)
                 setOnClickListener {
-                    // Settings has a screen of its own
-                    if (t == Tab.PREFS) { host.close(); host.openSettings(); return@setOnClickListener }
                     tab = t
                     page = null
                     host.prefs.edit().putString("actions_tab", t.name).apply()
@@ -575,7 +573,29 @@ class ActionsPanel(
         )
     }
 
-    private fun buildPrefs() = setBrushes()
+    /** Actions › Settings: the settings changed most often; the rest is one tap away */
+    private fun buildPrefs() {
+        val spaces = Workspaces.presets + listOfNotNull(Workspaces.mine(host.prefs))
+        group(
+            switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it },
+            accentRow()
+        )
+        group(
+            choiceRow("Workspace", spaces.map { it.key to it.name }, Workspaces.current(host.prefs), icon = Icon.LAYOUT) { k ->
+                spaces.firstOrNull { it.key == k }?.let { host.useWorkspace(it) }; rebuild()
+            },
+            choiceRow("Style", listOf(ToolRail.TOP to "On top", ToolRail.DOCK to "Docked", ToolRail.WIDE to "Wide", ToolRail.FLOAT to "Floating"), host.railMode, icon = Icon.DOCK) { m ->
+                host.railMode = m; rebuild()
+            },
+            switchRow("Fade the islands while drawing", null, host.fadeIslands, icon = Icon.HIDE) { host.fadeIslands = it }
+        )
+        group(
+            row("Pressure and Smoothing", closes = false, icon = Icon.PRESSURE) { page = "pressure"; rebuild() },
+            switchRow("Brush cursor", null, host.brushCursor, icon = Icon.BRUSH) { host.brushCursor = it },
+            switchRow("Keep my last eraser", null, host.rememberEraser, icon = Icon.ERASER) { host.rememberEraser = it }
+        )
+        group(row("All settings", "Every setting, with search", icon = Icon.SETTINGS) { host.openSettings() })
+    }
 
     private fun setCanvas() {
         group(

@@ -1512,6 +1512,8 @@ object L10n {
         "Arabic and Kurdish turn the screen right to left.", "العربي والكردي بيقلبوا الشاشة من اليمين لليسار.", "عەرەبی و کوردی شاشە لە ڕاستەوە بۆ چەپ دەکەن.",
         "Inkora saves your artwork by itself while you work and when you leave.", "Inkora بيحفظ رسمتك لحاله وانت عم تشتغل ولما تطلع.", "Inkora کارەکەت خۆی پاشەکەوت دەکات لە کاتی کارکردن و کاتێک دەچیتە دەرەوە.",
         "The MyPaint brush engine, json-c, Inter and Noto Sans Arabic", "محرك فراشي MyPaint وjson-c وInter وNoto Sans Arabic", "بزوێنەری فڵچەی MyPaint، json-c، Inter و Noto Sans Arabic",
+        "All settings", "كل الإعدادات", "هەموو ڕێکخستنەکان",
+        "Every setting, with search", "كل الإعدادات، مع بحث", "هەموو ڕێکخستنەکان، لەگەڵ گەڕان",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",
