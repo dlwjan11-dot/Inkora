@@ -37,6 +37,8 @@ class LayersPanel(
     private val onCopyToArtwork: ((Layer) -> Unit)? = null,
     /** opens the 3D editor for a 3D layer */
     private val onEdit3D: ((Layer) -> Unit)? = null,
+    /** opens the settings of an adjustment layer */
+    private val onEditAdjust: ((Layer) -> Unit)? = null,
     private val onChanged: () -> Unit
 ) : LinearLayout(context) {
 
@@ -74,8 +76,18 @@ class LayersPanel(
             val pm = InkMenu(context, plus)
             pm.menu.add(0, 1, 1, "Drawing layer")
             pm.menu.add(0, 2, 2, "Vector layer (pen, shapes, logos)")
+            if (onEditAdjust != null) pm.menu.add(0, 3, 3, "Adjustment layer…")
             pm.setOnMenuItemClickListener {
-                if (it.itemId == 1) addLayer() else onAddVector()
+                when (it.itemId) {
+                    1 -> addLayer()
+                    2 -> onAddVector()
+                    else -> {
+                        val sub = InkMenu(context, plus)
+                        LayerAdjust.values().forEachIndexed { i, k -> sub.menu.add(0, i, i, k.label) }
+                        sub.setOnMenuItemClickListener { item -> addAdjustLayer(LayerAdjust.values()[item.itemId]); true }
+                        L10n.menu(sub.menu); sub.show()
+                    }
+                }
                 true
             }
             L10n.menu(pm.menu); pm.show()
@@ -195,6 +207,7 @@ class LayersPanel(
         val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(12.dp, 0, 0, 0) }
         val displayName = (if (isPicked) "✓ " else "") + when {
             layer.isLayerMask -> "◐ ${L10n.tr(layer.name)}"
+            layer.adjust != null -> "◑ ${layer.name}"
             else -> layer.name
         }
         texts.addView(Ui.text(context, displayName, 14f, if (layer.visible) Ui.TEXT else Ui.TEXT_DIM, true).apply {
@@ -203,6 +216,7 @@ class LayersPanel(
         val sub = buildString {
             if (layer.isClippingMask) append("Clipping Mask · ")
             if (layer.isLayerMask) append("Layer mask · ")
+            if (layer.adjust != null) append(if (layer.groupId != null) "Adjustment (no effect inside a group) · " else "Adjustment · ")
             if (layer.reference) append("Reference · ")
             if (layer.shadow) append("Shadow · ")
             if (layer.scene != null) append("3D · ${layer.scene!!.objects.size} objects · ")
@@ -898,6 +912,13 @@ class LayersPanel(
             actions.add(2, "Invert mask" to { invertMask(layer) })
             actions.add(3, "Show all" to { fillWhite(layer) })
         }
+        if (layer.adjust != null) {
+            actions.removeAll { it.first.startsWith("Clipping Mask") || it.first.startsWith("Alpha Lock") || it.first.startsWith("Shadow layer") ||
+                it.first.startsWith("Reference") || it.first == "Fill with color" || it.first == "Draw inside this layer" ||
+                it.first == "Add layer mask" || it.first == "Group" || it.first == "Copy to another artwork…" }
+            actions.add(0, "Edit adjustment" to { onEditAdjust?.invoke(layer); Unit })
+            actions.add(actions.size - 1, "Show everywhere" to { fillWhite(layer) })
+        }
         if (layer.scene != null) {
             actions.removeAll { it.first.startsWith("Alpha Lock") || it.first == "Fill with color" }
             actions.add(1, "Edit 3D scene" to { onEdit3D?.invoke(layer); Unit })
@@ -926,6 +947,13 @@ class LayersPanel(
         val dst = RectF((tw - w) / 2, (th - h) / 2, (tw + w) / 2, (th + h) / 2)
         val p = Paint(Paint.FILTER_BITMAP_FLAG)
         p.color = if (doc.backgroundVisible) doc.backgroundColor else 0xFFFFFFFF.toInt()
+        if (layer.adjust != null) {
+            // an adjustment layer shows its mask: light where it changes the picture
+            p.color = 0xFF2A2A30.toInt()
+            c.drawRect(dst, p)
+            c.drawBitmap(layer.bitmap, null, dst, p)
+            return out
+        }
         c.drawRect(dst, p)
         c.drawBitmap(layer.bitmap, null, dst, p)
         return out
@@ -948,6 +976,34 @@ class LayersPanel(
         cv.pushCommand(cmd)
         expanded = false
         changed()
+    }
+
+    /** a new adjustment layer above the active one, showing everywhere; its settings open at once */
+    private fun addAdjustLayer(kind: LayerAdjust) {
+        if (blocked()) return
+        if (doc.layers.size >= doc.maxLayers()) {
+            cv.listener?.onMessage("Layer limit reached for this canvas size")
+            return
+        }
+        val layer = try { doc.createLayer() } catch (e: OutOfMemoryError) {
+            cv.listener?.onMessage("Not enough memory for another layer right now")
+            return
+        }
+        layer.bitmap.eraseColor(0xFFFFFFFF.toInt())
+        GradientMaps.userColor = currentColor()
+        layer.adjust = AdjustSettings(kind)
+        layer.name = L10n.tr(kind.label)
+        // adjustment layers work outside groups: it goes above the active layer's group
+        var at = doc.activeIndex + 1
+        doc.groupOf(doc.active)?.let { g -> doc.rangeOf(g.id)?.let { at = it.last + 1 } }
+        val cmd = AddLayerCmd(layer, at, doc.activeIndex)
+        cmd.redo(doc)
+        layer.groupId = null
+        doc.normalizeGroups()
+        cv.pushCommand(cmd)
+        expanded = false
+        changed()
+        onEditAdjust?.invoke(layer)
     }
 
     private fun duplicate(src: Layer, index: Int) {
@@ -1091,8 +1147,21 @@ class LayersPanel(
             cv.listener?.onMessage("Apply the layer mask first (tap the mask › Apply mask)")
             return
         }
+        if (lower.adjust != null) {
+            cv.listener?.onMessage("Can't merge into an adjustment layer")
+            return
+        }
         val before = copyOrNull(lower.bitmap) ?: return
-        if (upper.visible) {
+        if (upper.adjust != null) {
+            // an adjustment merged down changes the layer below for good
+            if (upper.visible) {
+                val baked = try { AdjustRender.bake(before, upper) } catch (e: OutOfMemoryError) { null }
+                if (baked != null) {
+                    Canvas(lower.bitmap).drawBitmap(baked, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC })
+                    baked.recycle()
+                }
+            }
+        } else if (upper.visible) {
             val p = Paint(Paint.FILTER_BITMAP_FLAG).apply {
                 alpha = (upper.opacity * 255).roundToInt()
                 blendMode = upper.blend.mode

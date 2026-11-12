@@ -1930,7 +1930,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         if (!cv.isDocReady()) return
         unpinView(kind)
         val content: View = when (kind) {
-            "layers" -> LayersPanel(this, cv, { cv.color }, onAddVector = { addVectorLayer() }, onPin = null, onEdit3D = { open3D(it) }, onOpacityDrag = { layerOpacityDrag(it) }, onCopyToArtwork = { copyLayerToArtwork(it) }) { onHistoryChanged() }
+            "layers" -> LayersPanel(this, cv, { cv.color }, onAddVector = { addVectorLayer() }, onPin = null, onEdit3D = { open3D(it) }, onEditAdjust = { editAdjustLayer(it) }, onOpacityDrag = { layerOpacityDrag(it) }, onCopyToArtwork = { copyLayerToArtwork(it) }) { onHistoryChanged() }
             "reference" -> ReferenceWindow(this, onImport = {
                 startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                     addCategory(Intent.CATEGORY_OPENABLE); type = "image/*"
@@ -2452,7 +2452,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun showLayers() {
         if (busy()) return
         val panel = LayersPanel(this, cv, { cv.color }, onAddVector = { popup?.dismiss(); addVectorLayer() }, onPin = { popup?.dismiss(); pinPanel("layers") },
-            onEdit3D = { popup?.dismiss(); open3D(it) }, onOpacityDrag = { popup?.dismiss(); layerOpacityDrag(it) },
+            onEdit3D = { popup?.dismiss(); open3D(it) }, onEditAdjust = { popup?.dismiss(); editAdjustLayer(it) }, onOpacityDrag = { popup?.dismiss(); layerOpacityDrag(it) },
             onCopyToArtwork = { popup?.dismiss(); copyLayerToArtwork(it) }) { onHistoryChanged() }
         showPanel(layersBtn, panel, 360, 600)
     }
@@ -3915,6 +3915,70 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     // ---------- Adjustments ----------
+
+    /** the settings of an adjustment layer, changed live on the canvas; Done keeps them (one undo step) */
+    private fun editAdjustLayer(layer: Layer) {
+        val a = layer.adjust ?: return
+        val before = a.copy()
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(18.dp, 12.dp, 18.dp, 12.dp)
+            background = Ui.rounded(Ui.PANEL, 16f)
+            elevation = 12f.dp
+        }
+        val w = min(420.dp, root.width - 72.dp)
+        panel.addView(Ui.text(this, a.kind.label, 15f, bold = true))
+        fun changed() { cv.invalidate() }
+        val kind = a.kind.sliders
+        if (a.kind == LayerAdjust.CURVES) {
+            lateinit var curve: CurvesView
+            val chips = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val names = listOf("All", "Red", "Green", "Blue")
+            val buttons = ArrayList<android.widget.TextView>()
+            names.forEachIndexed { i, n ->
+                val b = barButton(n, i == 0) {}
+                b.setOnClickListener {
+                    curve.channel = i
+                    buttons.forEachIndexed { k, v ->
+                        v.background = Ui.rounded(if (k == i) Ui.ACCENT else Ui.PANEL_ROW, 10f)
+                        v.setTextColor(if (k == i) Ui.ON_ACCENT else Ui.TEXT)
+                    }
+                }
+                buttons.add(b)
+                chips.addView(b, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = 6.dp })
+            }
+            panel.addView(android.widget.HorizontalScrollView(this).apply { addView(chips) }, LinearLayout.LayoutParams(w, -2).apply { topMargin = 6.dp })
+            curve = CurvesView(this, a.curves) { changed() }
+            panel.addView(curve, LinearLayout.LayoutParams(w, -2).apply { topMargin = 6.dp })
+            panel.addView(barButton("Reset curve") {
+                val o = curve.channel * 8
+                Curves.straight().copyInto(a.curves, o, o, o + 8)
+                curve.invalidate(); changed()
+            })
+        } else kind?.sliders?.forEachIndexed { i, sl ->
+            val start = (a.values[i] - sl.min) / (sl.max - sl.min)
+            panel.addView(Ui.sliderRow(this, sl.name, start, { v ->
+                val value = sl.min + v * (sl.max - sl.min)
+                sl.names?.let { L10n.tr(it[value.roundToInt().coerceIn(0, it.size - 1)]) } ?: "${value.roundToInt()}${sl.unit}"
+            }) { v ->
+                a.values[i] = sl.min + v * (sl.max - sl.min)
+                changed()
+            }, LinearLayout.LayoutParams(w, -2))
+        }
+        if (kind != null && kind.sliders.isEmpty()) panel.addView(Ui.text(this, "Erase parts of this layer to keep the colors there as they were", 12.5f, Ui.TEXT_DIM))
+        val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
+        buttons.addView(barButton("Cancel") {
+            layer.adjust = before
+            cv.invalidate(); hideBottomBar(); refreshAll()
+        })
+        buttons.addView(barButton("Done", true) {
+            if (!a.sameAs(before)) { cv.pushCommand(AdjustCmd(layer, before, a.copy())); cv.doc.revision++ }
+            hideBottomBar(); refreshAll(); onHistoryChanged()
+        }, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 8.dp })
+        panel.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = 8.dp })
+        showBottomBar(panel)
+        cv.invalidate()
+    }
 
     private fun startAdjust(kind: AdjustKind) {
         val src = cv.beginAdjust() ?: return

@@ -53,12 +53,14 @@ class Layer(var bitmap: Bitmap, var name: String) {
      * is erased the layer is hidden. Paint brings parts back, the eraser hides them.
      */
     var isLayerMask = false
+    /** non-null = an adjustment layer: it changes the colors below it; [bitmap] is where it shows */
+    var adjust: AdjustSettings? = null
 
     /** copies the layer settings (not the pixels) of [src] */
     fun copySettingsFrom(src: Layer) {
         opacity = src.opacity; blend = src.blend; alphaLock = src.alphaLock; isClippingMask = src.isClippingMask
         visible = src.visible; shadow = src.shadow; scene = src.scene?.copy()
-        reference = src.reference; isLayerMask = src.isLayerMask
+        reference = src.reference; isLayerMask = src.isLayerMask; adjust = src.adjust?.copy()
     }
 
     companion object {
@@ -176,19 +178,41 @@ class Document(val width: Int, val height: Int) {
     ) {
         drawShadows = screen
         val outer = canvas.saveLayer(bounds, null)
-        if (withBackground && backgroundVisible) {
-            bgPaint.color = backgroundColor
-            canvas.drawRect(bounds, bgPaint)
-        }
         layerPaint.isFilterBitmap = filter
         plainPaint.isFilterBitmap = filter
         dstInPaint.isFilterBitmap = filter
-        drawLayers(canvas, 0, layers.size - 1, { i -> if (overlay != null && i == activeIndex) overlay else extra?.get(layers[i]) }, true)
+        val base: (Canvas) -> Unit = { c ->
+            if (withBackground && backgroundVisible) {
+                bgPaint.color = backgroundColor
+                c.drawRect(bounds, bgPaint)
+            }
+        }
+        drawStack(canvas, layers.size - 1, base, { i -> if (overlay != null && i == activeIndex) overlay else extra?.get(layers[i]) })
         canvas.restoreToCount(outer)
         drawShadows = true
     }
 
     private var drawShadows = true
+
+    /** true when [l] is an adjustment layer that changes the picture now */
+    private fun adjusting(l: Layer) = l.adjust != null && l.visible && l.groupId == null && !(l.shadow && !drawShadows)
+
+    /**
+     * Layers 0..[to] over [base]: the top adjustment layer changes everything under it (drawn
+     * again the same way, for the adjustment layers lower down), then the layers above it go on top.
+     * Adjustment layers inside a group do nothing for now.
+     */
+    private fun drawStack(canvas: Canvas, to: Int, base: (Canvas) -> Unit, overlayAt: (Int) -> ActiveOverlay?, groups: Boolean = true, include: (Int) -> Boolean = { true }) {
+        var k = to
+        while (k >= 0 && !(adjusting(layers[k]) && include(k))) k--
+        if (k < 0) {
+            base(canvas)
+            drawLayers(canvas, 0, to, overlayAt, groups, include)
+            return
+        }
+        AdjustRender.draw(canvas, bounds, layers[k], overlayAt(k)) { c -> drawStack(c, k - 1, base, overlayAt, groups, include) }
+        if (k < to) drawLayers(canvas, k + 1, to, overlayAt, groups, include)
+    }
 
     /** true when the artwork has layers that only show on screen */
     val hasShadowLayers get() = layers.any { it.shadow }
@@ -221,6 +245,7 @@ class Document(val width: Int, val height: Int) {
             }
             val layer = layers[i]
             if (layer.isLayerMask) { i++; continue } // drawn together with the layer it masks
+            if (layer.adjust != null) { i++; continue } // its change is drawn by drawStack
             if (include(i)) {
                 val mask = maskOf(i)
                 if (mask != null) drawMasked(canvas, i, overlayAt(i), mask, overlayAt(i + 1))
@@ -319,7 +344,7 @@ class Document(val width: Int, val height: Int) {
         dstInPaint.isFilterBitmap = false
         val set = subset.toHashSet()
         val s = c.saveLayer(bounds, null)
-        drawLayers(c, 0, layers.size - 1, { null }, false) { layers[it] in set }
+        drawStack(c, layers.size - 1, {}, { null }, false) { layers[it] in set }
         c.restoreToCount(s)
         return out
     }

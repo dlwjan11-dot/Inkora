@@ -50,6 +50,7 @@ object ProjectIO {
                 shadow = l.shadow
                 reference = l.reference
                 isLayerMask = l.mask
+                adjust = l.adjust?.let { runCatching { AdjustSettings.fromJson(JSONObject(it)) }.getOrNull() }
                 scene = l.scene?.let { runCatching { Scene3D.fromJson(JSONObject(it)) }.getOrNull() }
             })
             d.activeIndex = active
@@ -93,7 +94,8 @@ object ProjectIO {
         val shadow: Boolean = false,
         val scene: String? = null,
         val reference: Boolean = false,
-        val mask: Boolean = false
+        val mask: Boolean = false,
+        val adjust: String? = null
     )
 
     /**
@@ -109,7 +111,8 @@ object ProjectIO {
                 LayerSnap(it.name, it.visible, it.opacity, it.blend.name, it.alphaLock,
                     if (copy) it.bitmap.copy(Bitmap.Config.ARGB_8888, false) else it.bitmap,
                     it.vector?.let { v -> VGeom.toJson(v).toString() }, it.isClippingMask, it.groupId,
-                    it.shadow, it.scene?.toJson()?.toString(), it.reference, it.isLayerMask)
+                    it.shadow, it.scene?.toJson()?.toString(), it.reference, it.isLayerMask,
+                    it.adjust?.toJson()?.toString())
             },
             guideToJson(doc.guide),
             doc.groups.values.filter { it.id in used }.map { it.copy() }
@@ -141,6 +144,7 @@ object ProjectIO {
                     if (l.shadow) put("shadow", true)
                     if (l.reference) put("reference", true)
                     if (l.mask) put("mask", true)
+                    if (l.adjust != null) put("adjust", JSONObject(l.adjust))
                     if (l.scene != null) put("scene", JSONObject(l.scene))
                     put("file", file)
                     if (l.vector != null) put("vector", JSONArray(l.vector))
@@ -216,6 +220,7 @@ object ProjectIO {
             layer.shadow = o.optBoolean("shadow", false)
             layer.reference = o.optBoolean("reference", false)
             layer.isLayerMask = o.optBoolean("mask", false)
+            layer.adjust = AdjustSettings.fromJson(o.optJSONObject("adjust"))
             o.optJSONObject("scene")?.let { so -> layer.scene = runCatching { Scene3D.fromJson(so) }.getOrNull() }
             if (o.has("group")) layer.groupId = groupIds[o.optInt("group")]
             o.optJSONArray("vector")?.let { va ->
