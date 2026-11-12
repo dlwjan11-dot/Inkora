@@ -1376,6 +1376,11 @@ object L10n {
         "Small", "صغير", "بچووک",
         "Medium", "وسط", "مامناوەند",
         "Large", "كبير", "گەورە",
+        "Fill and ColorDrop", "التعبئة و ColorDrop", "پڕکردنەوە و ColorDrop",
+        "How far the color goes, and closing gaps in the lines", "لوين بيوصل اللون، وسدّ الفراغات بالخطوط", "ڕەنگ تا کوێ دەڕوات، و داخستنی کەلێنی هێڵەکان",
+        "Sensitivity: how different a color can be and still be filled. Higher fills over soft edges and shading.", "الحساسية: قديش ممكن يختلف اللون ويضل يتعبّى. الأعلى بيعبّي فوق الأطراف الناعمة والتظليل.", "هەستیاری: ڕەنگێک چەند جیاواز بێت و هێشتا پڕ بکرێتەوە. بەرزتر لێوارە نەرمەکان و سێبەریش پڕ دەکاتەوە.",
+        "Close gaps: lines that do not quite meet still hold the color in, for gaps up to about twice this size. 0 = off. The same for the Fill tool and for dragging the color circle onto the artwork.", "سدّ الفراغات: الخطوط يلي مش مسكّرة منيح بتضل تحجز اللون جوّا، لفراغات لحد ضعف هالرقم تقريباً. 0 = مطفي. نفس الشي لأداة التعبئة ولما تسحب دائرة اللون عالرسمة.", "داخستنی کەلێن: ئەو هێڵانەی تەواو بەیەک ناگەن هێشتا ڕەنگ لە ناوەوە دەهێڵنەوە، بۆ کەلێن تا نزیکەی دوو هێندەی ئەم ژمارەیە. 0 = ناچالاک. هەمان شت بۆ ئامرازی پڕکردنەوە و ڕاکێشانی بازنەی ڕەنگ.",
+        "Sensitivity", "الحساسية", "هەستیاری",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

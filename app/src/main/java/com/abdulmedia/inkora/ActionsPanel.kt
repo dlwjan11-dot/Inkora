@@ -139,6 +139,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         }
         body.removeAllViews()
         if (page == "pressure") { buildPressure(); return }
+        if (page == "fill") { buildFill(); return }
         if (mode == MODE_ADD) { buildAdd(); return }
         if (mode == MODE_CANVAS) { buildCanvas(); return }
         when (tab) {
@@ -390,14 +391,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
             switchRow("Keep my last eraser", "The eraser you used last (its size too) is ready next time, in new artworks as well", host.rememberEraser, icon = Icon.ERASER) { host.rememberEraser = it },
             switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying, icon = Icon.DROP) { host.watercolorDrying = it },
             switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed, icon = Icon.INK) { host.wetBleed = it },
-            sliderRow("ColorDrop fill sensitivity", cv.fillThreshold, { "${(it * 100).roundToInt()}%" }) { v ->
-                cv.fillThreshold = v
-                host.prefs.edit().putFloat("fillThreshold", v).apply()
-            },
-            sliderRow("Fill: close gaps", (cv.fillGap / 30f).coerceIn(0f, 1f), { if (it < 0.02f) L10n.tr("Off") else "${(it * 30).roundToInt()} px" }) { v ->
-                cv.fillGap = if (v < 0.02f) 0 else (v * 30).roundToInt()
-                host.prefs.edit().putInt("fillGap", cv.fillGap).apply()
-            },
+            row("Fill and ColorDrop", "How far the color goes, and closing gaps in the lines", closes = false, icon = Icon.FILL) { page = "fill"; rebuild() },
                         sliderRow("Selection mask visibility", cv.selectionShade / 0.8f, { "${(it * 100).roundToInt()}%" }) { v ->
                 cv.selectionShade = v * 0.8f
                 cv.invalidate()
@@ -437,6 +431,41 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         body.addView(curve, LayoutParams(-1, -2).apply { leftMargin = 6.dp; rightMargin = 6.dp })
         note("Drag the points: up = more ink for a light touch, down = you need to press harder.")
         group(row("Reset all", closes = false) { pc.reset(); pc.save(); rebuild() })
+    }
+
+    /** Settings › Fill and ColorDrop: for the Fill tool and for dragging the color onto the artwork */
+    /** opens straight on a settings page ("fill", "pressure") */
+    fun openPage(p: String) {
+        tab = Tab.PREFS
+        page = p
+        rebuild()
+    }
+
+    private fun buildFill() {
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, 8.dp) }
+        head.addView(Ui.text(context, "‹", 30f).apply {
+            setPadding(10.dp, 0, 14.dp, 0)
+            setOnClickListener { page = null; rebuild() }
+        })
+        head.addView(Ui.text(context, "Fill and ColorDrop", 20f, bold = true))
+        body.addView(head)
+        group(
+            sliderRow("Sensitivity", cv.fillThreshold, { "${(it * 100).roundToInt()}%" }) { v ->
+                cv.fillThreshold = v
+                host.prefs.edit().putFloat("fillThreshold", v).apply()
+            },
+            sliderRow("Close gaps", (cv.fillGap / 30f).coerceIn(0f, 1f), { if ((it * 30).roundToInt() == 0) L10n.tr("Off") else "${(it * 30).roundToInt()} px" }) { v ->
+                cv.fillGap = (v * 30).roundToInt()
+                host.prefs.edit().putInt("fillGap", cv.fillGap).apply()
+            }
+        )
+        note("Sensitivity: how different a color can be and still be filled. Higher fills over soft edges and shading.")
+        note("Close gaps: lines that do not quite meet still hold the color in, for gaps up to about twice this size. 0 = off. The same for the Fill tool and for dragging the color circle onto the artwork.")
+        group(row("Reset", closes = false) {
+            cv.fillThreshold = 0.22f; cv.fillGap = 0
+            host.prefs.edit().putFloat("fillThreshold", cv.fillThreshold).putInt("fillGap", 0).apply()
+            rebuild()
+        })
     }
 
     private fun buildHelp() {

@@ -751,9 +751,16 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     /** the settings bar when no tool has its own: the brush, its size and opacity */
+    /** a value in the settings bar is being dragged: don't rebuild the bar under the finger */
+    private var scrubbing = false
+
     private fun paintOptions(): View {
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        fun chip(label: String, value: String, onClick: () -> Unit) {
+        /**
+         * [scrub]: drag sideways on the chip to change its value (0..1, from where it was); a tap
+         * still does [onClick]. Returns the value's text view, to update while dragging.
+         */
+        fun chip(label: String, value: String, scrub: ((Float) -> String)? = null, start: Float = 0f, onClick: () -> Unit): android.widget.TextView {
             val c = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -764,33 +771,69 @@ class MainActivity : Activity(), CanvasView.Listener {
                 setOnClickListener { onClick() }
             }
             if (label.isNotEmpty()) c.addView(Ui.text(this, label, 12f, Ui.TEXT_DIM).apply { setPadding(0, 0, 6.dp, 0) })
-            c.addView(Ui.text(this, value, 13f, Ui.TEXT, true))
+            val tv = Ui.text(this, value, 13f, Ui.TEXT, true)
+            c.addView(tv)
+            if (scrub != null) {
+                c.addView(Ui.text(this, "‹ ›", 11f, Ui.TEXT_DIM).apply { setPadding(6.dp, 0, 0, 0) })
+                val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+                var downX = 0f; var dragging = false
+                c.setOnTouchListener { v, e ->
+                    when (e.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> {
+                            downX = e.rawX; dragging = false; v.isPressed = true
+                            // the bar must not scroll away while a value is dragged
+                            v.parent?.requestDisallowInterceptTouchEvent(true)
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            val dx = e.rawX - downX
+                            if (!dragging && kotlin.math.abs(dx) > slop) {
+                                dragging = true; scrubbing = true
+                                v.parent?.requestDisallowInterceptTouchEvent(true)
+                            }
+                            // a full drag of 300dp goes from one end to the other
+                            if (dragging) tv.text = scrub((start + dx / 300f.dp).coerceIn(0f, 1f))
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            v.isPressed = false
+                            if (dragging) { scrubbing = false; refreshAll() } else onClick()
+                        }
+                        MotionEvent.ACTION_CANCEL -> { v.isPressed = false; if (dragging) { scrubbing = false; refreshAll() } }
+                    }
+                    true
+                }
+            }
             row.addView(c, LinearLayout.LayoutParams(-2, 32.dp).apply { marginEnd = 8.dp })
+            return tv
         }
         if (cv.fillMode) {
-            // close gaps: Off → Small → Medium → Large, for lines that do not quite meet
-            val steps = listOf(0 to "Off", 4 to "Small", 10 to "Medium", 20 to "Large")
-            val cur = steps.indexOfFirst { it.first == cv.fillGap }.let { if (it < 0) -1 else it }
-            val label = if (cur >= 0) steps[cur].second else "${cv.fillGap} px"
-            chip("Close gaps", L10n.tr(label)) {
-                val next = steps[(cur + 1).mod(steps.size)].first
-                cv.fillGap = next
-                prefs.edit().putInt("fillGap", next).apply()
-                updateOptions()
-            }
+            // the numbers live in Settings › Fill and ColorDrop; here they show, and a tap opens them
+            chip("Close gaps", if (cv.fillGap == 0) L10n.tr("Off") else "${cv.fillGap} px") { showActions(actionsBtn, page = "fill") }
+            chip("Sensitivity", "${(cv.fillThreshold * 100).roundToInt()}%") { showActions(actionsBtn, page = "fill") }
             row.addView(Ui.text(this, "Tap an area to fill it with the color", 13f, Ui.TEXT_DIM).apply { setPadding(4.dp, 0, 0, 0) })
             return row
         }
         chip("", cv.currentBrush.preset.name + "  ▾") { showBrushes(cv.tool) }
-        chip("Size", "${(Brushes.sliderFromSize(cv.currentBrush.size) * 100).roundToInt()}%") { exactValue(true) }
-        chip("Opacity", "${(cv.currentBrush.opacity * 100).roundToInt()}%") { exactValue(false) }
+        // drag sideways on Size or Opacity to change it; tap for an exact number
+        chip("Size", "${(Brushes.sliderFromSize(cv.currentBrush.size) * 100).roundToInt()}%",
+            scrub = { v ->
+                cv.currentBrush.size = Brushes.sizeFromSlider(v)
+                sizeSlider.value = v
+                "${(v * 100).roundToInt()}%"
+            }, start = Brushes.sliderFromSize(cv.currentBrush.size)) { exactValue(true) }
+        chip("Opacity", "${(cv.currentBrush.opacity * 100).roundToInt()}%",
+            scrub = { v ->
+                val o = v.coerceIn(0.01f, 1f)
+                cv.currentBrush.opacity = o
+                opacitySlider.value = o
+                "${(o * 100).roundToInt()}%"
+            }, start = cv.currentBrush.opacity) { exactValue(false) }
         return row
     }
 
     private fun updateOptions() {
         if (!::optionsBar.isInitialized || !cv.isDocReady()) return
         val (ic, name) = optionsTitle()
-        if (bottomBar == null) optionsBar.show(ic, name, paintOptions(), false)
+        if (bottomBar == null) { if (!scrubbing) optionsBar.show(ic, name, paintOptions(), false) }
         else optionsBar.setTitle(ic, name)
         val hide = focusMode || gallery != null || (dock.mode == ToolRail.FLOAT && bottomBar == null && !narrow)
         optionsBar.visibility = if (hide) View.GONE else View.VISIBLE
@@ -2250,9 +2293,10 @@ class MainActivity : Activity(), CanvasView.Listener {
         showBeside(anchor, box, 340, null)
     }
 
-    private fun showActions(anchor: View) {
+    private fun showActions(anchor: View, page: String? = null) {
         if (!cv.isDocReady()) return
         val panel = ActionsPanel(this, actionsHost)
+        if (page != null) panel.openPage(page)
         showPanel(anchor, panel, 420, 660, alignLeft = true)
     }
 
