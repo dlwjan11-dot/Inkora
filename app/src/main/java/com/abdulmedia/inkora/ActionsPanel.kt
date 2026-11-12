@@ -64,18 +64,29 @@ interface ActionsHost {
     fun backupNote(): String
     fun comicPanels()
     fun speechBubble()
+    /** "dock", "wide" or "float" (see [ToolRail]) */
+    var railMode: String
+    /** runs a tool by its id in [ToolCatalog] */
+    fun runTool(id: String)
 }
 
 /**
- * Actions: everything that isn't painting, in one panel with tabs along the top
- * (Add, Canvas, Share, Video, Prefs, Help), each a list of rows grouped on cards.
+ * Three of the top bar's panels, all lists of rows grouped on cards:
+ * Actions (tabs File, Share, Video, Settings, Help), Add (things to put in the artwork) and
+ * Canvas (drawing help, windows, views, the canvas itself).
  */
 @SuppressLint("ViewConstructor")
-class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayout(context) {
+class ActionsPanel(context: Context, private val host: ActionsHost, private val mode: String = MODE_ACTIONS) : LinearLayout(context) {
+
+    companion object {
+        const val MODE_ACTIONS = "actions"
+        const val MODE_ADD = "add"
+        const val MODE_CANVAS = "canvas"
+    }
 
     enum class Tab(val label: String, val icon: Icon) {
-        ADD("Add", Icon.PLUS), CANVAS("Canvas", Icon.PHOTO), SHARE("Share", Icon.SHARE),
-        VIDEO("Video", Icon.VIDEO), PREFS("Prefs", Icon.SETTINGS), HELP("Help", Icon.HELP)
+        FILE("File", Icon.FOLDER), SHARE("Share", Icon.SHARE),
+        VIDEO("Video", Icon.VIDEO), PREFS("Settings", Icon.SETTINGS), HELP("Help", Icon.HELP)
     }
 
     private val tabsRow = LinearLayout(context).apply { orientation = HORIZONTAL }
@@ -83,15 +94,19 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     private val cv get() = host.canvas
     /** an open sub-page of a tab (for now: "pressure" in Prefs) */
     private var page: String? = null
-    private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "CANVAS")!!) }.getOrDefault(Tab.CANVAS)
+    private var tab: Tab = runCatching { Tab.valueOf(host.prefs.getString("actions_tab", "FILE")!!) }.getOrDefault(Tab.FILE)
 
     init {
         orientation = VERTICAL
         background = Ui.rounded(Ui.PANEL, 22f, Ui.OUTLINE, 1)
         setPadding(14.dp, 16.dp, 14.dp, 12.dp)
         isClickable = true
-        addView(Ui.text(context, "Actions", 24f, bold = true).apply { setPadding(10.dp, 0, 0, 10.dp) })
-        addView(tabsRow, LayoutParams(-1, -2))
+        val (title, icon) = when (mode) { MODE_ADD -> "Add" to Icon.PLUS; MODE_CANVAS -> "Canvas" to Icon.GRID; else -> "Actions" to Icon.WRENCH }
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(6.dp, 0, 0, 10.dp) }
+        head.addView(IconView(context, icon).apply { isClickable = false; tint = Ui.ACCENT; iconScale = 0.62f }, LayoutParams(32.dp, 32.dp))
+        head.addView(Ui.text(context, title, 20f, bold = true).apply { setPadding(8.dp, 0, 0, 0) })
+        addView(head)
+        if (mode == MODE_ACTIONS) addView(tabsRow, LayoutParams(-1, -2))
         val scroll = ScrollView(context).apply { isVerticalScrollBarEnabled = false }
         scroll.addView(body)
         addView(scroll, LayoutParams(-1, 0, 1f).apply { topMargin = 10.dp })
@@ -100,7 +115,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
 
     private fun rebuild() {
         tabsRow.removeAllViews()
-        for (t in Tab.entries) {
+        if (mode == MODE_ACTIONS) for (t in Tab.entries) {
             val on = t == tab
             val item = LinearLayout(context).apply {
                 orientation = VERTICAL
@@ -122,9 +137,10 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
         }
         body.removeAllViews()
         if (page == "pressure") { buildPressure(); return }
+        if (mode == MODE_ADD) { buildAdd(); return }
+        if (mode == MODE_CANVAS) { buildCanvas(); return }
         when (tab) {
-            Tab.ADD -> buildAdd()
-            Tab.CANVAS -> buildCanvas()
+            Tab.FILE -> buildFile()
             Tab.SHARE -> buildShare()
             Tab.VIDEO -> buildVideo()
             Tab.PREFS -> buildPrefs()
@@ -239,13 +255,27 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
 
     private fun buildAdd() {
         group(
-            row("Insert a photo", "As a new layer", icon = Icon.PHOTO) { host.insertPhoto() },
-            row("Add text", "Any language, 9 fonts", icon = Icon.TEXT) { host.addText() },
-            row("Open a project file", ".inkora from Inkora, or .psd from Photoshop", icon = Icon.FOLDER) { host.openProjectFile() }
+            row("Photo", "As a new layer", icon = Icon.PHOTO) { host.insertPhoto() },
+            row("Text", "Any language, 9 fonts", icon = Icon.TEXT) { host.addText() },
+            row("Vector layer", "Pen and shapes, sharp at any size", icon = Icon.VECTOR) { host.runTool("vector") },
+            row("3D figure", "A pose to draw from", icon = Icon.CUBE) { host.runTool("pose3d") }
         )
         group(
             row("Comic panels…", "Frames for a comic page, on a new layer", icon = Icon.COMIC) { host.comicPanels() },
             row("Speech bubble…", "Speech, thought, shout or a caption box", icon = Icon.BUBBLE) { host.speechBubble() }
+        )
+        group(
+            row("Photo to trace", "Shown under your drawing, kept out of exports", icon = Icon.TRACE) { host.runTool("shadow_photo") },
+            row("Palette from a photo", "Its colors, ready to paint with", icon = Icon.PALETTE) { host.runTool("palette_photo") }
+        )
+    }
+
+    private fun buildFile() {
+        val d = cv.doc
+        group(
+            row("New canvas…", icon = Icon.NEW_CANVAS) { host.newCanvas() },
+            row("Rename artwork…", d.title.ifBlank { L10n.tr("Untitled Artwork") }, icon = Icon.EDIT) { host.renameArtwork() },
+            row("Open a project file", ".inkora from Inkora, or .psd from Photoshop", icon = Icon.FOLDER) { host.openProjectFile() }
         )
         group(
             row("Import brushes…", "Procreate .brush and .brushset, .zip, or PNG stamps", icon = Icon.IMPORT) { host.importBrushes() },
@@ -264,12 +294,6 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
     private fun buildCanvas() {
         val d = cv.doc
         val g = d.guide
-        group(
-            row("Crop & Resize", "Canvas size, resize, crop, rotate", icon = Icon.CROP) { host.cropResize() },
-            row("New canvas…", icon = Icon.NEW_CANVAS) { host.newCanvas() },
-            row("Rename artwork…", d.title.ifBlank { L10n.tr("Untitled Artwork") }, icon = Icon.EDIT) { host.renameArtwork() },
-            row("Snapshots", "Keep this moment of the artwork, and come back to it later", icon = Icon.SNAPSHOT) { host.openSnapshots() }
-        )
         section("Drawing help")
         group(
             switchRow("Drawing guide", "Grids and perspective", g.type != GuideType.OFF, icon = Icon.GRID) { on ->
@@ -296,7 +320,12 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             row("Flip the view", "Only how you see it, to check your drawing", closes = false, icon = Icon.EYE) { host.flipCanvas() },
             row("Fit canvas to screen", icon = Icon.FIT) { host.fitCanvas() }
         )
-        group(row("Canvas information", icon = Icon.INFO) { host.canvasInfo() })
+        section("This canvas")
+        group(
+            row("Crop & Resize", "Canvas size, resize, crop, rotate", icon = Icon.CROP) { host.cropResize() },
+            row("Snapshots", "Keep this moment of the artwork, and come back to it later", icon = Icon.SNAPSHOT) { host.openSnapshots() },
+            row("Canvas information", icon = Icon.INFO) { host.canvasInfo() }
+        )
         val layers = d.layers.size
         note(String.format(Locale.US, "%d × %d px · %s %d / %d", d.width, d.height, L10n.tr("Layers"), layers, d.maxLayers()))
     }
@@ -342,16 +371,14 @@ class ActionsPanel(context: Context, private val host: ActionsHost) : LinearLayo
             choiceRow("Language", langs, L10n.lang, icon = Icon.GLOBE) { code -> host.close(); host.setLanguage(code) },
             switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it }
         )
-        section("Layout")
+        section("Tool bar")
         group(
-            choiceRow("Toolbar", listOf("Left" to "Left", "Right" to "Right", "Top" to "Top", "Bottom" to "Bottom"), dock, icon = Icon.LAYOUT) { e ->
-                // the toolbar and the sliders never share a side
-                val s = if (e == sliders) (if (e == "Left") "Right" else "Left") else sliders
-                host.setEdges(e, s); rebuild()
+            choiceRow("Side", listOf("Left" to "Left", "Right" to "Right"), dock, icon = Icon.LAYOUT) { e ->
+                // the size and opacity sliders go to the other side
+                host.setEdges(e, if (e == "Left") "Right" else "Left"); rebuild()
             },
-            choiceRow("Size and opacity sliders", listOf("Left" to "Left", "Right" to "Right"), sliders, icon = Icon.ADJUST) { e ->
-                val dk = if (dock == e) (if (e == "Left") "Right" else "Left") else dock
-                host.setEdges(dk, e); rebuild()
+            choiceRow("Style", listOf(ToolRail.DOCK to "Docked", ToolRail.WIDE to "Wide", ToolRail.FLOAT to "Floating"), host.railMode, icon = Icon.DOCK) { m ->
+                host.railMode = m; rebuild()
             },
             switchRow("Size & Opacity sidebar", "Hide it if you only change them with gestures", host.sidebarShown, icon = Icon.EYE) { host.sidebarShown = it }
         )

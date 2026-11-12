@@ -38,6 +38,9 @@ class InkMenu(private val context: Context, private val anchor: View) {
 
     fun dismiss() { runCatching { window?.dismiss() } }
 
+    /** opens beside the anchor (to its right, or its left when there is no room) instead of under it */
+    var beside = false
+
     fun show() {
         val items = menu.list.sortedWith(compareBy({ it.groupId }, { it.order }))
         if (items.isEmpty()) return
@@ -80,7 +83,14 @@ class InkMenu(private val context: Context, private val anchor: View) {
             animationStyle = android.R.style.Animation_Dialog
         }
         window = pw
-        runCatching { pw.showAsDropDown(anchor, 0, 4.dp, Gravity.START) }
+        if (beside) {
+            val loc = IntArray(2); anchor.getLocationInWindow(loc)
+            val right = loc[0] + anchor.width + 8.dp
+            val x = if (right + w <= dm.widthPixels - 8.dp) right else (loc[0] - w - 8.dp).coerceAtLeast(8.dp)
+            val hh = if (h > 0) h else card.measuredHeight
+            val y = (loc[1] - 6.dp).coerceAtMost(dm.heightPixels - hh - 12.dp).coerceAtLeast(8.dp)
+            runCatching { pw.showAtLocation(anchor.rootView, Gravity.TOP or Gravity.LEFT, x, y) }
+        } else runCatching { pw.showAsDropDown(anchor, 0, 4.dp, Gravity.START) }
     }
 
     private fun row(item: Item, withIcons: Boolean): View {

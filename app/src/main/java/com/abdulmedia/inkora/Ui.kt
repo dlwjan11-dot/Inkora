@@ -151,7 +151,7 @@ enum class Icon { BRUSH, ERASER, LAYERS, ACTIONS, UNDO, REDO, SYMMETRY, EYEDROPP
     SEL_RECT, SEL_ELLIPSE, SEL_ALL, DESELECT, SEL_INVERT, FEATHER, ROTATE, CUSTOMIZE, DRAG, EXPORT, CLOCK, COPY,
     NAVIGATOR, ORB, REFERENCE, GLOBE, LIGHTBULB,
     WHEEL, HAND, KEYBOARD, VIDEO, HELP, MODIFY, INK, PENCIL, NIB, PALETTE, DROP, SPRAY, TEXTURE, PIXEL, FOLDER, CLEAR, WRENCH, CURSOR, CUBE,
-    GRADIENT, RECOLOR, MEASURE, QUICKSHAPE, TRACE, CROP, ACTUAL, SEL_COLOR, SEL_BRUSH, LIQUIFY, COMIC, BUBBLE, SNAPSHOT, BACKUP, IMPORT, NEW_CANVAS, INFO, PRESSURE, CHEV_LEFT, CHEV_RIGHT, EXPAND, SWAP_SIDE, HIDE, TOUCH, LAYOUT, SUN }
+    GRADIENT, RECOLOR, MEASURE, QUICKSHAPE, TRACE, CROP, ACTUAL, SEL_COLOR, SEL_BRUSH, LIQUIFY, COMIC, BUBBLE, SNAPSHOT, BACKUP, IMPORT, NEW_CANVAS, INFO, PRESSURE, CHEV_LEFT, CHEV_RIGHT, EXPAND, SWAP_SIDE, HIDE, TOUCH, LAYOUT, SUN, FLOAT, DOCK, MORE, GRIP, BRUSHES }
 
 
 /** Toolbar button showing one icon. */
@@ -259,9 +259,13 @@ class IconView(context: Context, var icon: Icon) : View(context) {
     /** small accent dot in the corner (e.g. "this setting is on") */
     var dot = false
         set(v) { field = v; invalidate() }
+    /** small triangle in the bottom corner: this tool has sister tools (hold it to see them) */
+    var corner = false
+        set(v) { field = v; invalidate() }
     /** icon size relative to the view */
     var iconScale = 0.58f
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tri = android.graphics.Path()
     private var pressed = false
 
     init {
@@ -294,6 +298,12 @@ class IconView(context: Context, var icon: Icon) : View(context) {
         if (dot) {
             bg.color = Ui.ACCENT
             canvas.drawCircle(width - inset - 4f.dp, inset + 4f.dp, 3f.dp, bg)
+        }
+        if (corner) {
+            val x = width - inset - 2f.dp; val y = height - inset - 2f.dp; val k = 6f.dp
+            tri.reset(); tri.moveTo(x, y - k); tri.lineTo(x, y); tri.lineTo(x - k, y); tri.close()
+            bg.color = if (active) Ui.ACCENT else Ui.TEXT_DIM
+            canvas.drawPath(tri, bg)
         }
     }
 }

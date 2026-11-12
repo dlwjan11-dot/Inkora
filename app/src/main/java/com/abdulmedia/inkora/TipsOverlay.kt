@@ -59,7 +59,7 @@ object Tour {
             "The checkbox hides a layer; the letter beside it is its blend mode",
             "Clipping mask, alpha lock and layer masks are in the layer's options"), listOf(Icon.LAYERS, Icon.FOLDER, Icon.EYE)),
         Page(-1, "Select, move and adjust", listOf(
-            "The three icons on the top bar: adjustments, selection, transform",
+            "Selection and Transform are in the tool bar; Adjust is in the top bar",
             "Selection: freehand, rectangle, ellipse, magic wand, color range or a selection brush",
             "Transform: drag to move, corners to scale, sides to stretch, the green dot to turn, two fingers to pinch",
             "Tap the green dot for an exact angle, a corner for an exact size; the yellow dot turns the box only",
@@ -73,20 +73,25 @@ object Tour {
             "Living Paint: paint that stays wet and mixes on the canvas",
             "Light & Shade: airbrushes that brighten, deepen or tint what is under them",
             "Import Procreate brushes (.brush, .brushset) with + in the brush library"), listOf(Icon.DROP, Icon.PALETTE, Icon.LIGHTBULB)),
-        Page(1, "More tools, and your own toolbar", listOf(
-            "The ••• in the top bar opens Creative and Editing",
-            "Creative: text, vector shapes and pen, 3D figures to pose, photos, fill, gradient",
-            "Measure lengths and angles; turn a line into a ruler",
-            "Creative › Shapes: rectangle, circle, star, heart, arrow, drawn with your brush or filled",
-            "Actions (the wrench) › Add: comic panels and speech bubbles",
-            "Editing: liquify, canvas size and crop, filters, feather",
-            "Tap ☆ on any tool to put it on your own toolbar; long-press the toolbar to arrange it")),
+        Page(-1, "The tool bar", listOf(
+            "Every tool is in the tool bar on the side: tap one to use it",
+            "A small triangle in the corner: hold the tool to see its sister tools",
+            "Tap the brush, smudge or eraser again for the brush library",
+            "» shows every tool with its name; the floating button keeps only your tools in a bar you can move",
+            "⋯ edits it: take tools out, add them back, change the order",
+            "The bar under the top bar shows the settings of the tool in hand"), listOf(Icon.DOCK, Icon.MORE, Icon.FLOAT)),
+        Page(-1, "The top bar", listOf(
+            "Actions: file, share, video, settings and help",
+            "Add: photos, text, vector layers, 3D figures, comic panels, speech bubbles",
+            "Adjust: hue, brightness, color balance, blur, sharpen and more, with a live preview",
+            "Canvas: guides, symmetry, floating windows, grey view, crop and snapshots",
+            "Brushes, Layers and Color on the right; each opens right under its button"), listOf(Icon.WRENCH, Icon.PLUS, Icon.ADJUST)),
         Page(-1, "Your artworks", listOf(
             "Gallery (top left): all your artworks, in stacks if you like",
             "Inkora saves by itself while you work and when you leave",
             "Actions (the wrench) › Share: PNG, JPEG, Photoshop PSD, PDF, TIFF, project file",
             "Every artwork records a time-lapse video you can export",
-            "Actions › Canvas › Snapshots: keep a moment of the artwork and come back to it",
+            "Canvas › Snapshots: keep a moment of the artwork and come back to it",
             "A reference photo you import stays with its artwork",
             "Actions › Share › Back up all artworks: every artwork in one file, for Google Drive"), listOf(Icon.FOLDER, Icon.EXPORT, Icon.VIDEO)),
         Page(-1, "Find all of this again", listOf(

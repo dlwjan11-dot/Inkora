@@ -34,7 +34,9 @@ import kotlin.math.sqrt
 class ToolsPanel(
     context: Context,
     private var creative: Boolean,
-    private val host: Host
+    private val host: Host,
+    /** the top bar's Adjust panel: color and tone, and filters, with no tabs or categories */
+    private val adjustOnly: Boolean = false
 ) : LinearLayout(context) {
 
     interface Host {
@@ -94,18 +96,26 @@ class ToolsPanel(
         tabs.orientation = HORIZONTAL
         tabs.background = Ui.rounded(Ui.SUNKEN, 14f)
         tabs.setPadding(3.dp, 3.dp, 3.dp, 3.dp)
-        if (context.narrow) head.addView(tabs, LayoutParams(0, 42.dp, 1f))
-        else { head.addView(tabs, LayoutParams(300.dp, 42.dp)); head.addView(View(context), LayoutParams(0, 1, 1f)) }
-        head.addView(IconView(context, Icon.CLOSE).apply {
-            tint = Ui.TEXT_DIM
-            setOnClickListener { host.close() }
-        }, LayoutParams(40.dp, 40.dp))
+        if (adjustOnly) {
+            head.setPadding(20.dp, 16.dp, 8.dp, 10.dp)
+            head.addView(IconView(context, Icon.ADJUST).apply { isClickable = false; tint = Ui.ACCENT; iconScale = 0.62f }, LayoutParams(32.dp, 32.dp))
+            head.addView(Ui.text(context, "Adjust", 20f, bold = true).apply { setPadding(8.dp, 0, 0, 0) }, LayoutParams(0, -2, 1f))
+        } else {
+            if (context.narrow) head.addView(tabs, LayoutParams(0, 42.dp, 1f))
+            else { head.addView(tabs, LayoutParams(300.dp, 42.dp)); head.addView(View(context), LayoutParams(0, 1, 1f)) }
+            head.addView(IconView(context, Icon.CLOSE).apply {
+                tint = Ui.TEXT_DIM
+                setOnClickListener { host.close() }
+            }, LayoutParams(40.dp, 40.dp))
+        }
         addView(head)
-        addView(Ui.divider(context), LayoutParams(-1, 1.dp))
+        if (!adjustOnly) addView(Ui.divider(context), LayoutParams(-1, 1.dp))
 
         // ---- body ----
-        val body = LinearLayout(context).apply { orientation = if (context.narrow) VERTICAL else HORIZONTAL }
-        if (context.narrow) {
+        val body = LinearLayout(context).apply { orientation = if (context.narrow || adjustOnly) VERTICAL else HORIZONTAL }
+        if (adjustOnly) {
+            // no categories
+        } else if (context.narrow) {
             // phones: the categories are a row of chips you can slide
             catColumn.orientation = HORIZONTAL
             catColumn.setPadding(8.dp, 8.dp, 8.dp, 8.dp)
@@ -123,7 +133,7 @@ class ToolsPanel(
         if (context.narrow) content.setPadding(10.dp, 12.dp, 10.dp, 16.dp) else content.setPadding(18.dp, 16.dp, 18.dp, 20.dp)
         scroll.addView(content)
         scroll.isVerticalScrollBarEnabled = false
-        body.addView(scroll, if (context.narrow) LayoutParams(-1, 0, 1f) else LayoutParams(0, -1, 1f))
+        body.addView(scroll, if (context.narrow || adjustOnly) LayoutParams(-1, 0, 1f) else LayoutParams(0, -1, 1f))
         addView(body, LayoutParams(-1, 0, 1f))
 
         rebuild()
@@ -139,6 +149,16 @@ class ToolsPanel(
     }
 
     private fun rebuild() {
+        if (adjustOnly) {
+            content.removeAllViews()
+            content.addView(Ui.text(context, "Pick one: its sliders open in the bar at the top, with a live preview.", 12.5f, Ui.TEXT_DIM).apply { setPadding(4.dp, 0, 0, 4.dp) })
+            caption("Color and tone")
+            buildAdjust(listOf(AdjustKind.HSB, AdjustKind.BRIGHT_CONTRAST, AdjustKind.COLOR_BALANCE,
+                AdjustKind.POSTERIZE, AdjustKind.INVERT, AdjustKind.GRAYSCALE))
+            caption("Filters")
+            buildAdjust(listOf(AdjustKind.BLUR, AdjustKind.SHARPEN, AdjustKind.NOISE))
+            return
+        }
         // tabs
         tabs.removeAllViews()
         for (c in listOf(true, false)) {
@@ -241,6 +261,8 @@ class ToolsPanel(
         if (id != null) {
             val star = IconView(context, if (host.inDock(id)) Icon.STAR_FILLED else Icon.STAR).apply {
                 tint = if (host.inDock(id)) Ui.ACCENT else Ui.TEXT_DIM
+                // the tool bar holds places, not single tools: no ☆ any more
+                visibility = View.GONE
                 iconScale = 0.55f
                 contentDescription = "Add to toolbar"
             }
@@ -297,6 +319,7 @@ class ToolsPanel(
         val inDock = host.inDock(id)
         val star = IconView(context, if (inDock) Icon.STAR_FILLED else Icon.STAR).apply {
             tint = if (inDock) Ui.ACCENT else Ui.TEXT_DIM
+            visibility = View.GONE
             iconScale = 0.5f
             contentDescription = "Add to toolbar"
         }

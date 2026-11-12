@@ -43,7 +43,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private lateinit var hud: HudView
     private lateinit var brushBtn: IconView
     private lateinit var eraserBtn: IconView
-    private lateinit var layersBtn: IconView
+    private lateinit var layersBtn: View
     private lateinit var symmetryBtn: IconView
     private lateinit var guideBtn: IconView
     private lateinit var doneBtn: android.widget.TextView
@@ -62,7 +62,15 @@ class MainActivity : Activity(), CanvasView.Listener {
     private lateinit var editingBtn: View
     private lateinit var topBar: LinearLayout
     private lateinit var sideBar: LinearLayout
-    private lateinit var dock: ToolDockView
+    private lateinit var dock: ToolRail
+    private lateinit var optionsBar: OptionsBar
+    private lateinit var menuBtn: View
+    private lateinit var addBtn: View
+    private lateinit var adjustMenuBtn: View
+    private lateinit var canvasBtn: View
+    private lateinit var brushesBtn: View
+    private val barButtons = ArrayList<View>()
+    private var popupOwner: View? = null
     private lateinit var titleView: android.widget.TextView
     private lateinit var focusExit: IconView
     private var dockIds = mutableListOf<String>()
@@ -429,6 +437,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             elevation = 6f.dp
         }
         topBar = bar
+        // [Gallery] | [Actions] [Add] [Adjust] [Canvas]      artwork title      [Brushes] [Layers] (Color)
+        // Every button opens its panel right under itself, the same way (on a phone: a sheet from the bottom).
         val homeBtn = Ui.text(this, "Gallery", 16f).apply {
             contentDescription = "Gallery"
             gravity = Gravity.CENTER
@@ -438,108 +448,49 @@ class MainActivity : Activity(), CanvasView.Listener {
         HoverTip.attach(homeBtn) { "Gallery" to TipTexts.byName["Gallery"] }
         bar.addView(homeBtn, LinearLayout.LayoutParams(-2, 48.dp))
         this.homeBtn = homeBtn
-        val actionsBtn = IconView(this, Icon.WRENCH).apply { contentDescription = "Actions" }
-        actionsBtn.setOnClickListener { if (!busy()) showActions(actionsBtn) }
-        bar.addView(actionsBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
-        this.actionsBtn = actionsBtn
+        bar.addView(barDivider())
+        menuBtn = barButton(Icon.MENU, "Menu") { v -> if (!busy()) showPhoneMenu(v) }
+        actionsBtn = barButton(Icon.WRENCH, "Actions") { v -> if (!busy()) showActions(v) }
+        addBtn = barButton(Icon.PLUS, "Add") { v -> if (!busy()) showAddPanel(v) }
+        adjustMenuBtn = barButton(Icon.ADJUST, "Adjust") { v -> if (adjustKind == null && !busy()) showAdjustPanel(v) }
+        canvasBtn = barButton(Icon.GRID, "Canvas") { v -> if (!busy()) showCanvasPanel(v) }
+        for (b in listOf(menuBtn, actionsBtn, addBtn, adjustMenuBtn, canvasBtn)) bar.addView(b)
 
-        // the Creative and Editing panels open from the "•••" in the middle of the bar
-        creativeBtn = barTab(Icon.SPARKLE, "Creative") { if (!busy()) showToolsMenu(true) }
-        editingBtn = barTab(Icon.WAND, "Editing") { if (!busy()) showToolsMenu(false) }
-
-        // one tap to the editing tools painters use most: adjustments, selection, transform
-        adjustBtn = IconView(this, Icon.ADJUST).apply { contentDescription = "Adjustments" }
-        adjustBtn.setOnClickListener { if (adjustKind == null && !busy()) showToolsMenu(false, "adjust") }
-        selectBtn = IconView(this, Icon.SELECT).apply { contentDescription = "Selection" }
-        selectBtn.setOnClickListener {
-            if (cv.interaction == Interaction.SELECT) { cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll() }
-            else if (!busy()) enterSelect()
-        }
-        transformBtn = IconView(this, Icon.TRANSFORM).apply { contentDescription = "Transform" }
-        transformBtn.setOnClickListener {
-            if (cv.interaction == Interaction.TRANSFORM) leaveTransform(true)
-            else if (!busy()) runTool("transform", transformBtn)
-        }
-        bar.addView(adjustBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
-        bar.addView(selectBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
-        bar.addView(transformBtn, LinearLayout.LayoutParams(44.dp, 48.dp))
+        // the tools themselves live in the tool bar now; these keep their state for older code paths
+        creativeBtn = View(this); editingBtn = View(this); moreBtn = View(this)
+        adjustBtn = IconView(this, Icon.ADJUST)
+        selectBtn = IconView(this, Icon.SELECT)
+        transformBtn = IconView(this, Icon.TRANSFORM)
         symmetryBtn = IconView(this, Icon.SYMMETRY)
         guideBtn = IconView(this, Icon.GRID)
+        brushBtn = IconView(this, Icon.BRUSH)
+        smudgeBtn = IconView(this, Icon.SMUDGE)
+        eraserBtn = IconView(this, Icon.ERASER)
+        layerName = Ui.text(this, "", 9f, Ui.TEXT_DIM)
 
         titleView = Ui.text(this, "", 13.5f, Ui.TEXT_DIM).apply {
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(12.dp, 0, 12.dp, 0)
+            contentDescription = "Rename artwork"
             setOnClickListener {
                 if (cv.isDocReady() && !busy()) renameDialog(cv.doc.title) { t ->
                     cv.doc.title = t; cv.doc.revision++; autosave(force = true); refreshAll()
                 }
             }
         }
-        // the middle of the bar: "•••" opens the Creative and Editing tool panels
-        val more = Ui.text(this, "•••", 18f, Ui.TEXT_DIM).apply {
-            gravity = Gravity.CENTER
-            contentDescription = "More tools"
-            setOnClickListener { v -> if (!busy()) showMoreMenu(v) }
-        }
-        bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        HoverTip.attach(more) { "More tools" to TipTexts.byName["More tools"] }
-        bar.addView(more, LinearLayout.LayoutParams(64.dp, 48.dp))
-        moreBtn = more
-        bar.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        bar.addView(titleView, LinearLayout.LayoutParams(0, 48.dp, 1f))
 
-        // painting tools as one group
-        val tools = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(3.dp, 0, 3.dp, 0)
-        }
-        brushBtn = IconView(this, Icon.BRUSH).apply { contentDescription = "Brush" }
-        brushBtn.setOnClickListener {
-            if (busy()) return@setOnClickListener
-            if (cv.tool == Tool.BRUSH && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.BRUSH) else selectTool(Tool.BRUSH)
-        }
-        brushBtn.setOnLongClickListener { carryBrush(Tool.BRUSH); true }
-        tools.addView(brushBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
-
-        smudgeBtn = IconView(this, Icon.SMUDGE).apply { contentDescription = "Smudge" }
-        smudgeBtn.setOnClickListener {
-            if (busy()) return@setOnClickListener
-            if (cv.tool == Tool.SMUDGE && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.SMUDGE) else selectTool(Tool.SMUDGE)
-        }
-        smudgeBtn.setOnLongClickListener { carryBrush(Tool.SMUDGE); true }
-        tools.addView(smudgeBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
-
-        eraserBtn = IconView(this, Icon.ERASER).apply { contentDescription = "Eraser" }
-        eraserBtn.setOnClickListener {
-            if (busy()) return@setOnClickListener
-            if (cv.tool == Tool.ERASER && cv.interaction == Interaction.PAINT && !cv.fillMode) showBrushes(Tool.ERASER) else selectTool(Tool.ERASER)
-        }
-        eraserBtn.setOnLongClickListener { carryBrush(Tool.ERASER); true }
-        tools.addView(eraserBtn, LinearLayout.LayoutParams(46.dp, 44.dp))
-        bar.addView(tools, LinearLayout.LayoutParams(-2, 44.dp))
-
-        layersBtn = IconView(this, Icon.LAYERS).apply { contentDescription = "Layers" }
-        layersBtn.setOnClickListener { if (!busy()) showLayers() }
-        val layersBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-        }
-        layersBox.addView(layersBtn, LinearLayout.LayoutParams(44.dp, 36.dp))
-        layerName = Ui.text(this, "", 9f, Ui.TEXT_DIM).apply {
-            maxLines = 1
-            ellipsize = android.text.TextUtils.TruncateAt.END
-            gravity = Gravity.CENTER
-            setOnClickListener { if (!busy()) showLayers() }
-        }
-        layerName.visibility = View.GONE // the Layers panel shows the names
-        bar.addView(layersBox, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 4.dp })
+        brushesBtn = barButton(Icon.BRUSHES, "Brushes") { if (!busy()) showBrushes(cv.tool) }
+        layersBtn = barButton(Icon.LAYERS, "Layers") { if (!busy()) showLayers() }
+        bar.addView(brushesBtn)
+        bar.addView(layersBtn)
 
         colorBtn = ColorSwatchView(this)
         setupColorButton()
         HoverTip.attach(colorBtn) { "Color" to TipTexts.byName["Color"] }
-        bar.addView(colorBtn, LinearLayout.LayoutParams(52.dp, 52.dp))
+        bar.addView(colorBtn, LinearLayout.LayoutParams(52.dp, 52.dp).apply { leftMargin = 6.dp })
 
         root.addView(bar, FrameLayout.LayoutParams(-1, 56.dp, Gravity.TOP))
         // hairline under the bar
@@ -625,21 +576,17 @@ class MainActivity : Activity(), CanvasView.Listener {
         side.addView(redoBtn, LinearLayout.LayoutParams(44.dp, 44.dp))
         root.addView(side, FrameLayout.LayoutParams(-2, -2))
 
-        // ---------- customizable toolbar (dock) ----------
-        dock = ToolDockView(this,
-            onTool = { id, anchor -> runTool(id, anchor) },
-            isActive = { id -> isToolActive(id) },
-            onCustomize = { if (!busy()) showToolbarEditor() },
-            isFavorite = { id -> id in dockIds },
-            toggleFavorite = { id -> toggleDock(id) },
-            onSwapSide = { swapDockSide() },
-            onStateChange = { st ->
-                prefs.edit().putString("dock_state", st).apply()
-                applySides()
-            })
-        dock.restoreState(prefs.getString("dock_state", ToolDockView.NORMAL) ?: ToolDockView.NORMAL)
-        dock.setTools(dockIds)
+        // ---------- the tool bar and the bar of the current tool's settings ----------
+        dock = ToolRail(this, prefs, object : ToolRail.Host {
+            override fun pick(id: String, anchor: View, again: Boolean) = railPick(id, anchor, again)
+            override fun isActive(id: String) = isToolActive(id)
+            override fun layoutChanged() = applySides()
+            override fun side() = railSide()
+            override fun setSide(side: String) = setRailSide(side)
+        })
         root.addView(dock, FrameLayout.LayoutParams(-2, -2))
+        optionsBar = OptionsBar(this)
+        root.addView(optionsBar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         applySides()
         applyScreenSize()
 
@@ -660,7 +607,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             visibility = View.GONE
         }
         root.addView(doneBtn, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-            topMargin = 68.dp
+            topMargin = 120.dp
         })
 
         // dot that follows the finger during ColorDrop
@@ -687,7 +634,137 @@ class MainActivity : Activity(), CanvasView.Listener {
         it.layoutParams = LinearLayout.LayoutParams(1.dp, 24.dp).apply { leftMargin = 6.dp; rightMargin = 4.dp }
     }
 
-    /** icon + label button for the top bar */
+    /** a top-bar button: icon over its name (icon only on a phone); it opens its panel under itself */
+    private fun barButton(icon: Icon, label: String, onClick: (View) -> Unit): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            contentDescription = label
+            isClickable = true
+            foreground = Ui.ripple(12f)
+        }
+        box.setOnClickListener { onClick(box) }
+        box.addView(IconView(this, icon).apply { isClickable = false; iconScale = 0.62f }, LinearLayout.LayoutParams(28.dp, 28.dp))
+        box.addView(Ui.text(this, label, 10.5f, Ui.TEXT, true).apply { gravity = Gravity.CENTER; maxLines = 1; tag = "label" },
+            LinearLayout.LayoutParams(-2, -2))
+        HoverTip.attach(box) { label to TipTexts.byName[label] }
+        box.layoutParams = LinearLayout.LayoutParams(76.dp, 52.dp)
+        barButtons.add(box)
+        return box
+    }
+
+    /** phones: Actions, Add, Adjust and Canvas share one ☰ button */
+    private fun showPhoneMenu(anchor: View) {
+        val m = InkMenu(this, anchor)
+        m.menu.add(0, 1, 1, "Actions").icon(Icon.WRENCH)
+        m.menu.add(0, 2, 2, "Add").icon(Icon.PLUS)
+        m.menu.add(0, 3, 3, "Adjust").icon(Icon.ADJUST).isEnabled = adjustKind == null
+        m.menu.add(0, 4, 4, "Canvas").icon(Icon.GRID)
+        L10n.menu(m.menu)
+        m.setOnMenuItemClickListener {
+            when (it.itemId) {
+                1 -> showActions(anchor)
+                2 -> showAddPanel(anchor)
+                3 -> showAdjustPanel(anchor)
+                4 -> showCanvasPanel(anchor)
+            }
+            true
+        }
+        m.show()
+    }
+
+    private fun showAddPanel(anchor: View) {
+        if (!cv.isDocReady()) return
+        showPanel(anchor, ActionsPanel(this, actionsHost, ActionsPanel.MODE_ADD), 380, null)
+    }
+
+    private fun showCanvasPanel(anchor: View) {
+        if (!cv.isDocReady()) return
+        showPanel(anchor, ActionsPanel(this, actionsHost, ActionsPanel.MODE_CANVAS), 420, 680)
+    }
+
+    private fun showAdjustPanel(anchor: View) {
+        if (!cv.isDocReady()) return
+        showPanel(anchor, ToolsPanel(this, false, toolsHost, adjustOnly = true), 600, 640)
+    }
+
+    /** a tool picked on the tool bar: paint tools open their brushes when tapped again */
+    private fun railPick(id: String, anchor: View, again: Boolean) {
+        if (busy()) return
+        val paint = when (id) { "brush" -> Tool.BRUSH; "smudge" -> Tool.SMUDGE; "eraser" -> Tool.ERASER; else -> null }
+        if (paint != null) {
+            if (again) showBrushes(paint) else selectTool(paint)
+            return
+        }
+        runTool(id, anchor)
+    }
+
+    private fun railSide(): String = when (prefs.getString("dock_edge", null)) { "Right" -> "Right"; else -> "Left" }
+
+    private fun setRailSide(side: String) {
+        val sl = if (side == "Left") "Right" else "Left"
+        prefs.edit().putString("dock_edge", side).putString("sliders_edge", sl).putBoolean("leftHanded", sl == "Right").apply()
+        leftHanded = sl == "Right"
+        applySides()
+    }
+
+    /** the name and icon of what the settings bar is for */
+    private fun optionsTitle(): Pair<Icon, String> {
+        if (bottomBar != null && bottomBar === vectorBar) return Icon.VECTOR to "Vector"
+        adjustKind?.let { return Icon.ADJUST to it.label }
+        if (cv.liquify != null) return Icon.LIQUIFY to "Liquify"
+        return when (cv.interaction) {
+            Interaction.SELECT -> Icon.SELECT to "Selection"
+            Interaction.TRANSFORM -> Icon.TRANSFORM to "Transform"
+            Interaction.GRADIENT -> Icon.GRADIENT to "Gradient"
+            Interaction.MEASURE -> Icon.MEASURE to "Measure"
+            Interaction.SHAPE -> Icon.SHAPE to "Shapes"
+            else -> when {
+                cv.recolorMode -> Icon.RECOLOR to "Recolor"
+                cv.fillMode -> Icon.FILL to "Fill"
+                cv.tool == Tool.SMUDGE -> Icon.SMUDGE to "Smudge"
+                cv.tool == Tool.ERASER -> Icon.ERASER to "Eraser"
+                else -> Icon.BRUSH to "Brush"
+            }
+        }
+    }
+
+    /** the settings bar when no tool has its own: the brush, its size and opacity */
+    private fun paintOptions(): View {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        fun chip(label: String, value: String, onClick: () -> Unit) {
+            val c = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(10.dp, 0, 10.dp, 0)
+                background = Ui.rounded(Ui.SUNKEN, 9f)
+                foreground = Ui.ripple(9f)
+                isClickable = true
+                setOnClickListener { onClick() }
+            }
+            if (label.isNotEmpty()) c.addView(Ui.text(this, label, 12f, Ui.TEXT_DIM).apply { setPadding(0, 0, 6.dp, 0) })
+            c.addView(Ui.text(this, value, 13f, Ui.TEXT, true))
+            row.addView(c, LinearLayout.LayoutParams(-2, 32.dp).apply { marginEnd = 8.dp })
+        }
+        if (cv.fillMode) {
+            row.addView(Ui.text(this, "Tap an area to fill it with the color", 13f, Ui.TEXT_DIM))
+            return row
+        }
+        chip("", cv.currentBrush.preset.name + "  ▾") { showBrushes(cv.tool) }
+        chip("Size", "${(Brushes.sliderFromSize(cv.currentBrush.size) * 100).roundToInt()}%") { exactValue(true) }
+        chip("Opacity", "${(cv.currentBrush.opacity * 100).roundToInt()}%") { exactValue(false) }
+        return row
+    }
+
+    private fun updateOptions() {
+        if (!::optionsBar.isInitialized || !cv.isDocReady()) return
+        val (ic, name) = optionsTitle()
+        if (bottomBar == null) optionsBar.show(ic, name, paintOptions(), false)
+        else optionsBar.setTitle(ic, name)
+        val hide = focusMode || gallery != null || (dock.mode == ToolRail.FLOAT && bottomBar == null && !narrow)
+        optionsBar.visibility = if (hide) View.GONE else View.VISIBLE
+    }
+
     private fun barTab(icon: Icon, label: String, onClick: () -> Unit): View {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -761,19 +838,21 @@ class MainActivity : Activity(), CanvasView.Listener {
     /** Phones: a slimmer top bar when the screen is narrow, shorter sliders when it is low. */
     private fun applyScreenSize() {
         val n = narrow
-        // the three quick editing buttons make room; they are all under ••• › Editing tools
-        for (b in listOf(adjustBtn, selectBtn, transformBtn)) b.visibility = if (n) View.GONE else View.VISIBLE
         if (n) { homeBtn.setPadding(4.dp, 0, 6.dp, 0); homeBtn.textSize = 14f } else { homeBtn.setPadding(10.dp, 0, 12.dp, 0); homeBtn.textSize = 16f }
         topBar.setPadding(if (n) 4.dp else 8.dp, 0, if (n) 4.dp else 10.dp, 0)
-        (actionsBtn.layoutParams as LinearLayout.LayoutParams).width = if (n) 38.dp else 44.dp
-        (moreBtn.layoutParams as LinearLayout.LayoutParams).width = if (n) 34.dp else 64.dp
-        for (b in listOf(brushBtn, smudgeBtn, eraserBtn)) (b.layoutParams as LinearLayout.LayoutParams).width = if (n) 40.dp else 46.dp
-        (layersBtn.layoutParams as LinearLayout.LayoutParams).width = if (n) 40.dp else 44.dp
+        // a phone: one ☰ for Actions, Add, Adjust and Canvas, and icons without their names
+        menuBtn.visibility = if (n) View.VISIBLE else View.GONE
+        for (b in listOf(actionsBtn, addBtn, adjustMenuBtn, canvasBtn)) b.visibility = if (n) View.GONE else View.VISIBLE
+        for (b in barButtons) {
+            b.findViewWithTag<View>("label")?.visibility = if (n) View.GONE else View.VISIBLE
+            (b.layoutParams as LinearLayout.LayoutParams).width = if (n) 42.dp else 76.dp
+        }
         (colorBtn.layoutParams as LinearLayout.LayoutParams).apply { width = if (n) 44.dp else 52.dp; height = width }
         topBar.requestLayout()
+        if (::dock.isInitialized) applySides()
 
         // the sliders take what height there is
-        val avail = (if (Screen.hDp > 0) Screen.hDp else resources.configuration.screenHeightDp) - 56 - 24
+        val avail = (if (Screen.hDp > 0) Screen.hDp else resources.configuration.screenHeightDp) - 56 - 24 - (if (narrow) ToolRail.PHONE_H + 50 else 54)
         val tight = avail < 430
         brushDot.visibility = if (tight) View.GONE else View.VISIBLE
         opacityLabel.visibility = if (tight) View.GONE else View.VISIBLE
@@ -793,35 +872,47 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun applySides() {
-        // sliders live on the left or right; the toolbar goes anywhere else
-        val slidersEdge = slidersEdge()
-        val dockEdge = dockEdge()
-
-        // Sliders sidebar
-        (sideBar.layoutParams as FrameLayout.LayoutParams).apply {
-            gravity = (if (slidersEdge == "Right") Gravity.RIGHT else Gravity.LEFT) or Gravity.CENTER_VERTICAL
-            leftMargin = 8.dp; rightMargin = 8.dp; topMargin = 56.dp
-            sideBar.layoutParams = this
+        val side = railSide()
+        val sl = slidersEdge()
+        val n = narrow
+        dock.horizontal = n
+        val railW = when {
+            n -> 0
+            dock.mode == ToolRail.FLOAT -> 0
+            dock.mode == ToolRail.WIDE -> ToolRail.WIDE_W
+            else -> ToolRail.DOCK_W
         }
-
-        // Toolbar
         (dock.layoutParams as FrameLayout.LayoutParams).apply {
-            gravity = when (dockEdge) {
-                "Left" -> Gravity.LEFT or Gravity.CENTER_VERTICAL
-                "Top" -> Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                "Bottom" -> Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                else -> Gravity.RIGHT or Gravity.CENTER_VERTICAL
+            leftMargin = 0; rightMargin = 0; topMargin = 0; bottomMargin = 0
+            when {
+                n -> { width = -1; height = ToolRail.PHONE_H.dp; gravity = Gravity.BOTTOM }
+                dock.mode == ToolRail.FLOAT -> {
+                    width = -2; height = -2; gravity = Gravity.TOP or Gravity.LEFT
+                    val dm = resources.displayMetrics
+                    leftMargin = prefs.getInt("rail_float_x", if (side == "Left") 16.dp else dm.widthPixels - 86.dp).coerceIn(0, (dm.widthPixels - 70.dp).coerceAtLeast(0))
+                    topMargin = prefs.getInt("rail_float_y", 130.dp).coerceIn(56.dp, (dm.heightPixels - 200.dp).coerceAtLeast(56.dp))
+                }
+                else -> { width = railW.dp; height = -1; gravity = (if (side == "Left") Gravity.LEFT else Gravity.RIGHT) or Gravity.TOP; topMargin = 57.dp }
             }
-            val isHoriz = (dockEdge == "Top" || dockEdge == "Bottom")
-            dock.edge = dockEdge
-            dock.setDockOrientation(if (isHoriz) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL)
-            // tucked away, the small tab sits right on the edge
-            val m = if (dock.state == ToolDockView.HIDDEN) 0 else 8.dp
-            leftMargin = m; rightMargin = m
-            topMargin = if (dockEdge == "Top") (if (dock.state == ToolDockView.HIDDEN) 57.dp else 64.dp) else 70.dp
-            bottomMargin = if (dockEdge == "Bottom" && dock.state == ToolDockView.HIDDEN) 0 else 14.dp
             dock.layoutParams = this
         }
+        (optionsBar.layoutParams as FrameLayout.LayoutParams).apply {
+            if (n) { gravity = Gravity.BOTTOM; topMargin = 0; bottomMargin = ToolRail.PHONE_H.dp; leftMargin = 0; rightMargin = 0 }
+            else {
+                gravity = Gravity.TOP; topMargin = 57.dp; bottomMargin = 0
+                leftMargin = if (side == "Left") railW.dp else 0
+                rightMargin = if (side == "Right") railW.dp else 0
+            }
+            optionsBar.layoutParams = this
+        }
+        (sideBar.layoutParams as FrameLayout.LayoutParams).apply {
+            gravity = (if (sl == "Right") Gravity.RIGHT else Gravity.LEFT) or Gravity.CENTER_VERTICAL
+            leftMargin = 8.dp; rightMargin = 8.dp
+            topMargin = if (n) 56.dp else 110.dp
+            bottomMargin = if (n) (ToolRail.PHONE_H + 50).dp else 8.dp
+            sideBar.layoutParams = this
+        }
+        updateOptions()
     }
 
     /** closes a full-screen overlay (gesture controls, keyboard shortcuts) */
@@ -863,70 +954,10 @@ class MainActivity : Activity(), CanvasView.Listener {
         showOverlay(ShortcutsView(this, closable) { closeSettings() })
     }
 
-    /** the effective sides (the toolbar never shares one with the sliders) */
-    private fun slidersEdge() = when (prefs.getString("sliders_edge", null)) {
-        "Left" -> "Left"; "Right" -> "Right"
-        else -> if (leftHanded) "Right" else "Left"
-    }
+    /** the sliders sit on the side the tool bar is not on */
+    private fun slidersEdge() = if (railSide() == "Left") "Right" else "Left"
 
-    private fun dockEdge(): String {
-        val sl = slidersEdge()
-        var d = prefs.getString("dock_edge", null) ?: (if (sl == "Left") "Right" else "Left")
-        if (d == sl) d = if (sl == "Left") "Right" else "Left"
-        return d
-    }
-
-    // =========================================================
-    // customizable toolbar
-    // =========================================================
-
-    private fun saveDock() {
-        prefs.edit().putString("dock", ToolCatalog.encode(dockIds)).apply()
-        dock.setTools(dockIds)
-    }
-
-    private fun toggleDock(id: String) {
-        if (id in dockIds) {
-            dockIds.remove(id)
-            hud.show("Removed from your toolbar")
-        } else {
-            if (dockIds.size >= ToolCatalog.MAX) { hud.show("Your toolbar is full (${ToolCatalog.MAX} tools)"); return }
-            dockIds.add(id)
-            hud.show("Added to your toolbar")
-        }
-        saveDock()
-    }
-
-    /** the toolbar goes to the other side; the size and opacity sliders swap with it */
-    private fun swapDockSide() {
-        val d = dockEdge()
-        val nd = when (d) { "Left" -> "Right"; "Right" -> "Left"; else -> if (slidersEdge() == "Left") "Right" else "Left" }
-        val ns = if (nd == "Left") "Right" else "Left"
-        prefs.edit().putString("dock_edge", nd).putString("sliders_edge", ns).putBoolean("leftHanded", ns == "Right").apply()
-        leftHanded = ns == "Right"
-        popup?.dismiss()
-        applySides()
-        hud.show(if (nd == "Left") "Toolbar on the left" else "Toolbar on the right")
-    }
-
-    private fun setDockEdge(e: String) {
-        val sl = slidersEdge()
-        val ns = if (e == sl) (if (e == "Left") "Right" else "Left") else sl
-        prefs.edit().putString("dock_edge", e).putString("sliders_edge", ns).putBoolean("leftHanded", ns == "Right").apply()
-        leftHanded = ns == "Right"
-        applySides()
-    }
-
-    private fun showToolbarEditor() {
-        val ed = ToolbarEditor(this, dockIds, dockEdge(),
-            onChange = { list -> dockIds = list.toMutableList(); saveDock() },
-            onEdge = { e ->
-                popup?.dismiss()
-                setDockEdge(e)
-                root.postDelayed({ showToolbarEditor() }, 150)
-            })
-        showBeside(dock, ed, 380, 640)
-    }
+    private fun dockEdge(): String = railSide()
 
     private fun setFocus(on: Boolean) {
         focusMode = on
@@ -935,6 +966,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         (root.getChildAt(root.indexOfChild(topBar) + 1))?.visibility = v // hairline
         sideBar.visibility = if (on || !prefs.getBoolean("sidebar", true)) View.GONE else View.VISIBLE
         dock.visibility = v
+        dock.dismissEditor()
+        updateOptions()
         focusExit.visibility = if (on) View.VISIBLE else View.GONE
         if (on) hud.show("Focus mode · tap the corner button to bring the tools back")
     }
@@ -1024,7 +1057,11 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun isToolActive(id: String): Boolean {
         if (!cv.isDocReady()) return false
         val sel = cv.interaction == Interaction.SELECT
+        val painting = cv.interaction == Interaction.PAINT && !cv.fillMode && !cv.recolorMode
         return when (id) {
+            "brush" -> painting && cv.tool == Tool.BRUSH
+            "smudge" -> painting && cv.tool == Tool.SMUDGE
+            "eraser" -> painting && cv.tool == Tool.ERASER
             "sel_free" -> sel && cv.selectShape == SelectShape.FREEHAND
             "sel_rect" -> sel && cv.selectShape == SelectShape.RECTANGLE
             "sel_ellipse" -> sel && cv.selectShape == SelectShape.ELLIPSE
@@ -1388,6 +1425,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         loadSliderPins()
         if (cv.fillMode) { brushBtn.active = false; smudgeBtn.active = false; eraserBtn.active = false }
         if (::dock.isInitialized) dock.refresh()
+        updateOptions()
         if (::titleView.isInitialized && cv.isDocReady()) titleView.text = cv.doc.title
         if (::brushDot.isInitialized) {
             brushDot.sizePx = cv.currentBrush.size
@@ -1462,24 +1500,71 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     // ---------- popups ----------
 
+    /**
+     * Every panel opens the same way: right under the button that opened it, with a small arrow
+     * pointing at it; tapping that button again closes it. On a phone it is a sheet from the bottom.
+     */
     private fun showPanel(anchor: View, content: View, widthDp: Int, heightDp: Int?, alignLeft: Boolean = false) {
+        if (popup?.isShowing == true && popupOwner === anchor) { popup?.dismiss(); return }
         popup?.dismiss()
-        val maxH = root.height - 80.dp
-        val h = if (heightDp == null) ViewGroup.LayoutParams.WRAP_CONTENT else min(heightDp.dp, maxH)
-        // never wider than the screen (phones)
-        val w = min(widthDp.dp, root.width - 16.dp)
-        val pw = PopupWindow(content, w, h, true)
-        pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        pw.isOutsideTouchable = true
-        pw.elevation = 16f.dp
-        pw.setOnDismissListener { refreshAll() }
-        pw.animationStyle = android.R.style.Animation_Dialog
-        popup = pw
-        // absolute position, so it is right in both left-to-right and right-to-left layouts
+        val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
         val loc = IntArray(2); anchor.getLocationInWindow(loc)
-        val alignStart = alignLeft != L10n.isRtl
-        val x = (if (alignStart) loc[0] else loc[0] + anchor.width - w).coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
-        pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x, loc[1] + anchor.height + 6.dp)
+        val pw: PopupWindow
+        if (narrow) {
+            val sheet = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(Ui.PANEL)
+                    val r = 22f.dp
+                    cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+                }
+                clipToOutline = true
+            }
+            sheet.addView(View(this).apply { background = Ui.rounded(Ui.TEXT_DIM, 3f); alpha = 0.6f },
+                LinearLayout.LayoutParams(40.dp, 5.dp).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = 8.dp; bottomMargin = 4.dp })
+            val maxH = (root.height * 0.85f).toInt()
+            val h = if (heightDp == null) ViewGroup.LayoutParams.WRAP_CONTENT else min(heightDp.dp, maxH)
+            sheet.addView(content, if (heightDp == null) LinearLayout.LayoutParams(-1, -2) else LinearLayout.LayoutParams(-1, 0, 1f))
+            pw = PopupWindow(sheet, root.width, h, true)
+            pw.animationStyle = android.R.style.Animation_InputMethod
+            pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            pw.isOutsideTouchable = true
+            pw.elevation = 18f.dp
+            popup = pw
+            pw.showAtLocation(root, Gravity.BOTTOM or Gravity.LEFT, rootLoc[0], 0)
+        } else {
+            val maxH = root.height - 80.dp
+            val w = min(widthDp.dp, root.width - 16.dp)
+            val h = if (heightDp == null) ViewGroup.LayoutParams.WRAP_CONTENT else min(heightDp.dp, maxH)
+            val ax = loc[0] - rootLoc[0]
+            val center = ax + anchor.width / 2
+            // left half of the screen: the panel starts at its button; right half: it ends there
+            val alignStart = center < root.width / 2
+            val x = (if (alignStart) ax else ax + anchor.width - w).coerceIn(8.dp, (root.width - w - 8.dp).coerceAtLeast(8.dp))
+            val wrap = FrameLayout(this)
+            val caret = View(this).apply {
+                background = Ui.rounded(Ui.PANEL, 2f, Ui.OUTLINE, 1)
+                rotation = 45f
+            }
+            wrap.addView(caret, FrameLayout.LayoutParams(14.dp, 14.dp).apply {
+                leftMargin = (center - x - 7.dp).coerceIn(14.dp, (w - 28.dp).coerceAtLeast(14.dp)); topMargin = 1.dp
+            })
+            wrap.addView(content, FrameLayout.LayoutParams(-1, if (heightDp == null) -2 else -1).apply { topMargin = 7.dp })
+            pw = PopupWindow(wrap, w, if (heightDp == null) ViewGroup.LayoutParams.WRAP_CONTENT else h + 7.dp, true)
+            pw.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            pw.isOutsideTouchable = true
+            pw.elevation = 16f.dp
+            pw.animationStyle = android.R.style.Animation_Dialog
+            popup = pw
+            pw.showAtLocation(root, Gravity.TOP or Gravity.LEFT, x + rootLoc[0], loc[1] + anchor.height + 1.dp)
+        }
+        popupOwner = anchor
+        if (anchor in barButtons) setTabActive(anchor, true)
+        pw.setOnDismissListener {
+            if (anchor in barButtons) setTabActive(anchor, false)
+            if (popupOwner === anchor) popupOwner = null
+            refreshAll()
+        }
     }
 
     private fun brushListFor(t: Tool) = when (t) {
@@ -1489,12 +1574,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     }
 
     private fun showBrushes(tool: Tool) {
-        val anchor = when (tool) {
-            Tool.ERASER -> eraserBtn
-            Tool.SMUDGE -> smudgeBtn
-            Tool.BRUSH -> brushBtn
-        }
-        showPanel(anchor, brushPanelFor(tool, pinned = false), 540, 700)
+        showPanel(brushesBtn, brushPanelFor(tool, pinned = false), 540, 700)
     }
 
     private fun brushPanelFor(tool: Tool, pinned: Boolean): BrushPanel {
@@ -2179,8 +2259,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             autosave(force = true)
             refreshAll()
         }
-        override fun editGuide() = showGuide(actionsBtn)
-        override fun showSymmetry() = showSymmetry(actionsBtn)
+        override fun editGuide() = showGuide(canvasBtn)
+        override fun showSymmetry() = showSymmetry(canvasBtn)
         override fun toggleWindow(id: String) = runTool(id)
         override fun isWindowOpen(id: String) = pinned.containsKey(id)
         override fun flipCanvas() = cv.flipHorizontal()
@@ -2251,12 +2331,11 @@ class MainActivity : Activity(), CanvasView.Listener {
         override fun exportTimeLapse() = this@MainActivity.exportTimeLapse()
         override fun dockEdge() = this@MainActivity.dockEdge()
         override fun slidersEdge() = this@MainActivity.slidersEdge()
-        override fun setEdges(dock: String, sliders: String) {
-            prefs.edit().putString("dock_edge", dock).putString("sliders_edge", sliders).apply()
-            leftHanded = sliders == "Right"
-            prefs.edit().putBoolean("leftHanded", leftHanded).apply()
-            applySides()
-        }
+        override fun setEdges(dock: String, sliders: String) = setRailSide(dock)
+        override var railMode: String
+            get() = this@MainActivity.dock.mode
+            set(v) { this@MainActivity.dock.setMode(v) }
+        override fun runTool(id: String) { this@MainActivity.runTool(id, canvasBtn) }
         override fun setLanguage(code: String) {
             // save the artwork, then start again in the new language
             autosave(force = true)
@@ -2710,30 +2789,18 @@ class MainActivity : Activity(), CanvasView.Listener {
     // bottom bars (selection / transform / adjustments)
     // =========================================================
 
+    /** a tool's own settings go in the settings bar under the top bar (on a phone: over the tool bar) */
     private fun showBottomBar(v: View) {
-        hideBottomBar()
         bottomBar = v
-        // on a narrow screen a long bar slides sideways instead of being cut off
-        val wrap = android.widget.HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_NEVER
-            clipToPadding = false
-            setPadding(8.dp, 8.dp, 8.dp, 14.dp)
-            elevation = 12f.dp
-            addView(v)
-        }
-        bottomWrap = wrap
-        root.addView(wrap, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-            bottomMargin = 4.dp
-        })
+        val (ic, name) = optionsTitle()
+        optionsBar.show(ic, name, v, true)
+        updateOptions()
     }
 
-    private var bottomWrap: View? = null
-
     private fun hideBottomBar() {
-        bottomWrap?.let { (it as? ViewGroup)?.removeAllViews(); root.removeView(it) }
-        bottomWrap = null
+        if (bottomBar == null) return
         bottomBar = null
+        updateOptions()
     }
 
     private fun barRow(): LinearLayout = LinearLayout(this).apply {
@@ -3553,8 +3620,8 @@ class MainActivity : Activity(), CanvasView.Listener {
     private val toolsHost = object : ToolsPanel.Host {
         override fun run(id: String) = runTool(id, null)
         override fun isActive(id: String) = isToolActive(id)
-        override fun inDock(id: String) = id in dockIds
-        override fun toggleDock(id: String) = this@MainActivity.toggleDock(id)
+        override fun inDock(id: String) = false
+        override fun toggleDock(id: String) {}
         override val guide: GuideSettings get() = cv.doc.guide
         override fun guideChanged() {
             cv.doc.revision++
@@ -4192,6 +4259,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             topBar.visibility = View.GONE
             sideBar.visibility = View.GONE
             dock.visibility = View.GONE
+            optionsBar.visibility = View.GONE
+            dock.dismissEditor()
             pinned.values.forEach { it.visibility = View.GONE }
             root.addView(g, FrameLayout.LayoutParams(-1, -1))
             g.refresh()
@@ -4239,6 +4308,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             sideBar.visibility = if (prefs.getBoolean("sidebar", true)) View.VISIBLE else View.GONE
             dock.visibility = View.VISIBLE
             pinned.values.forEach { it.visibility = View.VISIBLE }
+            updateOptions()
         }
     }
 
