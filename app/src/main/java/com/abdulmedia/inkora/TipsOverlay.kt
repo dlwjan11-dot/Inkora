@@ -54,9 +54,9 @@ object Tour {
             "Slide a layer sideways, or hold it: pick several layers",
             "Drag a layer by the grip at its edge to move it up or down",
             "Two fingers on a layer: tap for its opacity, swipe sideways for Alpha Lock",
-            "Pinch layers together to merge them; hold a layer's checkbox to see it alone",
+            "Pinch layers together to merge them; hold a layer's eye to see it alone",
             "With several picked: group, merge or delete them, or move them all with Transform",
-            "The checkbox hides a layer; the letter beside it is its blend mode",
+            "The eye hides a layer; the letter beside it is its blend mode",
             "Clipping mask, alpha lock and layer masks are in the layer's options"), listOf(Icon.LAYERS, Icon.FOLDER, Icon.EYE)),
         Page(-1, "Select, move and adjust", listOf(
             "Selection, Transform and Adjust are in the tool bar",

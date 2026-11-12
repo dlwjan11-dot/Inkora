@@ -51,17 +51,25 @@ class LayersPanel(
         // two fingers on two layers reach the first one's row together: a pinch merges them
         list.isMotionEventSplittingEnabled = false
         orientation = VERTICAL
-        setPadding(14.dp, 12.dp, 14.dp, 14.dp)
-        background = Ui.rounded(Ui.PANEL, 18f)
+        setPadding(12.dp, 10.dp, 12.dp, 12.dp)
+        background = Ui.rounded(Ui.PANEL, 20f, Ui.OUTLINE, 1)
 
-        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(Ui.text(context, "Layers", 17f, bold = true), LayoutParams(0, -2, 1f))
+        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(6.dp, 0, 0, 8.dp) }
+        head.addView(Ui.text(context, "Layers", 20f, bold = true), LayoutParams(0, -2, 1f))
         if (onPin != null) {
-            val pin = IconView(context, Icon.PIN)
+            val pin = IconView(context, Icon.PIN).apply {
+                iconScale = 0.5f
+                contentDescription = L10n.tr("Pin")
+                tip = L10n.tr("Keep the layers open as a floating window")
+            }
             pin.setOnClickListener { onPin.invoke() }
-            head.addView(pin, LayoutParams(40.dp, 40.dp))
+            head.addView(pin, LayoutParams(44.dp, 44.dp))
         }
-        val plus = IconView(context, Icon.PLUS)
+        val plus = IconView(context, Icon.PLUS).apply {
+            iconScale = 0.46f
+            background = Ui.rounded(Ui.CARD, 12f)
+            contentDescription = L10n.tr("New layer")
+        }
         plus.setOnClickListener {
             val pm = InkMenu(context, plus)
             pm.menu.add(0, 1, 1, "Drawing layer")
@@ -72,13 +80,14 @@ class LayersPanel(
             }
             L10n.menu(pm.menu); pm.show()
         }
-        head.addView(plus, LayoutParams(44.dp, 44.dp))
+        head.addView(plus, LayoutParams(44.dp, 44.dp).apply { marginStart = 4.dp })
         addView(head)
+        addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(-1, 1))
 
         list.orientation = VERTICAL
         val scroll = ScrollView(context)
         scroll.addView(list)
-        addView(scroll, LayoutParams(-1, 0, 1f).apply { topMargin = 6.dp })
+        addView(scroll, LayoutParams(-1, 0, 1f).apply { topMargin = 8.dp })
         rebuild()
     }
 
@@ -121,17 +130,23 @@ class LayersPanel(
         val bg = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(8.dp, 6.dp, 4.dp, 6.dp)
-            background = Ui.rounded(Ui.PANEL_ROW, 10f)
+            setPadding(28.dp, 0, 4.dp, 0)
+            background = Ui.rounded(Ui.CARD, 14f)
+            foreground = Ui.ripple(14f)
+            minimumHeight = 60.dp
         }
-        val sw = ColorSwatchView(context)
-        sw.color = doc.backgroundColor
-        bg.addView(sw, LayoutParams(44.dp, 44.dp))
-        val bt = LinearLayout(context).apply { orientation = VERTICAL; setPadding(10.dp, 0, 0, 0) }
-        bt.addView(Ui.text(context, "Background color", 14f))
-        bt.addView(Ui.text(context, "Tap to use the current color", 11f, Ui.TEXT_DIM))
+        bg.addView(View(context).apply {
+            background = Ui.rounded(doc.backgroundColor or 0xFF000000.toInt(), 6f, Ui.OUTLINE, 1)
+            alpha = if (doc.backgroundVisible) 1f else 0.35f
+        }, LayoutParams(52.dp, 38.dp))
+        val bt = LinearLayout(context).apply { orientation = VERTICAL; setPadding(12.dp, 0, 0, 0) }
+        bt.addView(Ui.text(context, "Background color", 14f, bold = true))
+        bt.addView(Ui.text(context, "Tap to use the current color", 11.5f, Ui.TEXT_DIM))
         bg.addView(bt, LayoutParams(0, -2, 1f))
-        val bgEye = IconView(context, if (doc.backgroundVisible) Icon.EYE else Icon.EYE_OFF)
+        val bgEye = IconView(context, if (doc.backgroundVisible) Icon.EYE else Icon.EYE_OFF).apply {
+            iconScale = 0.5f
+            tint = if (doc.backgroundVisible) Ui.TEXT_DIM else Ui.TEXT_DIM and 0x66FFFFFF
+        }
         bgEye.setOnClickListener {
             doc.backgroundVisible = !doc.backgroundVisible
             changed()
@@ -150,13 +165,13 @@ class LayersPanel(
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            val indent = (if (inGroup) 14.dp else 0) + (if (layer.isClippingMask || layer.isLayerMask) 16.dp else 2.dp)
-            setPadding(indent, 6.dp, 4.dp, 6.dp)
-            background = Ui.rounded(when {
-                isActive -> Ui.PANEL_ROW_ACTIVE
-                isPicked -> PICKED
-                else -> Ui.PANEL_ROW
-            }, 10f)
+            setPadding(if (inGroup) 14.dp else 0, 0, 4.dp, 0)
+            minimumHeight = 60.dp
+            background = when {
+                isActive -> Ui.rounded(Ui.ACCENT_SOFT, 14f)
+                isPicked -> Ui.rounded(PICKED, 14f)
+                else -> Ui.rounded(Ui.CARD, 14f)
+            }
         }
         // the grip: drag it up or down to put the layer somewhere else (a mask travels with its layer)
         row.tag = layer
@@ -166,17 +181,25 @@ class LayersPanel(
             dragGrip(grip, row, layer)
             row.addView(grip, LayoutParams(26.dp, 44.dp))
         }
+        // a clipping mask or a layer mask: a short accent line shows it belongs to the layer under it
+        if (layer.isClippingMask || layer.isLayerMask)
+            row.addView(View(context).apply { background = Ui.rounded(Ui.ACCENT, 1f) }, LayoutParams(2.dp, 30.dp).apply { marginEnd = 12.dp })
         val img = ImageView(context)
         img.setImageBitmap(thumbnail(layer))
-        row.addView(img, LayoutParams(64.dp, 44.dp))
+        img.scaleType = ImageView.ScaleType.CENTER_CROP
+        img.background = Ui.rounded(0, 6f, Ui.OUTLINE, 1)
+        img.clipToOutline = true
+        if (!layer.visible) img.alpha = 0.4f
+        row.addView(img, LayoutParams(52.dp, 38.dp))
 
-        val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(10.dp, 0, 0, 0) }
+        val texts = LinearLayout(context).apply { orientation = VERTICAL; setPadding(12.dp, 0, 0, 0) }
         val displayName = (if (isPicked) "✓ " else "") + when {
             layer.isLayerMask -> "◐ ${L10n.tr(layer.name)}"
-            layer.isClippingMask -> "↳ ${layer.name}"
             else -> layer.name
         }
-        texts.addView(Ui.text(context, displayName, 14f))
+        texts.addView(Ui.text(context, displayName, 14f, if (layer.visible) Ui.TEXT else Ui.TEXT_DIM, true).apply {
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        })
         val sub = buildString {
             if (layer.isClippingMask) append("Clipping Mask · ")
             if (layer.isLayerMask) append("Layer mask · ")
@@ -187,8 +210,9 @@ class LayersPanel(
             append(layer.blend.label)
             if (layer.opacity < 0.999f) append(" · ${(layer.opacity * 100).roundToInt()}%")
             if (layer.alphaLock) append(" · Alpha Lock")
+            if (!layer.visible) append(" · Hidden")
         }
-        texts.addView(Ui.text(context, sub, 11f, Ui.TEXT_DIM))
+        texts.addView(Ui.text(context, sub, 11.5f, Ui.TEXT_DIM).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
         row.addView(texts, LayoutParams(0, -2, 1f))
 
         // blend mode as a short letter (tap it for the modes), then the visibility checkbox
@@ -201,8 +225,13 @@ class LayersPanel(
                 L10n.menu(pm.menu); pm.show()
             }
         }, LayoutParams(30.dp, 40.dp))
-        val eye = CheckBoxView(context, layer.visible)
-        eye.contentDescription = "Visible"
+        val eye = IconView(context, if (layer.visible) Icon.EYE else Icon.EYE_OFF).apply {
+            iconScale = 0.5f
+            tint = Ui.TEXT_DIM
+            alpha = if (layer.visible) 1f else 0.5f
+        }
+        eye.contentDescription = L10n.tr(if (layer.visible) "Hide" else "Show")
+        eye.tip = L10n.tr("Hold: this layer alone")
         eye.setOnClickListener {
             layer.visible = !layer.visible
             changed()
@@ -241,7 +270,7 @@ class LayersPanel(
             rebuild()
             onChanged()
         })
-        list.addView(row, LayoutParams(-1, -2).apply { bottomMargin = 4.dp })
+        list.addView(row, LayoutParams(-1, -2).apply { bottomMargin = 6.dp })
         if (isActive && expanded && picked.isEmpty()) list.addView(options(layer, i), LayoutParams(-1, -2).apply { bottomMargin = 8.dp })
     }
 
@@ -484,12 +513,13 @@ class LayersPanel(
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(4.dp, 4.dp, 4.dp, 4.dp)
+            setPadding(0, 0, 4.dp, 0)
+            minimumHeight = 56.dp
             background = Ui.rounded(when {
-                isSelected -> Ui.PANEL_ROW_ACTIVE
+                isSelected -> Ui.ACCENT_SOFT
                 members.any { it in picked } || hasActive -> GROUP_HAS_ACTIVE
                 else -> GROUP_ROW
-            }, 10f)
+            }, 14f)
         }
         val arrow = Ui.text(context, if (g.collapsed) "▸" else "▾", 20f, Ui.TEXT, bold = true).apply {
             gravity = Gravity.CENTER
@@ -508,9 +538,9 @@ class LayersPanel(
             append(if (g.isolated) g.blend.label else "Pass Through")
             if (g.opacity < 0.999f) append(" · ${(g.opacity * 100).roundToInt()}%")
         }
-        texts.addView(Ui.text(context, sub, 11f, Ui.TEXT_DIM))
+        texts.addView(Ui.text(context, sub, 11.5f, Ui.TEXT_DIM))
         row.addView(texts, LayoutParams(0, -2, 1f))
-        val eye = IconView(context, if (g.visible) Icon.EYE else Icon.EYE_OFF)
+        val eye = IconView(context, if (g.visible) Icon.EYE else Icon.EYE_OFF).apply { iconScale = 0.5f; tint = Ui.TEXT_DIM }
         eye.setOnClickListener {
             g.visible = !g.visible
             changed()
@@ -1236,9 +1266,9 @@ class LayersPanel(
     companion object {
         /** layer thumbnails, kept until the layer's pixels change (or the layer is gone) */
         private val thumbs = java.util.WeakHashMap<Layer, Pair<LongArray, Bitmap>>()
-        private val PICKED get() = if (Ui.light) 0xFFC2D5F7.toInt() else 0xFF35507A.toInt()
-        private val GROUP_ROW get() = if (Ui.light) 0xFFE1E4EA.toInt() else 0xFF2F2F37.toInt()
-        private val GROUP_HAS_ACTIVE get() = if (Ui.light) 0xFFDCE6F7.toInt() else 0xFF2B3446.toInt()
+        private val PICKED get() = (Ui.ACCENT and 0xFFFFFF) or 0x55000000
+        private val GROUP_ROW get() = Ui.CARD_HI
+        private val GROUP_HAS_ACTIVE get() = Ui.PANEL_ROW_ACTIVE
     }
 }
 
