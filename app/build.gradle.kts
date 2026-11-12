@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,7 +8,8 @@ plugins {
 // The Google Play upload key, when this computer has it: a keystore.properties file next to
 // settings.gradle.kts (never put in git) with storeFile, storePassword, keyAlias and keyPassword.
 // Without it, Build > Generate Signed App Bundle in Android Studio asks for the key instead.
-val uploadKey = java.util.Properties().apply {
+// (Properties is imported above: inside a Gradle script "java" means the Java plugin's settings, not the package)
+val uploadKey = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
