@@ -7,6 +7,7 @@
     <application
         android:allowBackup="true"
         android:hardwareAccelerated="true"
+        android:enableOnBackInvokedCallback="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:label="${appLabel}"
@@ -36,6 +37,7 @@
                 <data android:mimeType="application/photoshop" />
                 <data android:mimeType="image/x-photoshop" />
                 <data android:mimeType="image/psd" />
+                <data android:mimeType="application/pdf" />
             </intent-filter>
             <!-- shared to Inkora: brush files, projects and images -->
             <intent-filter>
@@ -46,6 +48,7 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-zip-compressed" />
                 <data android:mimeType="image/*" />
+                <data android:mimeType="application/pdf" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

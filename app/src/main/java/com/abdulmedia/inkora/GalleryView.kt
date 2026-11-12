@@ -39,6 +39,8 @@ class GalleryView(
     private val onNewSize: ((Int, Int) -> Unit)? = null,
     private val onCustomSize: (() -> Unit)? = null,
     private val onSettings: ((View) -> Unit)? = null,
+    /** the bookshelf: PDF books to read */
+    private val onBooks: (() -> Unit)? = null,
     /** this screen's size in pixels, for the "Screen" size */
     private val screen: Pair<Int, Int> = 2048 to 1536
 ) : FrameLayout(context) {
@@ -135,6 +137,7 @@ class GalleryView(
             contentDescription = L10n.tr("Settings")
             setOnClickListener { v -> onSettings.invoke(v) }
         }, LinearLayout.LayoutParams(44.dp, 44.dp).apply { marginEnd = 10.dp })
+        if (onBooks != null) head.addView(quiet(L10n.tr("Books")) { onBooks.invoke() }, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })
         val importBtn = quiet(L10n.tr("Import")) {}
         importBtn.setOnClickListener { onImport(importBtn) }
         head.addView(importBtn, LinearLayout.LayoutParams(-2, 44.dp).apply { marginEnd = 10.dp })

@@ -259,6 +259,8 @@ class MainActivity : Activity(), CanvasView.Listener {
             cv.interaction == Interaction.MEASURE -> leaveMeasure()
             cv.interaction == Interaction.SHAPE -> leaveShapes()
             cv.recolorMode -> leaveRecolor()
+            reader != null -> closeReader()
+            books != null -> closeBooks()
             gallery?.previewOpen() == true -> gallery?.closePreview()
             gallery != null && galleryFromCanvas -> closeGallery()
             else -> {
@@ -2892,6 +2894,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 else PaletteMaker.show(this, bmp, "From photo") { colorPanel?.paletteAdded(); refreshAll() }
             }
             REQ_PHOTO_NEW -> photoAsArtwork(uri)
+            REQ_BOOK -> addBook(uri)
             REQ_SVG -> writeSvg(uri)
             REQ_BRUSH_EXPORT -> writeBrushFile(uri)
             REQ_EXPORT_FILE -> writeExportFile(uri)
@@ -3042,6 +3045,12 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun photoAsArtwork(uri: Uri) {
         val img = runCatching { ProjectIO.decodeImage(this, uri, 8192, 8192) }.getOrNull()
         if (img == null) { toast("Could not open that image"); return }
+        artworkFrom(img, displayName(uri)?.substringBeforeLast('.') ?: "Photo")
+        toast("Photo opened as a new artwork")
+    }
+
+    /** [img] (recycled here) as a new artwork, with a fresh layer on top to draw on */
+    private fun artworkFrom(img: Bitmap, title: String) {
         var w = img.width
         var h = img.height
         val maxPx = 24_000_000.0
@@ -3052,7 +3061,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         autosave()
         val d = Document.blank(w, h)
         d.galleryId = Gallery.newId()
-        d.title = displayName(uri)?.substringBeforeLast('.') ?: "Photo"
+        d.title = title
         d.origin = "imported"
         d.revision = 1
         d.layers[0].name = "Photo"
@@ -3064,7 +3073,70 @@ class MainActivity : Activity(), CanvasView.Listener {
         closeGallery()
         openDocument(d)
         autosave(force = true)
-        toast("Photo opened as a new artwork")
+    }
+
+    // ---------- Books: PDF files to read ----------
+
+    private var books: BooksView? = null
+    private var reader: ReaderView? = null
+
+    private fun showBooks() {
+        if (books != null) return
+        val v = BooksView(this,
+            onAdd = { pickBook() },
+            onOpen = { id -> openBook(id) },
+            onRename = { b -> renameDialog(b.title) { t -> Books.rename(this, b.id, t); books?.refresh() } },
+            onDelete = { b ->
+                AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(L10n.tr("Delete this book?"))
+                    .setMessage(L10n.tr("The book is removed from Inkora (the PDF on your device is not touched)."))
+                    .setPositiveButton(L10n.tr("Delete")) { _, _ -> Books.delete(this, b.id); books?.refresh() }
+                    .setNegativeButton(L10n.tr("Cancel"), null).show()
+            },
+            onClose = { closeBooks() })
+        books = v
+        root.addView(v, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun closeBooks() {
+        books?.let { root.removeView(it) }
+        books = null
+    }
+
+    private fun pickBook() = startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+        addCategory(Intent.CATEGORY_OPENABLE); type = "application/pdf"
+    }, REQ_BOOK)
+
+    /** copies the PDF in (background), then opens it */
+    private fun addBook(uri: Uri) {
+        hud.show("Opening…", sticky = true)
+        val name = displayName(uri)
+        thread(name = "inkora-book-add") {
+            val r = runCatching { Books.add(applicationContext, uri, name) }
+            main.post {
+                hud.hideSoon()
+                if (isFinishing || isDestroyed) return@post
+                r.onSuccess { id -> showBooks(); books?.refresh(); openBook(id) }
+                r.onFailure { e -> toast(e.message ?: "This is not a PDF file Inkora can read") }
+            }
+        }
+    }
+
+    private fun openBook(id: String) {
+        closeReader()
+        val v = ReaderView(this, id, onClose = { closeReader() }) { page, title ->
+            // the page as a new artwork: the book closes, the canvas opens
+            closeReader(); closeBooks()
+            artworkFrom(page, title)
+        }
+        reader = v
+        root.addView(v, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun closeReader() {
+        reader?.let { it.close(); root.removeView(it) }
+        reader = null
+        books?.refresh()
     }
 
     private fun insertImage(uri: Uri, shadow: Boolean = false) {
@@ -4862,6 +4934,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 onNewSize = { w, h -> newCanvas(w, h) },
                 onCustomSize = { customSizeDialog() },
                 onSettings = { v -> openSettingsPopup(v) },
+                onBooks = { showBooks() },
                 screen = screenSize())
             gallery = g
             topBar.visibility = View.GONE
@@ -5195,6 +5268,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             val type = contentResolver.getType(first) ?: ""
             when {
                 name.endsWith(".inkora") || name.endsWith(".zerin") || name.endsWith(".psd") -> openProject(first)
+                name.endsWith(".pdf") || type == "application/pdf" -> addBook(first)
                 type.startsWith("image/") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") ->
                     AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                         .setTitle(L10n.tr("What should Inkora do with this image?"))
@@ -5295,5 +5369,6 @@ class MainActivity : Activity(), CanvasView.Listener {
         private const val REQ_PALETTE_PHOTO = 115
         private const val REQ_BACKUP = 116
         private const val REQ_RESTORE = 117
+        private const val REQ_BOOK = 118
     }
 }
