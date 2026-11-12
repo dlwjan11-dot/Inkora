@@ -55,6 +55,8 @@ interface ActionsHost {
     fun saveWorkspace()
     // Share
     fun export(kind: String)
+    /** PNG or JPEG, shared or saved to Pictures, without the background color or smaller */
+    fun exportPicture(jpeg: Boolean, share: Boolean, transparent: Boolean, scale: Float)
     // Video
     fun exportTimeLapse()
     // Prefs
@@ -549,20 +551,76 @@ class ActionsPanel(
         note(String.format(Locale.US, "%d × %d px · %s %d / %d", d.width, d.height, L10n.tr("Layers"), layers, d.maxLayers()))
     }
 
+    /** the export formats: key, name, what it is for, icon */
+    private class Format(val key: String, val name: String, val about: String, val icon: Icon)
+    private val formats = listOf(
+        Format("png", "PNG", "Full quality picture, can be see-through", Icon.PHOTO),
+        Format("jpeg", "JPEG", "Small file, for messages and the web", Icon.PHOTO),
+        Format("psd", "Photoshop", "With your layers", Icon.LAYERS),
+        Format("pdf", "PDF", "For printing and sending", Icon.EXPORT),
+        Format("tiff", "TIFF", "Full quality, for print shops", Icon.EXPORT),
+        Format("project", "Inkora", "Every layer, to open again here", Icon.FOLDER),
+        Format("svg", "SVG", "Vector layers, for logos", Icon.VECTOR)
+    )
+
+    /** Share: pick a format, its few options, then Share or Save */
     private fun buildShare() {
-        group(
-            row("Share image…", "PNG, to any app", icon = Icon.SHARE) { host.export("share") },
-            row("Save PNG to Gallery", icon = Icon.PHOTO) { host.export("png") },
-            row("Save JPEG to Gallery", icon = Icon.PHOTO) { host.export("jpeg") },
-            row("Export SVG…", "Vector layers, for logos", icon = Icon.VECTOR) { host.export("svg") }
-        )
-        section("With layers")
-        group(
-            row("Save project (.inkora)…", "Keeps every layer, to open again in Inkora", icon = Icon.FOLDER) { host.export("project") },
-            row("Photoshop (.psd)…", "With your layers, for Photoshop and other apps", icon = Icon.LAYERS) { host.export("psd") },
-            row("PDF…", "For printing and sending", icon = Icon.EXPORT) { host.export("pdf") },
-            row("TIFF…", "Full quality, with transparency, for print shops", icon = Icon.EXPORT) { host.export("tiff") }
-        )
+        val prefs = host.prefs
+        val fmt = formats.firstOrNull { it.key == prefs.getString("export_format", "png") } ?: formats[0]
+        // format cards, three across
+        val grid = android.widget.GridLayout(context).apply { columnCount = 3 }
+        body.addView(grid, LayoutParams(-1, -2))
+        grid.post {
+            val w = (grid.width - 4 * 6.dp) / 3
+            for (f in formats) {
+                val on = f.key == fmt.key
+                val card = LinearLayout(context).apply {
+                    orientation = VERTICAL
+                    setPadding(10.dp, 10.dp, 8.dp, 10.dp)
+                    background = if (on) Ui.rounded(Ui.ACCENT_SOFT, 14f, Ui.ACCENT, 2) else Ui.rounded(Ui.PANEL_ROW, 14f)
+                    foreground = Ui.ripple(14f)
+                    setOnClickListener { prefs.edit().putString("export_format", f.key).apply(); rebuild() }
+                }
+                card.addView(IconView(context, f.icon).apply { isClickable = false; iconScale = 0.6f; tint = if (on) Ui.ACCENT else Ui.TEXT_DIM }, LayoutParams(28.dp, 28.dp))
+                card.addView(Ui.text(context, f.name, 14f, if (on) Ui.ACCENT else Ui.TEXT, true).apply { setPadding(0, 4.dp, 0, 0) })
+                card.addView(Ui.text(context, f.about, 11f, Ui.TEXT_DIM).apply { maxLines = 2 })
+                grid.addView(card, android.widget.GridLayout.LayoutParams().apply { width = w; setMargins(3.dp, 3.dp, 3.dp, 3.dp) })
+            }
+        }
+        // its options
+        val picture = fmt.key == "png" || fmt.key == "jpeg"
+        var transparent = prefs.getBoolean("export_transparent", false)
+        var scale = prefs.getFloat("export_scale", 1f)
+        val d = cv.doc
+        if (picture) {
+            val rows = ArrayList<View>()
+            rows.add(choiceRow("Size", listOf("1" to "100%", "0.5" to "50%", "0.25" to "25%"),
+                when { scale < 0.3f -> "0.25"; scale < 0.75f -> "0.5"; else -> "1" }) { v ->
+                scale = v.toFloat(); prefs.edit().putFloat("export_scale", scale).apply(); rebuild()
+            })
+            if (fmt.key == "png") rows.add(switchRow("See-through background", "Leaves out the background color", transparent) {
+                transparent = it; prefs.edit().putBoolean("export_transparent", it).apply()
+            })
+            body.addView(View(context), LayoutParams(1, 10.dp))
+            group(*rows.toTypedArray())
+            note(String.format(Locale.US, "%d × %d px", (d.width * scale).roundToInt(), (d.height * scale).roundToInt()))
+        } else body.addView(View(context), LayoutParams(1, 10.dp))
+        // Share and Save
+        val buttons = LinearLayout(context).apply { orientation = HORIZONTAL }
+        fun button(label: String, primary: Boolean, run: () -> Unit) = Ui.text(context, label, 15f, if (primary) Ui.ON_ACCENT else Ui.TEXT, true).apply {
+            gravity = Gravity.CENTER
+            background = Ui.rounded(if (primary) Ui.ACCENT else Ui.PANEL_ROW, 14f)
+            foreground = Ui.ripple(14f)
+            setOnClickListener { run() }
+        }
+        if (picture) {
+            buttons.addView(button("Save to Pictures", false) { host.exportPicture(fmt.key == "jpeg", false, transparent, scale) }, LayoutParams(0, 48.dp, 1f))
+            buttons.addView(button("Share…", true) { host.exportPicture(fmt.key == "jpeg", true, transparent, scale) }, LayoutParams(0, 48.dp, 1f).apply { marginStart = 8.dp })
+        } else {
+            buttons.addView(button(L10n.tr("Save") + " " + L10n.tr(fmt.name) + "…", true) { host.close(); host.export(fmt.key) }, LayoutParams(0, 48.dp, 1f))
+        }
+        body.addView(buttons, LayoutParams(-1, -2).apply { topMargin = 4.dp; bottomMargin = 14.dp })
+
         section("Keep your artworks safe")
         group(
             row("Back up all artworks…", host.backupNote(), icon = Icon.BACKUP) { host.backupAll() },

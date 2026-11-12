@@ -2649,6 +2649,9 @@ class MainActivity : Activity(), CanvasView.Listener {
                 "psd", "pdf", "tiff" -> exportFile(kind)
             }
         }
+        override fun exportPicture(jpeg: Boolean, share: Boolean, transparent: Boolean, scale: Float) {
+            popup?.dismiss(); exportImage(jpeg, share, transparent, scale)
+        }
         override fun exportTimeLapse() = this@MainActivity.exportTimeLapse()
         override fun dockEdge() = this@MainActivity.dockEdge()
         override fun slidersEdge() = this@MainActivity.slidersEdge()
@@ -2751,10 +2754,14 @@ class MainActivity : Activity(), CanvasView.Listener {
         toast("New canvas $w × $h")
     }
 
-    private fun exportImage(jpeg: Boolean, share: Boolean) {
+    /** [transparent]: PNG without the background color; [scale]: 1 = full size */
+    private fun exportImage(jpeg: Boolean, share: Boolean, transparent: Boolean = false, scale: Float = 1f) {
         if (busy()) return
-        val bmp = try { cv.doc.flatten(withBackground = true, forceOpaque = jpeg) } catch (e: OutOfMemoryError) { null }
-        if (bmp == null) { toast("Not enough memory to export it"); return }
+        val full = try { cv.doc.flatten(withBackground = jpeg || !transparent, forceOpaque = jpeg) } catch (e: OutOfMemoryError) { null }
+        if (full == null) { toast("Not enough memory to export it"); return }
+        val bmp = if (scale >= 0.999f) full else runCatching {
+            Bitmap.createScaledBitmap(full, (full.width * scale).roundToInt().coerceAtLeast(1), (full.height * scale).roundToInt().coerceAtLeast(1), true)
+        }.getOrNull()?.also { if (it !== full) full.recycle() } ?: full
         toast("Exporting…")
         thread(name = "inkora-export") {
             val uri = ProjectIO.exportToGallery(applicationContext, bmp, jpeg)
@@ -2763,7 +2770,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                 if (uri == null) toast("Export failed")
                 else if (share) {
                     val i = Intent(Intent.ACTION_SEND).apply {
-                        type = "image/png"
+                        type = if (jpeg) "image/jpeg" else "image/png"
                         putExtra(Intent.EXTRA_STREAM, uri)
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
