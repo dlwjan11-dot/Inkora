@@ -160,6 +160,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         restoreEraser()
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
+        cv.gpuTiles = prefs.getBoolean("gpu_tiles", false)
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
         cv.wetBleed = prefs.getBoolean("wetBleed", true)
@@ -2577,6 +2578,9 @@ class MainActivity : Activity(), CanvasView.Listener {
                 autosave(force = true)
                 afterSaves { Ui.light = v; recreate() }
             }
+        override var gpuTiles: Boolean
+            get() = cv.gpuTiles
+            set(v) { cv.gpuTiles = v; prefs.edit().putBoolean("gpu_tiles", v).apply() }
         override var fadeIslands: Boolean
             get() = prefs.getBoolean("fade_islands", true)
             set(v) { prefs.edit().putBoolean("fade_islands", v).apply(); if (!v) { root.removeCallbacks(islandsOut); islandsAlpha(1f) } }

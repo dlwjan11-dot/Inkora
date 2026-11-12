@@ -59,6 +59,8 @@ class StrokeEngine {
 
     /** Union of everything drawn by the current stroke. */
     val dirty = RectF()
+    /** what was drawn since the screen last took it (the screen empties it) */
+    val frameDirty = RectF()
 
     /** When set, dabs are handed to this function (x, y, diameter, alpha, angle) instead of being drawn. */
     var dabHandler: ((Float, Float, Float, Float, Float) -> Unit)? = null
@@ -362,6 +364,7 @@ class StrokeEngine {
             handler(cx, cy, d, alpha, angle)
             val r = d * 0.75f + 2f
             if (dirty.isEmpty) dirty.set(cx - r, cy - r, cx + r, cy + r) else dirty.union(cx - r, cy - r, cx + r, cy + r)
+            if (frameDirty.isEmpty) frameDirty.set(cx - r, cy - r, cx + r, cy + r) else frameDirty.union(cx - r, cy - r, cx + r, cy + r)
             return
         }
         paint.color = if (dyn.hasColorDynamics || dyn.hasWetMix) dabColor(cx, cy, pressure, tilt) else color
@@ -451,6 +454,7 @@ class StrokeEngine {
             r = max(r, dd * 0.75f + 2f + kotlin.math.abs(dualDx) + kotlin.math.abs(dualDy))
         }
         if (dirty.isEmpty) dirty.set(x - r, y - r, x + r, y + r) else dirty.union(x - r, y - r, x + r, y + r)
+        if (frameDirty.isEmpty) frameDirty.set(x - r, y - r, x + r, y + r) else frameDirty.union(x - r, y - r, x + r, y + r)
     }
 
     companion object {

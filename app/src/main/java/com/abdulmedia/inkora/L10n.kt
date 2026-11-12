@@ -1457,6 +1457,8 @@ object L10n {
         "Fade the islands while drawing", "خفّف الجزر وانت عم ترسم", "دوورگەکان کاڵ بکەرەوە لە کاتی کێشاندا",
         "They step back 300 ms into a stroke and come back 700 ms after the pen lifts", "بتخفّ بعد 300ms من الخط وبترجع بعد 700ms من رفع القلم", "300ms دوای دەستپێکی هێڵ کاڵ دەبنەوە و 700ms دوای بەرزکردنەوەی قەڵەم دەگەڕێنەوە",
         "Saved as your workspace", "انحفظ كمساحة عمل إلك", "وەک شوێنی کاری خۆت پاشەکەوت کرا",
+        "Faster drawing (test)", "رسم أسرع (تجربة)", "کێشانی خێراتر (تاقیکردنەوە)",
+        "Sends only the part of the stroke that changed to the graphics chip. Turn it off if strokes look wrong", "بيبعت بس الجزء يلي تغيّر من الخط لكرت الشاشة. طفّيه إذا الخطوط طلعت غلط", "تەنها ئەو بەشەی هێڵ کە گۆڕاوە دەنێرێت بۆ کارتی گرافیک. ئەگەر هێڵەکان هەڵە دەرکەوتن بیکوژێنەوە",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

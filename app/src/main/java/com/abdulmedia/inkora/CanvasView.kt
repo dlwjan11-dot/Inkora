@@ -69,6 +69,36 @@ class CanvasView(context: Context) : View(context) {
         private set
 
     private var strokeBitmap: Bitmap? = null
+
+    /** Settings › Faster drawing: the stroke goes to the screen in tiles (see [TileMirror]) */
+    var gpuTiles = false
+    private var strokeTiles: TileMirror? = null
+    /** the stroke picture as the tiles last saw it (a change the brush engine did not report → copy all) */
+    private var tilesGen = -1
+
+    /** the stroke picture was emptied: so are the tiles */
+    private fun strokeErased() {
+        strokeTiles?.clear()
+        engine.frameDirty.setEmpty()
+        tilesGen = strokeBitmap?.generationId ?: -1
+    }
+
+    /** brings the tiles up to date with the stroke picture; false: draw the picture itself */
+    private fun syncTiles(sb: Bitmap): Boolean {
+        val t = strokeTiles ?: return false
+        if (!gpuTiles) return false
+        val gen = sb.generationId
+        if (gen != tilesGen) {
+            if (engine.frameDirty.isEmpty) t.updateAll(sb) else t.update(sb, engine.frameDirty)
+            engine.frameDirty.setEmpty()
+            tilesGen = sb.generationId
+        }
+        return true
+    }
+
+    private fun drawStrokePicture(c: Canvas, sb: Bitmap, paint: Paint?, tiled: Boolean) {
+        if (tiled) strokeTiles?.draw(c, paint) else c.drawBitmap(sb, 0f, 0f, paint)
+    }
     private val engine = StrokeEngine()
 
     // ---- tool state (set by MainActivity) ----
@@ -440,6 +470,8 @@ class CanvasView(context: Context) : View(context) {
         history = History()
         strokeBitmap?.recycle()
         strokeBitmap = Bitmap.createBitmap(d.width, d.height, Bitmap.Config.ARGB_8888)
+        strokeTiles = TileMirror(d.width, d.height)
+        strokeErased()
         strokeActive = false
         if (width > 0) fitToScreen() else post { fitToScreen() }
         listener?.onHistoryChanged()
@@ -613,18 +645,20 @@ class CanvasView(context: Context) : View(context) {
             val look = strokeLook
             val sel = selection
             val mask = strokeMask
+            // the dual brush's mask changes every frame too: then the plain picture (no tiles)
+            val tiled = mask == null && syncTiles(sb)
             doc.draw(canvas, filter, { c ->
-                if (grain == null && sel == null && mask == null && look == null) c.drawBitmap(sb, 0f, 0f, overlayPaint)
+                if (grain == null && sel == null && mask == null && look == null) drawStrokePicture(c, sb, overlayPaint, tiled)
                 else {
                     // stroke × dual brush × paper texture × selection, then blended into the layer
                     val s = c.saveLayer(doc.bounds, overlayPaint)
                     val gi = if (look?.layer != null) c.saveLayer(doc.bounds, look.layer) else -1
-                    c.drawBitmap(sb, 0f, 0f, plainBitmapPaint)
+                    drawStrokePicture(c, sb, plainBitmapPaint, tiled)
                     if (mask != null) c.drawBitmap(mask, 0f, 0f, maskDstIn)
                     if (grain != null) c.drawRect(doc.bounds, grain)
                     if (gi >= 0) c.restoreToCount(gi)
-                    look?.tone?.let { c.drawBitmap(sb, 0f, 0f, it) }
-                    look?.core?.let { c.drawBitmap(sb, 0f, 0f, it) }
+                    look?.tone?.let { drawStrokePicture(c, sb, it, tiled) }
+                    look?.core?.let { drawStrokePicture(c, sb, it, tiled) }
                     if (sel != null) c.drawBitmap(sel.mask, 0f, 0f, Selections.dstIn)
                     c.restoreToCount(s)
                 }
@@ -1469,7 +1503,7 @@ class CanvasView(context: Context) : View(context) {
             ov == GesturePurpose.ERASE ||
             e.getToolType(idx) == MotionEvent.TOOL_TYPE_ERASER ||
             (stylus && isPenButton(e.buttonState))
-        sb.eraseColor(0)
+        sb.eraseColor(0); strokeErased()
         smudging = !strokeErasing && (tool == Tool.SMUDGE || ov == GesturePurpose.SMUDGE)
         engine.brush = when {
             strokeErasing -> eraserBrush
@@ -1672,7 +1706,7 @@ class CanvasView(context: Context) : View(context) {
         shape = null
         if (livingStroke) endLiving(false) else engine.end()
         if (smudging) endSmudge(false)
-        strokeBitmap?.eraseColor(0)
+        strokeBitmap?.eraseColor(0); strokeErased()
         mode = Mode.NONE
         invalidate()
     }
@@ -1883,7 +1917,7 @@ class CanvasView(context: Context) : View(context) {
         val bleed = if (!watercolorDrying && !strokeErasing && !smudging && !layer.isLayerMask &&
             (engine.brush.dyn.bloom > 0f || engine.brush.dyn.watercolor > 0f)) wetBleedMask(sb, r, layer) else null
         val before = try { Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height()) }
-            catch (e: OutOfMemoryError) { bleed?.recycle(); sb.eraseColor(0); listener?.onMessage("Not enough memory for this right now"); return }
+            catch (e: OutOfMemoryError) { bleed?.recycle(); sb.eraseColor(0); strokeErased(); listener?.onMessage("Not enough memory for this right now"); return }
         commitPaint.alpha = (engine.brush.opacity * 255).toInt().coerceIn(0, 255)
         commitPaint.blendMode = strokeBlend()
         val lc = Canvas(layer.bitmap)
@@ -1909,7 +1943,7 @@ class CanvasView(context: Context) : View(context) {
         val after = Bitmap.createBitmap(layer.bitmap, r.left, r.top, r.width(), r.height())
         val cmd = PixelEdit(layer, Rect(r), before, after)
         history.push(cmd, doc)
-        sb.eraseColor(0)
+        sb.eraseColor(0); strokeErased()
         lastStroke = if (shape == null && strokePoints.size >= 4)
             LastStroke(cmd, layer, ArrayList(strokePoints), engine.brush, engine.color, strokeErasing, strokeGrain, shapeSeed) else null
         listener?.onHistoryChanged()
@@ -1933,7 +1967,7 @@ class CanvasView(context: Context) : View(context) {
         }
         val sb = strokeBitmap ?: return
         history.undo(doc)
-        sb.eraseColor(0)
+        sb.eraseColor(0); strokeErased()
         engine.brush = ls.brush
         engine.color = ls.color
         engine.dabHandler = null
@@ -2009,7 +2043,7 @@ class CanvasView(context: Context) : View(context) {
 
     private fun renderShape(s: Shape) {
         val sb = strokeBitmap ?: return
-        sb.eraseColor(0)
+        sb.eraseColor(0); strokeErased()
         strokeMask?.eraseColor(0)
         engine.renderPoints(sb, QuickShape.toPoints(s), shapePressure, shapeSeed)
         invalidate()
@@ -2509,7 +2543,7 @@ class CanvasView(context: Context) : View(context) {
         val brush = if (erasing) eraserBrush else paintBrush
         if (brush.preset.living != null && livingMessage != null) { listener?.onMessage(livingMessage); return null }
         val sb = strokeBitmap ?: return null
-        sb.eraseColor(0)
+        sb.eraseColor(0); strokeErased()
         strokeErasing = erasing
         smudging = false
         engine.brush = brush
@@ -2589,7 +2623,7 @@ class CanvasView(context: Context) : View(context) {
         shapeA = null; shapeB = null
         strokeActive = false
         if (a == null || b == null || hypot(b.x - a.x, b.y - a.y) * zoom() < 6f * density) {
-            strokeBitmap?.eraseColor(0); invalidate(); return
+            strokeBitmap?.eraseColor(0); strokeErased(); invalidate(); return
         }
         commitStroke()
         lastStroke = null
@@ -2600,7 +2634,7 @@ class CanvasView(context: Context) : View(context) {
         shapeButtonEven = false
         shapeA = null; shapeB = null
         strokeActive = false
-        strokeBitmap?.eraseColor(0)
+        strokeBitmap?.eraseColor(0); strokeErased()
         invalidate()
     }
 
@@ -2656,7 +2690,7 @@ class CanvasView(context: Context) : View(context) {
         val a = shapeA ?: return
         val b = shapeB ?: return
         val sb = strokeBitmap ?: return
-        sb.eraseColor(0)
+        sb.eraseColor(0); strokeErased()
         strokeMask?.eraseColor(0)
         val (pts, closed) = shapeOutline(a, b)
         if (pts.size < 2) return
