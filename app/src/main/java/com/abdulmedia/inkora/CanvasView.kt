@@ -1937,6 +1937,7 @@ class CanvasView(context: Context) : View(context) {
             val ok = g != null && g.readInto(sb)
             useGpu(false)
             if (!ok) {
+                listener?.onMessage("GPU brushes could not finish this stroke: it was painted the usual way")
                 sb.eraseColor(0)
                 if (strokePoints.size >= 2) engine.renderPressurePoints(sb, ArrayList(strokePoints), shapeSeed)
                 engine.dirty.roundOut(r)
