@@ -145,6 +145,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.paintBrush = paintBrushes.first { it.preset.name == "Studio Ink" }
         cv.eraserBrush = eraserBrushes.first { it.preset.name == "Soft Airbrush" }
         cv.eraserBrush.size = 80f
+        restoreEraser()
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
@@ -293,6 +294,23 @@ class MainActivity : Activity(), CanvasView.Listener {
         super.onPause()
         main.removeCallbacks(periodicSave)
         autosave()
+        saveEraser()
+    }
+
+    /** the eraser you used last (with its size and opacity) is the one you start with next time */
+    private fun saveEraser() {
+        if (!::cv.isInitialized || !prefs.getBoolean("remember_eraser", true)) return
+        val b = cv.eraserBrush
+        prefs.edit().putString("eraser_last", b.preset.name).putFloat("eraser_size", b.size).putFloat("eraser_opacity", b.opacity).apply()
+    }
+
+    private fun restoreEraser() {
+        if (!prefs.getBoolean("remember_eraser", true)) return
+        val name = prefs.getString("eraser_last", null) ?: return
+        val b = eraserBrushes.firstOrNull { it.preset.name == name } ?: return
+        b.size = prefs.getFloat("eraser_size", b.size)
+        b.opacity = prefs.getFloat("eraser_opacity", b.opacity).coerceIn(0.01f, 1f)
+        cv.eraserBrush = b
     }
 
     override fun onResume() {
@@ -422,6 +440,8 @@ class MainActivity : Activity(), CanvasView.Listener {
         root.addView(cv, FrameLayout.LayoutParams(-1, -1))
 
         hud = HudView(this)
+        // above the bars, so a message is never hidden behind them
+        hud.elevation = 30f.dp
         root.addView(hud, FrameLayout.LayoutParams(-1, -1))
 
         dockIds = ToolCatalog.decode(prefs.getString("dock", null))
@@ -1592,7 +1612,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         return BrushPanel(this, title, list, current,
             onSelect = { b ->
                 when (tool) {
-                    Tool.ERASER -> cv.eraserBrush = b
+                    Tool.ERASER -> { cv.eraserBrush = b; saveEraser() }
                     Tool.SMUDGE -> cv.smudgeBrush = b
                     Tool.BRUSH -> cv.paintBrush = b
                 }
@@ -2315,6 +2335,9 @@ class MainActivity : Activity(), CanvasView.Listener {
         override var wetBleed: Boolean
             get() = cv.wetBleed
             set(v) { cv.wetBleed = v; prefs.edit().putBoolean("wetBleed", v).apply() }
+        override var rememberEraser: Boolean
+            get() = prefs.getBoolean("remember_eraser", true)
+            set(v) { prefs.edit().putBoolean("remember_eraser", v).apply(); if (v) saveEraser() }
         override var brushCursor: Boolean
             get() = cv.showBrushCursor
             set(v) { cv.showBrushCursor = v; prefs.edit().putBoolean("brushCursor", v).apply() }
@@ -2793,6 +2816,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun showBottomBar(v: View) {
         bottomBar = v
         val (ic, name) = optionsTitle()
+        beginSession(name)
         optionsBar.show(ic, name, v, true)
         updateOptions()
     }
@@ -2800,6 +2824,7 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun hideBottomBar() {
         if (bottomBar == null) return
         bottomBar = null
+        endSession()
         updateOptions()
     }
 
@@ -2821,6 +2846,40 @@ class MainActivity : Activity(), CanvasView.Listener {
     private fun LinearLayout.addBar(v: View) = addView(v, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = 4.dp; rightMargin = 4.dp })
 
     // ---------- Selection ----------
+
+    // ---------- Cancel: a tool takes back everything done since it was picked ----------
+    private var sessionMark = -1L
+    private var sessionSelection: Selection? = null
+    private var sessionGuide: GuideType? = null
+    private var sessionTool: String? = null
+
+    /** a tool's bar opened: remember where things were, unless this tool's session is already on */
+    private fun beginSession(tool: String) {
+        if (sessionMark >= 0 && sessionTool == tool) return
+        sessionTool = tool
+        sessionMark = cv.historyMark()
+        sessionSelection = cv.selection
+        sessionGuide = cv.doc.guide.type
+    }
+
+    private fun endSession() { sessionMark = -1L; sessionSelection = null; sessionGuide = null; sessionTool = null }
+
+    private fun cancelSession(leave: () -> Unit) {
+        if (sessionMark >= 0) {
+            cv.undoTo(sessionMark)
+            cv.selection = sessionSelection
+            sessionGuide?.let { if (cv.doc.guide.type != it) { cv.doc.guide.type = it; cv.doc.revision++ } }
+        }
+        endSession()
+        leave()
+        cv.invalidate()
+        hud.show("Cancelled")
+    }
+
+    private fun LinearLayout.addCancelDone(leave: () -> Unit) {
+        addBar(barButton("Cancel") { cancelSession(leave) })
+        addBar(barButton("Done", true) { endSession(); leave() })
+    }
 
     private fun enterSelect(shape: SelectShape? = null) {
         shape?.let { cv.selectShape = it }
@@ -2873,11 +2932,11 @@ class MainActivity : Activity(), CanvasView.Listener {
             L10n.menu(pm.menu); pm.show()
         })
         actions.addBar(barButton("Deselect") { cv.selection = null })
-        actions.addBar(barButton("Done", true) {
+        actions.addCancelDone {
             cv.interaction = Interaction.PAINT
             hideBottomBar()
             refreshAll()
-        })
+        }
         col.addView(actions, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 6.dp })
         showBottomBar(col)
     }
@@ -3223,7 +3282,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         opts.addBar(barButton(if (cv.shapeEven) "Even: on" else "Even: off", cv.shapeEven) {
             cv.shapeEven = !cv.shapeEven; prefs.edit().putBoolean("shape_even", cv.shapeEven).apply(); showShapesBar()
         })
-        opts.addBar(barButton("Done", true) { leaveShapes() })
+        opts.addCancelDone { leaveShapes() }
         col.addView(opts, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 6.dp })
         showBottomBar(col)
     }
@@ -3243,7 +3302,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.recolorMode = true
         val bar = barRow()
         bar.addBar(barButton("Colors") { showColors() })
-        bar.addBar(barButton("Done", true) { leaveRecolor() })
+        bar.addCancelDone { leaveRecolor() }
         showBottomBar(bar)
         refreshAll()
         hud.show("Recolor: tap an area, then change the color: the area follows")
@@ -3289,7 +3348,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             else hud.show("Measure a line first")
         })
         bar.addBar(barButton("Draw this line") { if (cv.measureA == null) hud.show("Measure a line first") else if (cv.drawMeasuredLine()) refreshAll() })
-        bar.addBar(barButton("Done", true) { leaveMeasure() })
+        bar.addCancelDone { leaveMeasure() }
         showBottomBar(bar)
     }
 
@@ -3338,7 +3397,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             bar.addView(sw, LinearLayout.LayoutParams(40.dp, 40.dp))
         }
         bar.addBar(barButton("Reverse", cv.gradientReverse) { cv.gradientReverse = !cv.gradientReverse; showGradientBar() })
-        bar.addBar(barButton("Done", true) { leaveGradient() })
+        bar.addCancelDone { leaveGradient() }
         showBottomBar(bar)
     }
 

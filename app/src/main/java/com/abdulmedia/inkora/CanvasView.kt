@@ -509,6 +509,20 @@ class CanvasView(context: Context) : View(context) {
         return false
     }
 
+    fun historyMark(): Long = history.mark
+
+    /** takes back every change made since [mark] (a tool's Cancel) */
+    fun undoTo(mark: Long) {
+        if (strokeActive) cancelStroke()
+        var n = 0
+        while (history.mark > mark && history.canUndo && n < 500) { history.undo(doc); n++ }
+        if (n > 0) {
+            vectorEditor.reset()
+            listener?.onHistoryChanged()
+            invalidate()
+        }
+    }
+
     fun undo() {
         if (busy()) return
         if (strokeActive) cancelStroke()
@@ -1068,6 +1082,9 @@ class CanvasView(context: Context) : View(context) {
             Interaction.LIQUIFY -> { startLiquify(e); return }
             Interaction.SHAPE -> {
                 downTime = e.eventTime
+                shapePointerId = e.getPointerId(0)
+                shapePen = e.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS
+                shapeFingerEven = false
                 if (shapeDown(toDoc(e.x, e.y))) mode = Mode.SHAPE_DRAG else mode = Mode.IGNORE
                 return
             }
@@ -1190,10 +1207,14 @@ class CanvasView(context: Context) : View(context) {
                 } else startGesture(e, -1, keepTapInfo = true)
             }
             Mode.LIQUIFY_DRAG -> startGesture(e, -1)
-            Mode.SHAPE_DRAG -> if (e.eventTime - downTime < 300) {
+            Mode.SHAPE_DRAG -> if (!shapePen && e.eventTime - downTime < 300) {
                 // a second finger right away: zoom or move the view instead
                 shapeCancel()
                 startGesture(e, -1)
+            } else {
+                // a finger down while drawing the shape: it becomes even (a square, a circle, an equal star…)
+                shapeFingerEven = true
+                if (shapeA != null) renderShapeTool()
             }
             Mode.MEASURE_DRAG -> if (e.eventTime - downTime < 300) {
                 measureUndoDown()
@@ -1291,7 +1312,10 @@ class CanvasView(context: Context) : View(context) {
             Mode.LIQUIFY_DRAG -> moveLiquify(e)
             Mode.GRADIENT_DRAG -> { gradB = toDoc(e.x, e.y); invalidate() }
             Mode.MEASURE_DRAG -> measureMove(e.x, e.y)
-            Mode.SHAPE_DRAG -> shapeMove(toDoc(e.x, e.y))
+            Mode.SHAPE_DRAG -> {
+                val i = e.findPointerIndex(shapePointerId)
+                if (i >= 0) shapeMove(toDoc(e.getX(i), e.getY(i)))
+            }
             Mode.VECTOR_DRAG -> vectorEditor.onMove(e.x, e.y)
             Mode.TRANSFORM_DRAG -> updateTransformDrag(e)
             Mode.TRANSFORM_PINCH -> updateTransformPinch(e)
@@ -1312,6 +1336,16 @@ class CanvasView(context: Context) : View(context) {
                 startGesture(e, e.actionIndex, keepTapInfo = true)
             }
             Mode.TRANSFORM_PINCH -> mode = Mode.IGNORE
+            Mode.SHAPE_DRAG -> {
+                if (e.getPointerId(e.actionIndex) == shapePointerId) {
+                    // the pen lifted first: the shape is done, as it is now
+                    shapeUp()
+                    mode = Mode.IGNORE
+                } else if (e.pointerCount <= 2) {
+                    shapeFingerEven = false
+                    if (shapeA != null) renderShapeTool()
+                }
+            }
             else -> {}
         }
     }
@@ -2481,6 +2515,10 @@ class CanvasView(context: Context) : View(context) {
     var shapeFilled = false
     /** square, circle, even star; a line keeps to 15° steps */
     var shapeEven = false
+    /** a finger is down while the shape is drawn: it is even for as long as the finger stays */
+    private var shapeFingerEven = false
+    private var shapePointerId = -1
+    private var shapePen = false
     private var shapeA: PointF? = null
     private var shapeB: PointF? = null
     private val shapeFill = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -2522,9 +2560,10 @@ class CanvasView(context: Context) : View(context) {
     /** the corners (or the run of points) of the shape between where the finger came down and where it is */
     private fun shapeOutline(a: PointF, b0: PointF): Pair<List<PointF>, Boolean> {
         var b = b0
+        val even = shapeEven || shapeFingerEven
         val kind = shapeKind
         if (kind == ShapeKind.LINE || kind == ShapeKind.ARROW) {
-            if (shapeEven) b = (Shape.Line(a, b).perfected() as Shape.Line).b
+            if (even) b = (Shape.Line(a, b).perfected() as Shape.Line).b
             if (kind == ShapeKind.LINE) return listOf(a, b) to false
             val len = hypot(b.x - a.x, b.y - a.y)
             val ang = atan2(b.y - a.y, b.x - a.x)
@@ -2535,7 +2574,9 @@ class CanvasView(context: Context) : View(context) {
             return listOf(a, b, l, b, r) to false
         }
         var dx = b.x - a.x; var dy = b.y - a.y
-        if (shapeEven) { val s = max(abs(dx), abs(dy)); dx = if (dx < 0) -s else s; dy = if (dy < 0) -s else s }
+        if (even) { val s = max(abs(dx), abs(dy)); dx = if (dx < 0) -s else s; dy = if (dy < 0) -s else s }
+        // an even triangle has three equal sides
+        if (even && kind == ShapeKind.TRIANGLE) dy = (if (dy < 0) -1f else 1f) * abs(dx) * 0.866f
         val x0 = min(a.x, a.x + dx); val x1 = max(a.x, a.x + dx)
         val y0 = min(a.y, a.y + dy); val y1 = max(a.y, a.y + dy)
         val cx = (x0 + x1) / 2; val cy = (y0 + y1) / 2

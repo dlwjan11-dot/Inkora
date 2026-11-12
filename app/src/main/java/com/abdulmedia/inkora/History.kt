@@ -170,6 +170,10 @@ class History {
 
     val canUndo get() = undoStack.isNotEmpty()
 
+    /** goes up with every change and down with every undo: a tool remembers it to take back all it did */
+    var mark = 0L
+        private set
+
     /** the command the next undo would take back */
     fun top(): Command? = undoStack.lastOrNull()
     val canRedo get() = redoStack.isNotEmpty()
@@ -177,6 +181,7 @@ class History {
     fun push(cmd: Command, doc: Document) {
         undoStack.addLast(cmd)
         redoStack.clear()
+        mark++
         doc.revision++
         trim()
     }
@@ -185,6 +190,7 @@ class History {
         val c = undoStack.removeLastOrNull() ?: return false
         c.undo(doc)
         redoStack.addLast(c)
+        mark--
         doc.revision++
         return true
     }
@@ -193,6 +199,7 @@ class History {
         val c = redoStack.removeLastOrNull() ?: return false
         c.redo(doc)
         undoStack.addLast(c)
+        mark++
         doc.revision++
         return true
     }

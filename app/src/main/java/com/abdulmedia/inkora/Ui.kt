@@ -486,12 +486,13 @@ class VerticalSlider(context: Context) : View(context) {
 class HudView(context: Context) : View(context) {
     private var message: String? = null
     private var circle = 0f
+    // always light text on a dark pill: it sits over the canvas, whatever the interface's colors
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Ui.TEXT
+        color = 0xFFF2F3F5.toInt()
         textSize = 15f.dp
         textAlign = Paint.Align.CENTER
     }
-    private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xE0141416.toInt() }
+    private val pill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xE6141416.toInt() }
     private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val hide = Runnable { message = null; circle = 0f; invalidate() }
 
@@ -520,7 +521,8 @@ class HudView(context: Context) : View(context) {
             tw = textPaint.measureText(m)
         }
         val cx = width / 2f
-        val top = 76f.dp
+        // under the top bar and the tool settings bar, never behind them
+        val top = 122f.dp
         canvas.drawRoundRect(RectF(cx - tw / 2 - 16f.dp, top, cx + tw / 2 + 16f.dp, top + 36f.dp), 18f.dp, 18f.dp, pill)
         canvas.drawText(m, cx, top + 24f.dp, textPaint)
         if (circle > 0f) {

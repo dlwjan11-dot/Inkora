@@ -39,6 +39,8 @@ interface ActionsHost {
     fun openLicenses()
     var sidebarShown: Boolean
     var brushCursor: Boolean
+    /** start with the eraser used last, after closing the app and in new artworks */
+    var rememberEraser: Boolean
     /** watercolor strokes dry (crisp edge, pigment line, blots) when the pen lifts */
     var watercolorDrying: Boolean
     var wetBleed: Boolean
@@ -385,6 +387,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         section("Painting")
         group(
             switchRow("Brush cursor", "Shows the brush outline where the pen hovers", host.brushCursor, icon = Icon.BRUSH) { host.brushCursor = it },
+            switchRow("Keep my last eraser", "The eraser you used last (its size too) is ready next time, in new artworks as well", host.rememberEraser, icon = Icon.ERASER) { host.rememberEraser = it },
             switchRow("Watercolor drying", "When you lift the pen, a watercolor stroke dries with a crisp edge. Off: it stays as you painted it", host.watercolorDrying, icon = Icon.DROP) { host.watercolorDrying = it },
             switchRow("Wet paint runs together", "A watery stroke over paint that is still wet (about half a minute) bleeds softly into it", host.wetBleed, icon = Icon.INK) { host.wetBleed = it },
             sliderRow("ColorDrop fill sensitivity", cv.fillThreshold, { "${(it * 100).roundToInt()}%" }) { v ->

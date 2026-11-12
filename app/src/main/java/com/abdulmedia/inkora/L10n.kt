@@ -1365,6 +1365,9 @@ object L10n {
         "Canvas: guides, symmetry, floating windows, grey view, crop and snapshots", "Canvas: شبكات، تناظر، نوافذ عائمة، عرض رمادي، قص ولقطات", "Canvas: تۆڕ، سیمێتری، پەنجەرەی سەربەست، پیشاندانی خۆڵەمێشی، بڕین و وێنەگرتن",
         "Brushes, Layers and Color on the right; each opens right under its button", "الفراشي والطبقات واللون عاليمين؛ كل وحدة بتفتح تحت زرها", "فڵچە، چین و ڕەنگ لە ڕاست؛ هەر یەکە ڕێک لە ژێر دوگمەکەی دەکرێتەوە",
         "Canvas › Snapshots: keep a moment of the artwork and come back to it", "Canvas › اللقطات: احفظ لحظة من الرسمة وارجعلها", "Canvas › وێنەگرتن: ساتێک لە کارەکە بپارێزە و بگەڕێوە بۆی",
+        "Keep my last eraser", "خلّي آخر ممحاة استعملتها", "دوایین سڕەر بهێڵەوە",
+        "The eraser you used last (its size too) is ready next time, in new artworks as well", "آخر ممحاة استعملتها (مع حجمها) بتكون جاهزة المرة الجاية، وبالرسومات الجديدة كمان", "دوایین سڕەر کە بەکارتهێنا (قەبارەکەشی) جاری داهاتوو ئامادەیە، لە کاری نوێشدا",
+        "Cancelled", "انلغى", "هەڵوەشێنرایەوە",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",
