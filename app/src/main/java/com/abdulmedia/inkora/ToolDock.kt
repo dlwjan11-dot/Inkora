@@ -51,6 +51,7 @@ object ToolCatalog {
         ToolDef("palette_photo", "Palette from photo", Icon.PALETTE, "Color", "The main colors of a photo, as a palette"),
         ToolDef("measure", "Measure", Icon.RULER, "Guides", "Length and angle; turn it into a ruler"),
         ToolDef("text", "Text", Icon.TEXT, "Create", "Any language, 9 fonts"),
+        ToolDef("shapes", "Shapes", Icon.SHAPE, "Create", "Rectangle, circle, star, heart, arrow… with your brush"),
         ToolDef("photo", "Insert photo", Icon.PHOTO, "Create", "As a new layer"),
         ToolDef("vector", "Vector layer", Icon.VECTOR, "Create", "Pen, shapes, logos"),
         ToolDef("pose3d", "3D & poses", Icon.CUBE, "Create", "Posable figures, objects and 3D models"),

@@ -77,6 +77,7 @@ object Tour {
             "The ••• in the top bar opens Creative and Editing",
             "Creative: text, vector shapes and pen, 3D figures to pose, photos, fill, gradient",
             "Measure lengths and angles; turn a line into a ruler",
+            "Creative › Shapes: rectangle, circle, star, heart, arrow, drawn with your brush or filled",
             "Actions (the wrench) › Add: comic panels and speech bubbles",
             "Editing: liquify, canvas size and crop, filters, feather",
             "Tap ☆ on any tool to put it on your own toolbar; long-press the toolbar to arrange it")),

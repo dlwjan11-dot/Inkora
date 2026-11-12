@@ -222,6 +222,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             cv.interaction == Interaction.SELECT -> { cv.interaction = Interaction.PAINT; hideBottomBar(); refreshAll() }
             cv.interaction == Interaction.GRADIENT -> leaveGradient()
             cv.interaction == Interaction.MEASURE -> leaveMeasure()
+            cv.interaction == Interaction.SHAPE -> leaveShapes()
             cv.recolorMode -> leaveRecolor()
             gallery?.previewOpen() == true -> gallery?.closePreview()
             gallery != null && galleryFromCanvas -> closeGallery()
@@ -967,6 +968,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             id == "liquify" -> if (cv.liquify != null) leaveLiquify(true) else enterLiquify()
             id == "gradient" -> if (cv.interaction == Interaction.GRADIENT) leaveGradient() else enterGradient()
             id == "measure" -> if (cv.interaction == Interaction.MEASURE) leaveMeasure() else enterMeasure()
+            id == "shapes" -> if (cv.interaction == Interaction.SHAPE) leaveShapes() else enterShapes()
             id == "palette_photo" -> { popup?.dismiss(); startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type = "image/*" }, REQ_PALETTE_PHOTO) }
             id == "canvas" -> showCanvasSize()
             id == "guides" -> showGuide(anchor)
@@ -1014,6 +1016,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             "liquify" -> cv.liquify != null
             "gradient" -> cv.interaction == Interaction.GRADIENT
             "measure" -> cv.interaction == Interaction.MEASURE
+            "shapes" -> cv.interaction == Interaction.SHAPE
             "fill" -> cv.fillMode
             "recolor" -> cv.recolorMode
             "guides" -> cv.doc.guide.type != GuideType.OFF
@@ -1323,6 +1326,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         // picking a painting tool leaves selection mode (the selection itself stays and limits painting)
         if (cv.interaction == Interaction.GRADIENT) leaveGradient()
         if (cv.interaction == Interaction.MEASURE) leaveMeasure()
+        if (cv.interaction == Interaction.SHAPE) leaveShapes()
         if (cv.recolorMode) leaveRecolor()
         if (cv.interaction == Interaction.SELECT) {
             cv.interaction = Interaction.PAINT
@@ -3097,6 +3101,50 @@ class MainActivity : Activity(), CanvasView.Listener {
             backupNudged = true
             main.postDelayed({ hud.show(backupNoteText() + " · " + L10n.tr("Import… › Back up all artworks")) }, 1200)
         }
+    }
+
+    // ---------- Shapes ----------
+
+    private fun enterShapes() {
+        popup?.dismiss()
+        val a = cv.doc.active
+        if (a.vector != null) { cv.vectorEditor.tool = VTool.RECT; refreshAll(); hud.show("Vector layer: its shape tools are in the bar"); return }
+        if (cv.interaction != Interaction.PAINT) { hideBottomBar(); cv.interaction = Interaction.PAINT }
+        cv.fillMode = false
+        if (cv.recolorMode) cv.recolorMode = false
+        cv.shapeKind = runCatching { ShapeKind.valueOf(prefs.getString("shape_kind", "RECT")!!) }.getOrDefault(ShapeKind.RECT)
+        cv.shapeFilled = prefs.getBoolean("shape_filled", false)
+        cv.shapeEven = prefs.getBoolean("shape_even", false)
+        cv.interaction = Interaction.SHAPE
+        showShapesBar()
+        refreshAll()
+        hud.show("Shapes: drag on the canvas · drawn with your brush and color")
+    }
+
+    private fun showShapesBar() {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        val kinds = barRow()
+        ShapeKind.values().forEach { k ->
+            kinds.addBar(barButton(k.label, cv.shapeKind == k) {
+                cv.shapeKind = k; prefs.edit().putString("shape_kind", k.name).apply(); showShapesBar()
+            })
+        }
+        col.addView(kinds)
+        val opts = barRow()
+        opts.addBar(barButton("Outline", !cv.shapeFilled) { cv.shapeFilled = false; prefs.edit().putBoolean("shape_filled", false).apply(); showShapesBar() })
+        opts.addBar(barButton("Filled", cv.shapeFilled) { cv.shapeFilled = true; prefs.edit().putBoolean("shape_filled", true).apply(); showShapesBar() })
+        opts.addBar(barButton(if (cv.shapeEven) "Even: on" else "Even: off", cv.shapeEven) {
+            cv.shapeEven = !cv.shapeEven; prefs.edit().putBoolean("shape_even", cv.shapeEven).apply(); showShapesBar()
+        })
+        opts.addBar(barButton("Done", true) { leaveShapes() })
+        col.addView(opts, LinearLayout.LayoutParams(-2, -2).apply { topMargin = 6.dp })
+        showBottomBar(col)
+    }
+
+    private fun leaveShapes() {
+        if (cv.interaction == Interaction.SHAPE) cv.interaction = Interaction.PAINT
+        hideBottomBar()
+        refreshAll()
     }
 
     // ---------- Recolor ----------

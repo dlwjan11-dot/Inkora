@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.0.apk"><img src="https://img.shields.io/badge/Download_APK-0.23.0-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.23.0"></a>
+  <a href="https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.1.apk"><img src="https://img.shields.io/badge/Download_APK-0.23.1-ffc14d?style=for-the-badge&logo=android&logoColor=2a1b00&labelColor=ffc14d&color=ffd27a" alt="Download APK 0.23.1"></a>
   &nbsp;
   <a href="https://dlwjan11-dot.github.io/Inkora/"><img src="https://img.shields.io/badge/Website-EN_%C2%B7_AR_%C2%B7_KU-141a3a?style=for-the-badge&labelColor=1c2350" alt="Website"></a>
 </p>
@@ -40,12 +40,12 @@ I'm a designer and artist. I looked for a long time for a drawing app on Android
 
 | Platform | File | Install |
 |---|---|---|
-| Android 10+ tablets and phones | [`Inkora-0.23.0.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.0.apk) (0.23.0, everything included: Living Paint brushes too) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
+| Android 10+ tablets and phones | [`Inkora-0.23.1.apk`](https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.1.apk) (0.23.1, everything included: Living Paint brushes too) | Open it, allow installs from this source once, tap **Install anyway** if Play Protect asks |
 | iPad and iPhone | the `ios/` folder (Xcode project, version 1.0) | Open `ios/Inkora.xcodeproj` on a Mac, pick your team, press **Run ▶**; see `ios/README.md` |
-| Android Studio | this repository (source is at **0.23.0**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
+| Android Studio | this repository (source is at **0.23.1**) | Open the folder, let Gradle sync, press **Run ▶** with your tablet connected |
 
 Made for big tablets with an S Pen (Galaxy Tab S series). Phones work too (the layout slims down for them, upright or on the side), with a finger or the S Pen of an Ultra. Inkora is not on Google Play yet.
-SHA-256 of the 0.23.0 APK: `98cb7f1fdd863afe0e830d599e5cd0ebdffec364ea6b8420521f0cf76c8d8f40`
+SHA-256 of the 0.23.1 APK: `7cdab73f1169752599b83b0cdd1d4b1271fa0b10981170d8c432952f4a388812`
 
 ## New in 0.23: the gestures pros use
 
@@ -54,6 +54,7 @@ SHA-256 of the 0.23.0 APK: `98cb7f1fdd863afe0e830d599e5cd0ebdffec364ea6b8420521f
 - **QuickShape**: put a finger down while holding a shape and it becomes a perfect circle, square or even polygon.
 - **Color**: hold the color circle for the previous color; double-tap the wheel for pure hues; **Recolor** tool: tap an area and it follows every color you try.
 - **Gallery**: pinch an artwork (or Preview in its menu) to see it big and swipe through them.
+- **Shapes** on drawing layers: rectangle, ellipse, triangle, star, hexagon, heart, line and arrow, drawn with your brush or filled.
 - Selection mask visibility, and a **light interface** (Preferences).
 
 ## New in 0.22: measure, palettes from photos, backups
@@ -371,7 +372,7 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 - طبقات فيكتور، ونص بأي لغة، وفلاتر، وفيديو تايم لابس، وتصدير PNG وJPEG وSVG.
 
 ### التثبيت
-1. حمّل **[Inkora-0.23.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.0.apk)** على جهازك.
+1. حمّل **[Inkora-0.23.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.1.apk)** على جهازك.
 2. افتح الملف، واسمح بالتثبيت من هذا المصدر إذا طُلب منك.
 3. إذا ظهر تحذير Play Protect اضغط **التثبيت على أي حال**.
 4. افتح Inkora وابدأ الرسم.
@@ -461,7 +462,7 @@ Credits: the living brushes run on [libmypaint](https://github.com/mypaint/libmy
 - **مێنیوی قەڵەم:** چەرخی ڕەنگی ئاسایی لە ناوەڕاست، ڕەنگە پاشەکەوتکراوەکانت لە ژێریدا، ئامرازەکان لە سەرەوە، فڵچەکان لە خوارەوە، قەبارە لە چەپ و ناڕوونی لە ڕاست.
 
 ### دامەزراندن
-1. **[Inkora-0.23.0.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.0.apk)** لەسەر ئامێرەکەت دابگرە.
+1. **[Inkora-0.23.1.apk](https://dlwjan11-dot.github.io/Inkora/Inkora-0.23.1.apk)** لەسەر ئامێرەکەت دابگرە.
 2. فایلەکە بکەرەوە و ئەگەر پرسیاری کرد، ڕێگە بە دامەزراندن لەم سەرچاوەیە بدە.
 3. ئەگەر Play Protect ئاگاداریی پیشان دا، کرتە لە **Install anyway** بکە.
 4. Inkora بکەرەوە و دەست بە وێنەکێشان بکە.

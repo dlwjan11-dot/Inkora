@@ -15,6 +15,7 @@ import android.graphics.Rect
 import android.graphics.Shader
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -29,7 +30,12 @@ import android.graphics.RectF
 enum class Tool { BRUSH, SMUDGE, ERASER }
 
 /** What touches on the canvas do right now. */
-enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR, LIQUIFY, GRADIENT, MEASURE }
+enum class Interaction { PAINT, SELECT, TRANSFORM, LOCKED, VECTOR, LIQUIFY, GRADIENT, MEASURE, SHAPE }
+
+enum class ShapeKind(val label: String) {
+    RECT("Rectangle"), ELLIPSE("Ellipse"), TRIANGLE("Triangle"), STAR("Star"), POLYGON("Hexagon"),
+    HEART("Heart"), LINE("Line"), ARROW("Arrow")
+}
 
 enum class MeasureUnit(val label: String) { PX("px"), CM("cm"), IN("in") }
 
@@ -194,7 +200,7 @@ class CanvasView(context: Context) : View(context) {
     private val loupePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     // ---- input state ----
-    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG, GRADIENT_DRAG, MEASURE_DRAG }
+    private enum class Mode { NONE, DRAW, GESTURE, PICK, FINGER_WAIT, IGNORE, VP_DRAG, SELECT_DRAW, TRANSFORM_DRAG, TRANSFORM_PINCH, VECTOR_DRAG, PAN, HOVER_ADJ, LIQUIFY_DRAG, GRADIENT_DRAG, MEASURE_DRAG, SHAPE_DRAG }
 
     // ---- vector layers ----
     val vectorEditor: VectorEditor by lazy {
@@ -1060,6 +1066,11 @@ class CanvasView(context: Context) : View(context) {
                 return
             }
             Interaction.LIQUIFY -> { startLiquify(e); return }
+            Interaction.SHAPE -> {
+                downTime = e.eventTime
+                if (shapeDown(toDoc(e.x, e.y))) mode = Mode.SHAPE_DRAG else mode = Mode.IGNORE
+                return
+            }
             Interaction.MEASURE -> {
                 mode = Mode.MEASURE_DRAG
                 downTime = e.eventTime
@@ -1179,6 +1190,11 @@ class CanvasView(context: Context) : View(context) {
                 } else startGesture(e, -1, keepTapInfo = true)
             }
             Mode.LIQUIFY_DRAG -> startGesture(e, -1)
+            Mode.SHAPE_DRAG -> if (e.eventTime - downTime < 300) {
+                // a second finger right away: zoom or move the view instead
+                shapeCancel()
+                startGesture(e, -1)
+            }
             Mode.MEASURE_DRAG -> if (e.eventTime - downTime < 300) {
                 measureUndoDown()
                 startGesture(e, -1)
@@ -1275,6 +1291,7 @@ class CanvasView(context: Context) : View(context) {
             Mode.LIQUIFY_DRAG -> moveLiquify(e)
             Mode.GRADIENT_DRAG -> { gradB = toDoc(e.x, e.y); invalidate() }
             Mode.MEASURE_DRAG -> measureMove(e.x, e.y)
+            Mode.SHAPE_DRAG -> shapeMove(toDoc(e.x, e.y))
             Mode.VECTOR_DRAG -> vectorEditor.onMove(e.x, e.y)
             Mode.TRANSFORM_DRAG -> updateTransformDrag(e)
             Mode.TRANSFORM_PINCH -> updateTransformPinch(e)
@@ -1328,6 +1345,7 @@ class CanvasView(context: Context) : View(context) {
             Mode.SELECT_DRAW -> finishSelect()
             Mode.GRADIENT_DRAG -> commitGradient()
             Mode.MEASURE_DRAG -> measureUp()
+            Mode.SHAPE_DRAG -> shapeUp()
             Mode.VECTOR_DRAG -> vectorEditor.onUp(e.x, e.y)
             else -> {}
         }
@@ -2412,16 +2430,29 @@ class CanvasView(context: Context) : View(context) {
         val a = measureA ?: return false
         val b = measureB ?: return false
         if (hypot(b.x - a.x, b.y - a.y) < 2f) return false
+        val sb = prepareDrawnStroke("Living brushes: use Make it a ruler, then draw along it") ?: return false
+        engine.renderPoints(sb, QuickShape.toPoints(Shape.Line(PointF(a.x, a.y), PointF(b.x, b.y))), 0.8f, shapeSeed)
+        commitStroke()
+        lastStroke = null
+        invalidate()
+        return true
+    }
+
+    /**
+     * Gets the stroke layer ready for a stroke Inkora draws itself (a measured line, a shape) with
+     * the brush in hand, or the eraser. Null (with a message) when this layer can't take one.
+     */
+    private fun prepareDrawnStroke(livingMessage: String?): Bitmap? {
         val layer = doc.active
         when {
-            !layer.visible || doc.groupOf(layer)?.visible == false -> { listener?.onMessage("This layer is hidden"); return false }
-            layer.vector != null -> { listener?.onMessage("Vector layer: use the vector tools, or pick a drawing layer"); return false }
-            layer.scene != null -> { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); return false }
+            !layer.visible || doc.groupOf(layer)?.visible == false -> { listener?.onMessage("This layer is hidden"); return null }
+            layer.vector != null -> { listener?.onMessage("Vector layer: use the vector tools, or pick a drawing layer"); return null }
+            layer.scene != null -> { listener?.onMessage("3D layer: change it with Edit 3D scene in Layers, or draw on a new layer"); return null }
         }
         val erasing = tool == Tool.ERASER
         val brush = if (erasing) eraserBrush else paintBrush
-        if (brush.preset.living != null) { listener?.onMessage("Living brushes: use Make it a ruler, then draw along it"); return false }
-        val sb = strokeBitmap ?: return false
+        if (brush.preset.living != null && livingMessage != null) { listener?.onMessage(livingMessage); return null }
+        val sb = strokeBitmap ?: return null
         sb.eraseColor(0)
         strokeErasing = erasing
         smudging = false
@@ -2440,11 +2471,123 @@ class CanvasView(context: Context) : View(context) {
             mb
         } else null
         engine.maskTarget = strokeMask
-        engine.renderPoints(sb, QuickShape.toPoints(Shape.Line(PointF(a.x, a.y), PointF(b.x, b.y))), 0.8f, shapeSeed)
+        return sb
+    }
+
+    // ---------------- Shapes (on a drawing layer) ----------------
+
+    var shapeKind = ShapeKind.RECT
+    /** filled with the color, or an outline drawn with the brush */
+    var shapeFilled = false
+    /** square, circle, even star; a line keeps to 15° steps */
+    var shapeEven = false
+    private var shapeA: PointF? = null
+    private var shapeB: PointF? = null
+    private val shapeFill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val shapePath = android.graphics.Path()
+
+    private fun shapeDown(p: PointF): Boolean {
+        val outlineOnly = !shapeFilled || shapeKind == ShapeKind.LINE || shapeKind == ShapeKind.ARROW
+        if (prepareDrawnStroke(if (outlineOnly) "Living brushes can't trace shapes: pick another brush, or Filled" else null) == null) return false
+        shapeA = p; shapeB = PointF(p.x, p.y)
+        strokeActive = true
+        return true
+    }
+
+    private fun shapeMove(p: PointF) {
+        if (shapeA == null) return
+        shapeB = p
+        renderShapeTool()
+    }
+
+    private fun shapeUp() {
+        val a = shapeA; val b = shapeB
+        shapeA = null; shapeB = null
+        strokeActive = false
+        if (a == null || b == null || hypot(b.x - a.x, b.y - a.y) * zoom() < 6f * density) {
+            strokeBitmap?.eraseColor(0); invalidate(); return
+        }
         commitStroke()
         lastStroke = null
         invalidate()
-        return true
+    }
+
+    private fun shapeCancel() {
+        shapeA = null; shapeB = null
+        strokeActive = false
+        strokeBitmap?.eraseColor(0)
+        invalidate()
+    }
+
+    /** the corners (or the run of points) of the shape between where the finger came down and where it is */
+    private fun shapeOutline(a: PointF, b0: PointF): Pair<List<PointF>, Boolean> {
+        var b = b0
+        val kind = shapeKind
+        if (kind == ShapeKind.LINE || kind == ShapeKind.ARROW) {
+            if (shapeEven) b = (Shape.Line(a, b).perfected() as Shape.Line).b
+            if (kind == ShapeKind.LINE) return listOf(a, b) to false
+            val len = hypot(b.x - a.x, b.y - a.y)
+            val ang = atan2(b.y - a.y, b.x - a.x)
+            val head = max(10f, len * 0.2f)
+            val w = 0.5f
+            val l = PointF(b.x - head * cos(ang - w), b.y - head * sin(ang - w))
+            val r = PointF(b.x - head * cos(ang + w), b.y - head * sin(ang + w))
+            return listOf(a, b, l, b, r) to false
+        }
+        var dx = b.x - a.x; var dy = b.y - a.y
+        if (shapeEven) { val s = max(abs(dx), abs(dy)); dx = if (dx < 0) -s else s; dy = if (dy < 0) -s else s }
+        val x0 = min(a.x, a.x + dx); val x1 = max(a.x, a.x + dx)
+        val y0 = min(a.y, a.y + dy); val y1 = max(a.y, a.y + dy)
+        val cx = (x0 + x1) / 2; val cy = (y0 + y1) / 2
+        val rx = (x1 - x0) / 2; val ry = (y1 - y0) / 2
+        fun ring(n: Int, inner: Float?, start: Double): List<PointF> {
+            val k = if (inner != null) n * 2 else n
+            return List(k) { i ->
+                val t = start + 2 * PI * i / k
+                val f = if (inner != null && i % 2 == 1) inner else 1f
+                PointF(cx + (rx * f * cos(t)).toFloat(), cy + (ry * f * sin(t)).toFloat())
+            }
+        }
+        val pts = when (kind) {
+            ShapeKind.RECT -> listOf(PointF(x0, y0), PointF(x1, y0), PointF(x1, y1), PointF(x0, y1))
+            ShapeKind.TRIANGLE -> listOf(PointF(cx, y0), PointF(x1, y1), PointF(x0, y1))
+            ShapeKind.STAR -> ring(5, 0.42f, -PI / 2)
+            ShapeKind.POLYGON -> ring(6, null, 0.0)
+            ShapeKind.HEART -> List(72) { i ->
+                val t = 2 * PI * i / 72
+                val hx = 16 * sin(t).pow(3)
+                val hy = 13 * cos(t) - 5 * cos(2 * t) - 2 * cos(3 * t) - cos(4 * t)
+                PointF(cx + (hx / 16.0 * rx).toFloat(), cy - ((hy + 2.5) / 15.0 * ry).toFloat())
+            }
+            else -> ring(96, null, 0.0) // ellipse
+        }
+        return pts to true
+    }
+
+    private fun renderShapeTool() {
+        val a = shapeA ?: return
+        val b = shapeB ?: return
+        val sb = strokeBitmap ?: return
+        sb.eraseColor(0)
+        strokeMask?.eraseColor(0)
+        val (pts, closed) = shapeOutline(a, b)
+        if (pts.size < 2) return
+        val fill = shapeFilled && closed
+        if (fill) {
+            shapePath.rewind()
+            shapePath.moveTo(pts[0].x, pts[0].y)
+            for (i in 1 until pts.size) shapePath.lineTo(pts[i].x, pts[i].y)
+            shapePath.close()
+            shapeFill.color = engine.color or 0xFF000000.toInt()
+            Canvas(sb).drawPath(shapePath, shapeFill)
+            strokeMask?.let { Canvas(it).drawPath(shapePath, shapeFill) }
+            val r = RectF(); shapePath.computeBounds(r, true); r.inset(-2f, -2f)
+            engine.dirty.set(r)
+        } else {
+            val shape: Shape = if (closed) Shape.Poly(pts, true) else Shape.Poly(pts, false)
+            engine.renderPoints(sb, QuickShape.toPoints(shape), 0.8f, shapeSeed)
+        }
+        invalidate()
     }
 
     // ---------------- Gradient ----------------
