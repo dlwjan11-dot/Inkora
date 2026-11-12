@@ -27,6 +27,8 @@ class OptionsBar(context: Context) : LinearLayout(context) {
         overScrollMode = OVER_SCROLL_NEVER
         isFillViewport = false
     }
+    /** settings that stay one under the other (several sliders): not in the sideways strip, so a drag only moves the slider */
+    private val stack = android.widget.FrameLayout(context).apply { visibility = GONE }
     private val line = Paint().apply { color = Ui.DIVIDER }
     private var current: View? = null
 
@@ -43,6 +45,12 @@ class OptionsBar(context: Context) : LinearLayout(context) {
         addView(title, LayoutParams(-2, -2).apply { marginStart = 6.dp; marginEnd = 12.dp })
         addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1.dp, 26.dp).apply { marginEnd = 12.dp })
         addView(scroll, LayoutParams(-2, -2))
+        addView(stack, LayoutParams(-2, -2).apply { topMargin = 6.dp; bottomMargin = 6.dp })
+    }
+
+    companion object {
+        /** set as a settings view's tag to keep its rows one under the other */
+        const val STACKED = "options-stacked"
     }
 
 
@@ -65,16 +73,32 @@ class OptionsBar(context: Context) : LinearLayout(context) {
         swapping = true
         try {
             (content.parent as? ViewGroup)?.removeView(content)
-            if (fromTool) flatten(content)
             scroll.removeAllViews()
-            if (scroll.childCount > 0) scroll.removeAllViews()
-            scroll.addView(content, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_VERTICAL))
+            stack.removeAllViews()
+            if (content.tag == STACKED || (fromTool && content is LinearLayout && content.orientation == VERTICAL && hasSlider(content))) {
+                // sliders keep their own line each, wide enough to drag
+                if (content.minimumWidth < 300.dp) content.minimumWidth = minOf(340.dp, resources.displayMetrics.widthPixels - 190.dp).coerceAtLeast(200.dp)
+                content.background = null
+                content.elevation = 0f
+                content.setPadding(0, 0, 0, 0)
+                scroll.visibility = GONE
+                stack.visibility = VISIBLE
+                stack.addView(content, android.widget.FrameLayout.LayoutParams(-2, -2))
+            } else {
+                if (fromTool) flatten(content)
+                stack.visibility = GONE
+                scroll.visibility = VISIBLE
+                scroll.addView(content, android.widget.FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_VERTICAL))
+                scroll.scrollTo(0, 0)
+            }
             current = content
-            scroll.scrollTo(0, 0)
         } finally {
             swapping = false
         }
     }
+
+    private fun hasSlider(v: View): Boolean = v is android.widget.SeekBar ||
+        (v is ViewGroup && (0 until v.childCount).any { hasSlider(v.getChildAt(it)) })
 
     private fun flatten(v: View) {
         v.background = null

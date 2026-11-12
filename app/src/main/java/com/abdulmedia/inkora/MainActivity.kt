@@ -3916,6 +3916,9 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     // ---------- Adjustments ----------
 
+    /** sliders one under the other, beside the tool's name in the settings strip */
+    private fun adjustPanelWidth() = min(380.dp, root.width - 190.dp).coerceAtLeast(200.dp)
+
     /** the settings of an adjustment layer, changed live on the canvas; Done keeps them (one undo step) */
     private fun editAdjustLayer(layer: Layer) {
         val a = layer.adjust ?: return
@@ -3925,8 +3928,9 @@ class MainActivity : Activity(), CanvasView.Listener {
             setPadding(18.dp, 12.dp, 18.dp, 12.dp)
             background = Ui.rounded(Ui.PANEL, 16f)
             elevation = 12f.dp
+            tag = OptionsBar.STACKED
         }
-        val w = min(420.dp, root.width - 72.dp)
+        val w = adjustPanelWidth()
         panel.addView(Ui.text(this, a.kind.label, 15f, bold = true))
         fun changed() { cv.invalidate() }
         val kind = a.kind.sliders
@@ -3993,6 +3997,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             setPadding(18.dp, 12.dp, 18.dp, 12.dp)
             background = Ui.rounded(Ui.PANEL, 16f)
             elevation = 12f.dp
+            tag = OptionsBar.STACKED
         }
         val note = if (cv.selection != null) "  (selection only)" else ""
         panel.addView(Ui.text(this, kind.label + note, 15f, bold = true))
@@ -4004,7 +4009,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             }) { v ->
                 adjustValues[i] = sl.min + v * (sl.max - sl.min)
                 requestAdjust()
-            }, LinearLayout.LayoutParams(min(420.dp, root.width - 72.dp), -2))
+            }, LinearLayout.LayoutParams(adjustPanelWidth(), -2))
         }
         val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END }
         buttons.addView(barButton("Cancel") { endAdjust(false) })
@@ -4031,7 +4036,7 @@ class MainActivity : Activity(), CanvasView.Listener {
                     val k = adjustKind ?: return@postOnAnimation
                     val m = Adjust.matrixFor(k, adjustValues) ?: return@postOnAnimation
                     val r = cv.adjustArea(0)
-                    if (!r.isEmpty) cv.showAdjustedMatrix(r, m)
+                    if (!r.isEmpty) cv.showAdjustedMatrix(r, m, fast = true)
                 }
             }
             return

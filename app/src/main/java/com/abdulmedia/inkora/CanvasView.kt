@@ -3544,9 +3544,23 @@ class CanvasView(context: Context) : View(context) {
      * A color-matrix adjustment, shown straight away: one pass over the layer, on this thread,
      * with no copies (called at most once a frame).
      */
-    fun showAdjustedMatrix(r: Rect, m: android.graphics.ColorMatrix) {
+    /**
+     * [fast]: while the slider moves, the change is only a filter on the screen (no pixels are
+     * worked out, so it follows the finger); the pixels change when it is applied.
+     */
+    fun showAdjustedMatrix(r: Rect, m: android.graphics.ColorMatrix, fast: Boolean = false) {
         val layer = adjustLayer ?: return
         val orig = adjustOrig ?: return
+        if (fast && selection == null) {
+            if (adjustPixelsChanged) { Canvas(layer.bitmap).drawBitmap(orig, 0f, 0f, adjustSrcPaint); adjustPixelsChanged = false }
+            layer.previewFilter = android.graphics.ColorMatrixColorFilter(m)
+            lastAdjustRect = Rect(r)
+            adjustShownPreview = false
+            invalidate()
+            return
+        }
+        layer.previewFilter = null
+        adjustPixelsChanged = true
         val c = Canvas(layer.bitmap)
         restoreAdjustOutside(c, orig, r)
         adjustMatrixPaint.colorFilter = android.graphics.ColorMatrixColorFilter(m)
@@ -3565,6 +3579,8 @@ class CanvasView(context: Context) : View(context) {
     fun showAdjusted(r: Rect, result: Bitmap) {
         val layer = adjustLayer ?: return
         val orig = adjustOrig ?: return
+        layer.previewFilter = null
+        adjustPixelsChanged = true
         val c = Canvas(layer.bitmap)
         restoreAdjustOutside(c, orig, r)
         adjustShownPreview = result.width != r.width() || result.height != r.height()
@@ -3580,9 +3596,13 @@ class CanvasView(context: Context) : View(context) {
 
     private var lastAdjustRect: Rect? = null
 
+    private var adjustPixelsChanged = false
+
     fun finishAdjust(apply: Boolean) {
         val layer = adjustLayer ?: return
         val orig = adjustOrig ?: return
+        layer.previewFilter = null
+        adjustPixelsChanged = false
         val r = lastAdjustRect
         if (apply && r != null && !r.isEmpty) {
             val before = Bitmap.createBitmap(orig, r.left, r.top, r.width(), r.height())

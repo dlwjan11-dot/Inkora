@@ -150,6 +150,11 @@ object Ui {
         progressTintList = ColorStateList.valueOf(ACCENT)
         thumbTintList = ColorStateList.valueOf(TEXT)
         progressBackgroundTintList = ColorStateList.valueOf(TRACK)
+        // a slider inside something that scrolls: the drag belongs to the slider, not the scrolling
+        setOnTouchListener { v, e ->
+            if (e.actionMasked == android.view.MotionEvent.ACTION_DOWN) v.parent?.requestDisallowInterceptTouchEvent(true)
+            false
+        }
         setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
                 if (fromUser) onChange(p / 1000f)

@@ -55,6 +55,8 @@ class Layer(var bitmap: Bitmap, var name: String) {
     var isLayerMask = false
     /** non-null = an adjustment layer: it changes the colors below it; [bitmap] is where it shows */
     var adjust: AdjustSettings? = null
+    /** shown on screen only, while an adjustment's slider moves (the pixels change when it is applied) */
+    var previewFilter: android.graphics.ColorFilter? = null
 
     /** copies the layer settings (not the pixels) of [src] */
     fun copySettingsFrom(src: Layer) {
@@ -274,6 +276,7 @@ class Document(val width: Int, val height: Int) {
         if (layer.shadow && !drawShadows) return
         layerPaint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
         layerPaint.blendMode = layer.blend.mode
+        layerPaint.colorFilter = layer.previewFilter
         val s = canvas.saveLayer(bounds, layerPaint)
         canvas.drawBitmap(layer.bitmap, 0f, 0f, plainPaint)
         ov?.draw(canvas)
@@ -300,6 +303,7 @@ class Document(val width: Int, val height: Int) {
         if (layer.shadow && !drawShadows) return
         layerPaint.alpha = (layer.opacity * 255).roundToInt().coerceIn(0, 255)
         layerPaint.blendMode = layer.blend.mode
+        layerPaint.colorFilter = layer.previewFilter
         if (layer.isClippingMask) {
             // clipped to the first non-clipping layer below it, inside the same group
             var baseIndex = i - 1
