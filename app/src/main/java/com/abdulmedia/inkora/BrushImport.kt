@@ -41,7 +41,7 @@ object BrushImport {
         if (found.isEmpty()) {
             val lower = fileName?.lowercase() ?: ""
             val why = when {
-                lower.endsWith(".abr") || isAbr(bytes) -> "Photoshop .abr brushes aren't supported yet. Use Procreate brushes (.brush / .brushset) or PNG stamps."
+                lower.endsWith(".abr") || isAbr(bytes) -> "No brush shapes could be read from this Photoshop file. Some newer .abr files keep their brushes in a way Inkora can't read yet."
                 else -> "No brushes found in this file."
             }
             return Result(emptyList(), why)
@@ -54,16 +54,34 @@ object BrushImport {
         (b[0] == 0x89.toByte() && b[1] == 'P'.code.toByte()) ||          // PNG
             (b[0] == 0xFF.toByte() && b[1] == 0xD8.toByte()) ||          // JPEG
             (b[0] == 'R'.code.toByte() && b[8] == 'W'.code.toByte()))    // WEBP
-    private fun isAbr(b: ByteArray) = b.size > 4 && b[0].toInt() == 0 && b[1].toInt() in 1..10
+    private fun isAbr(b: ByteArray) = Abr.looksLikeAbr(b)
 
     private fun collect(ctx: Context, bytes: ByteArray, fileName: String?, out: MutableList<BrushPreset>, depth: Int) {
         when {
             isZip(bytes) && depth < 3 -> importZip(ctx, bytes, fileName, out, depth)
+            isAbr(bytes) -> importAbr(ctx, bytes, fileName, out)
             isImage(bytes) -> {
                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return
                 out.add(save(ctx, baseName(fileName) ?: "Stamp", "Imported", tipFromImage(bmp), null, GrainType.NONE, emptyMap(), stamp = true))
                 bmp.recycle()
             }
+        }
+    }
+
+    /** Photoshop brushes: each shape becomes a brush; spacing comes across from the old files */
+    private fun importAbr(ctx: Context, bytes: ByteArray, fileName: String?, out: MutableList<BrushPreset>) {
+        val base = baseName(fileName) ?: "Photoshop"
+        val shapes = Abr.read(bytes)
+        shapes.forEachIndexed { i, raw ->
+            if (raw.alpha.none { it.toInt() != 0 }) return@forEachIndexed
+            val s = Abr.shrink(raw, 256)
+            val name = raw.name ?: if (shapes.size == 1) base else "$base ${i + 1}"
+            val meta = HashMap<String, Any?>()
+            meta["plotSpacing"] = raw.spacing ?: 0.25f
+            // start at the size the brush was made at (within reason)
+            meta["maxSize"] = max(raw.w, raw.h) / 262f
+            meta["paintSize"] = 1f
+            out.add(save(ctx, name, "Photoshop", Brushes.alphaBitmap(s.alpha, s.w, s.h), null, GrainType.NONE, meta, stamp = false))
         }
     }
 

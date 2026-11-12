@@ -2157,7 +2157,7 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun importLinkDialog() {
         val input = EditText(this).apply {
-            hint = "https://… (.brush, .brushset, .zip or .png)"
+            hint = "https://… (.brush, .brushset, .abr, .zip or .png)"
             inputType = InputType.TYPE_TEXT_VARIATION_URI
             setSingleLine()
         }

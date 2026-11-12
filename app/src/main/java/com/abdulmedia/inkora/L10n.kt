@@ -1545,6 +1545,10 @@ object L10n {
         "Along a line I draw", "على خط برسمه", "بە درێژایی هێڵێک کە دەیکێشم",
         "Draw the line for the text to follow", "ارسم الخط اللي بدك النص يمشي عليه", "ئەو هێڵە بکێشە کە دەقەکە بەدوایدا بڕوات",
         "Text added on a new layer", "انضاف النص على طبقة جديدة", "دەقەکە لەسەر چینێکی نوێ زیادکرا",
+        "Procreate .brush and .brushset, Photoshop .abr, .zip, or PNG stamps", "فُرَش Procreate بصيغة ‎.brush و‎.brushset، وفُرَش فوتوشوب ‎.abr، أو ملفات ‎.zip، أو أختام PNG", "فڵچەی Procreate بە ‎.brush و ‎.brushset، فڵچەی فۆتۆشۆپ ‎.abr، یان ‎.zip، یان مۆری PNG",
+        "Import Procreate brushes (.brush, .brushset), Photoshop brushes (.abr), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app.", "استورد فُرَش Procreate ‏(‎.brush و‎.brushset)، وفُرَش فوتوشوب ‏(‎.abr)، أو ملفات zip، أو أختام PNG. وفيك كمان تفتح ملف فرشاة بـ Inkora من تطبيق الملفات.", "فڵچەی Procreate ‏(‎.brush، ‎.brushset)، فڵچەی فۆتۆشۆپ ‏(‎.abr)، فایلی zip یان مۆری PNG هاوردە بکە. دەتوانیت فایلی فڵچەش لە ئەپی فایلەکانەوە بە Inkora بکەیتەوە.",
+        "https://… (.brush, .brushset, .abr, .zip or .png)", "https://… ‏(‎.brush، ‎.brushset، ‎.abr، ‎.zip أو ‎.png)", "https://… ‏(‎.brush، ‎.brushset، ‎.abr، ‎.zip یان ‎.png)",
+        "No brush shapes could be read from this Photoshop file. Some newer .abr files keep their brushes in a way Inkora can't read yet.", "ما قدرنا نقرأ أي شكل فرشاة من ملف الفوتوشوب هاد. بعض ملفات ‎.abr الجديدة بتحفظ فراشيها بطريقة Inkora لسا ما بيقرأها.", "هیچ شێوەیەکی فڵچە لەم فایلەی فۆتۆشۆپ نەخوێنرایەوە. هەندێک فایلی نوێی ‎.abr فڵچەکانیان بە شێوەیەک هەڵدەگرن کە Inkora هێشتا ناتوانێت بیخوێنێتەوە.",
         // ---- first-run tips ----
         "Skip", "تخطٍّ", "تێپەڕاندن",
         "Next", "التالي", "دواتر",

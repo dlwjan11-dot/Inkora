@@ -427,7 +427,7 @@ class BrushPanel(
         }
         val hint = when {
             brushes.none { it.preset.imported } ->
-                "Import Procreate brushes (.brush, .brushset), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
+                "Import Procreate brushes (.brush, .brushset), Photoshop brushes (.abr), zip files or PNG stamps. You can also open a brush file with Inkora from your Files app."
             items.any { it.preset.imported } -> "Tap the selected brush again for Brush Studio. Slide a brush to the side to duplicate or delete it."
             else -> "Tap the selected brush again for Brush Studio. Slide a brush to the side to duplicate or reset it."
         }

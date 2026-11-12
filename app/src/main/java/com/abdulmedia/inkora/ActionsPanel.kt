@@ -426,7 +426,7 @@ class ActionsPanel(
             row("Open a project file", ".inkora from Inkora, or .psd from Photoshop", icon = Icon.FOLDER) { host.openProjectFile() }
         )
         group(
-            row("Import brushes…", "Procreate .brush and .brushset, .zip, or PNG stamps", icon = Icon.IMPORT) { host.importBrushes() },
+            row("Import brushes…", "Procreate .brush and .brushset, Photoshop .abr, .zip, or PNG stamps", icon = Icon.IMPORT) { host.importBrushes() },
             row("Import brushes from a link…", "Google Drive and Dropbox links work too", icon = Icon.GLOBE) { host.importBrushesFromLink() }
         )
         val hasSel = cv.selection != null
