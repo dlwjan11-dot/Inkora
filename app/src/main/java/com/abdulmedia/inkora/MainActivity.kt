@@ -129,6 +129,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         super.onCreate(savedInstanceState)
         installCrashReporter()
         Ui.light = prefs.getBoolean("light_ui", false)
+        Ui.accent = prefs.getInt("accent", 0)
         Fonts.init(assets)
         LivingBrushes.init(this)
         // the layer limit follows this device's memory
@@ -2537,6 +2538,15 @@ class MainActivity : Activity(), CanvasView.Listener {
                 autosave(force = true)
                 afterSaves { Ui.light = v; recreate() }
             }
+        override var accent: Int
+            get() = Ui.accent
+            set(v) {
+                if (v == Ui.accent) return
+                prefs.edit().putInt("accent", v).apply()
+                popup?.dismiss()
+                autosave(force = true)
+                afterSaves { Ui.accent = v; recreate() }
+            }
         override var wetBleed: Boolean
             get() = cv.wetBleed
             set(v) { cv.wetBleed = v; prefs.edit().putBoolean("wetBleed", v).apply() }
@@ -4054,7 +4064,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(4.dp, 2.dp, 4.dp, 2.dp)
-            if (active) background = Ui.rounded(0x2E6E9FF5, 10f)
+            if (active) background = Ui.rounded(Ui.ACCENT_SOFT, 10f)
             setOnClickListener { onClick() }
         }
         val iv = IconView(this, icon).apply { this.active = active; isClickable = false }

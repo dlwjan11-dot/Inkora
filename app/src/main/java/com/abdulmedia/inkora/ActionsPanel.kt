@@ -45,6 +45,8 @@ interface ActionsHost {
     var watercolorDrying: Boolean
     var wetBleed: Boolean
     var lightInterface: Boolean
+    /** the accent color theme, an index into Ui.ACCENTS */
+    var accent: Int
     // Share
     fun export(kind: String)
     // Video
@@ -239,6 +241,8 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
             seg.addView(TextView(context).apply {
                 this.text = L10n.tr(text)
                 textSize = 13.5f
+                typeface = Fonts.get(if (on) 600 else 400)
+                maxLines = 1
                 gravity = Gravity.CENTER
                 setTextColor(if (on) 0xFFFFFFFF.toInt() else Ui.TEXT_DIM)
                 setPadding(4.dp, 8.dp, 4.dp, 8.dp)
@@ -247,6 +251,41 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
             }, LayoutParams(0, -2, 1f))
         }
         r.addView(seg, LayoutParams(-1, -2).apply { topMargin = 8.dp })
+        return r
+    }
+
+    /** Accent color: a row of color dots; the chosen one has a ring and its name shows */
+    private fun accentRow(): View {
+        val r = LinearLayout(context).apply { orientation = VERTICAL; setPadding(16.dp, 12.dp, 16.dp, 14.dp) }
+        val h = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(-6.dp, 0, 0, 0) }
+        h.addView(IconView(context, Icon.PALETTE).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.56f }, LayoutParams(34.dp, 34.dp).apply { marginEnd = 10.dp })
+        h.addView(Ui.text(context, "Accent color", 15.5f), LayoutParams(0, -2, 1f))
+        h.addView(Ui.text(context, Ui.ACCENTS[Ui.accent].first, 13f, Ui.TEXT_DIM))
+        r.addView(h)
+        val dots = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        Ui.ACCENTS.forEachIndexed { i, (name, dark, bright) ->
+            val c = (if (Ui.light) bright else dark).toInt()
+            val on = i == Ui.accent
+            val dot = object : View(context) {
+                val p = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+                override fun onDraw(canvas: android.graphics.Canvas) {
+                    val cx = width / 2f; val cy = height / 2f
+                    val rr = minOf(width, height) / 2f - 7f.dp
+                    p.style = android.graphics.Paint.Style.FILL; p.color = c
+                    canvas.drawCircle(cx, cy, rr, p)
+                    if (on) {
+                        p.style = android.graphics.Paint.Style.STROKE; p.strokeWidth = 2f.dp; p.color = Ui.TEXT
+                        canvas.drawCircle(cx, cy, rr + 4f.dp, p)
+                    }
+                }
+            }
+            dot.contentDescription = L10n.tr(name)
+            dot.isClickable = true
+            dot.foreground = Ui.ripple(22f)
+            dot.setOnClickListener { if (!on) host.accent = i }
+            dots.addView(dot, LayoutParams(44.dp, 44.dp).apply { marginEnd = 6.dp })
+        }
+        r.addView(dots, LayoutParams(-2, -2).apply { topMargin = 8.dp })
         return r
     }
 
@@ -375,7 +414,8 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
         section("Interface")
         group(
             choiceRow("Language", langs, L10n.lang, icon = Icon.GLOBE) { code -> host.close(); host.setLanguage(code) },
-            switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it }
+            switchRow("Light interface", "Bright panels and bars instead of dark ones", host.lightInterface, icon = Icon.SUN) { host.lightInterface = it },
+            accentRow()
         )
         section("Tool bar")
         group(
@@ -383,7 +423,7 @@ class ActionsPanel(context: Context, private val host: ActionsHost, private val 
                 // the size and opacity sliders go to the other side
                 host.setEdges(e, if (e == "Left") "Right" else "Left"); rebuild()
             },
-            choiceRow("Style", listOf(ToolRail.DOCK to "Docked", ToolRail.WIDE to "Wide", ToolRail.FLOAT to "Floating"), host.railMode, icon = Icon.DOCK) { m ->
+            choiceRow("Style", listOf(ToolRail.TOP to "On top", ToolRail.DOCK to "Docked", ToolRail.WIDE to "Wide", ToolRail.FLOAT to "Floating"), host.railMode, icon = Icon.DOCK) { m ->
                 host.railMode = m; rebuild()
             },
             switchRow("Size & Opacity sidebar", "Hide it if you only change them with gestures", host.sidebarShown, icon = Icon.EYE) { host.sidebarShown = it }

@@ -68,13 +68,29 @@ object Ui {
     private fun pick(dark: Long, bright: Long) = (if (light) bright else dark).toInt()
 
     // neutral greys (the accent is the only color in the interface)
-    val PANEL get() = pick(0xF71C1C1E, 0xFAFFFFFF)
+    val PANEL get() = pick(0xFF1C1C1E, 0xFFFFFFFF)
     val PANEL_ROW get() = pick(0xFF262628, 0xFFF2F2F3)
-    val PANEL_ROW_ACTIVE get() = pick(0xFF26334A, 0xFFDCE6F8)
+    val PANEL_ROW_ACTIVE get() = mix(PANEL_ROW, ACCENT, if (light) 0.16f else 0.2f)
+
+    private fun mix(a: Int, b: Int, t: Float): Int {
+        fun ch(sh: Int) = (((a shr sh) and 255) * (1 - t) + ((b shr sh) and 255) * t).roundToInt()
+        return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
     /** the islands over the canvas */
     val BAR get() = pick(0xF21C1C1E, 0xF5FFFFFF)
-    val ACCENT get() = pick(0xFF6E9FF5, 0xFF2F6FE0)
-    val ACCENT_SOFT get() = pick(0x2E6E9FF5, 0x2E2F6FE0)
+    /** the accent color theme (Settings › Interface); blue at first */
+    var accent = 0
+    /** name, color on the dark interface, color on the light one */
+    val ACCENTS = listOf(
+        Triple("Blue", 0xFF6E9FF5, 0xFF2F6FE0),
+        Triple("Violet", 0xFFA78BFA, 0xFF7048D6),
+        Triple("Green", 0xFF5CC98A, 0xFF1E8A4F),
+        Triple("Orange", 0xFFF5A05A, 0xFFC0600E),
+        Triple("Pink", 0xFFF07FB0, 0xFFC93D7A),
+        Triple("Teal", 0xFF4FC6C6, 0xFF0E8383)
+    )
+    val ACCENT get() = ACCENTS[accent.coerceIn(0, ACCENTS.size - 1)].let { pick(it.second, it.third) }
+    val ACCENT_SOFT get() = (ACCENT and 0x00FFFFFF) or 0x2E000000
     val TEXT get() = pick(0xFFEDEDED, 0xFF1A1A1A)
     val TEXT_DIM get() = pick(0xFFA1A1A6, 0xFF5E5E63)
     val CARD get() = pick(0xFF262628, 0xFFF2F2F3)
@@ -404,9 +420,10 @@ class ColorPairView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, r + 2f.dp, p)
         p.color = c
         canvas.drawCircle(cx, cy, r, p)
+        // a thin ring, so black (or the island's own grey) still shows
         p.style = Paint.Style.STROKE
-        p.strokeWidth = 1f.dp
-        p.color = Ui.OUTLINE
+        p.strokeWidth = 1.2f.dp
+        p.color = Ui.TEXT_DIM
         canvas.drawCircle(cx, cy, r, p)
     }
 
