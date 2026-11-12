@@ -15,6 +15,7 @@ android {
         targetSdk = 36
         versionCode = 50
         versionName = "0.23.0"
+        manifestPlaceholders["appLabel"] = "Inkora"
 
         // the living brushes' engine (MyPaint) is native code, built for tablets/phones (arm64)
         // and the Android Studio emulator (x86_64)
@@ -32,6 +33,13 @@ android {
     }
 
     buildTypes {
+        // the Run button in Android Studio: installs beside the Inkora from Google Play / the website
+        // (its own name and icon, its own artworks), so nothing has to be uninstalled to test
+        debug {
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appLabel"] = "Inkora Dev"
+        }
         release {
             isMinifyEnabled = false
             // For testing on your own tablet the debug key is fine.
