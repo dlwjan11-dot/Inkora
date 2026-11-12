@@ -32,6 +32,18 @@ android {
         }
     }
 
+    // One key for the Run button on every computer (each computer would otherwise make its own),
+    // so "Inkora Dev" installed from home updates from work too, and the other way round.
+    // Only for test builds: Google Play builds are signed with the upload key.
+    signingConfigs {
+        create("dev") {
+            storeFile = file("inkora-dev.jks")
+            storePassword = "inkoradev"
+            keyAlias = "inkoradev"
+            keyPassword = "inkoradev"
+        }
+    }
+
     buildTypes {
         // the Run button in Android Studio: installs beside the Inkora from Google Play / the website
         // (its own name and icon, its own artworks), so nothing has to be uninstalled to test
@@ -39,6 +51,7 @@ android {
             applicationIdSuffix = ".dev"
             versionNameSuffix = "-dev"
             manifestPlaceholders["appLabel"] = "Inkora Dev"
+            signingConfig = signingConfigs.getByName("dev")
         }
         release {
             isMinifyEnabled = false
