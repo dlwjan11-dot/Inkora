@@ -523,6 +523,25 @@ class CanvasView(context: Context) : View(context) {
         }
     }
 
+    val undoSteps get() = history.undoCount
+    val redoSteps get() = history.redoCount
+    fun historyLabel(i: Int) = history.labelAt(i)
+
+    /** goes back or forward through the history until [pos] steps are done (the history scrubber) */
+    fun stepTo(pos: Int) {
+        if (busy()) return
+        if (strokeActive) cancelStroke()
+        var changed = false
+        var n = 0
+        while (history.undoCount > pos && n < 1000) { if (!history.undo(doc)) break; changed = true; n++ }
+        while (history.undoCount < pos && n < 1000) { if (!history.redo(doc)) break; changed = true; n++ }
+        if (changed) {
+            vectorEditor.reset()
+            listener?.onHistoryChanged()
+            invalidate()
+        }
+    }
+
     fun undo() {
         if (busy()) return
         if (strokeActive) cancelStroke()
@@ -2980,6 +2999,18 @@ class CanvasView(context: Context) : View(context) {
         pushCommand(cmd)
         listener?.onMessage("Copied to a new layer")
         return true
+    }
+
+    /** what is selected on the current layer, as its own picture (for "Make a brush"); null: nothing there */
+    fun selectedPixels(): Bitmap? {
+        val s = selection ?: return null
+        val r = Rect(s.bounds)
+        if (!r.intersect(0, 0, doc.width, doc.height) || r.isEmpty) return null
+        val out = Bitmap.createBitmap(r.width(), r.height(), Bitmap.Config.ARGB_8888)
+        val c = Canvas(out)
+        c.drawBitmap(doc.active.bitmap, Rect(r), Rect(0, 0, r.width(), r.height()), null)
+        c.drawBitmap(s.mask, Rect(r), Rect(0, 0, r.width(), r.height()), Selections.dstIn)
+        return out
     }
 
     /** vector and 3D layers are drawn from their shapes: their pixels are not edited directly */

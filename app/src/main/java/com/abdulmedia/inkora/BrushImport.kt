@@ -438,6 +438,60 @@ object BrushImport {
         return makePreset(id, json, readAlpha(File(dir, "shape.png")) ?: tip, grain?.let { readAlpha(File(dir, "grain.png")) }, dual)
     }
 
+    /**
+     * A stamp brush made from a picture (a part of the artwork): dark and solid parts stamp, light and
+     * empty parts don't. One mark per touch along the stroke, far apart, like a rubber stamp.
+     */
+    fun saveStamp(ctx: Context, picture: Bitmap, name: String, category: String, size: Float): BrushPreset? {
+        val tip = stampTip(picture) ?: return null
+        val id = UUID.randomUUID().toString()
+        val dir = File(root(ctx), id).apply { mkdirs() }
+        val json = JSONObject().apply {
+            put("name", name)
+            put("category", category)
+            put("spacing", 1.4)
+            put("scatter", 0.0)
+            put("stamp", true)
+            put("size", size.toDouble())
+            put("pressureSize", 0.2)
+            put("pressureOpacity", 0.15)
+            put("streamline", 0.0)
+            put("opacity", 1.0)
+            put("flow", 1.0)
+            put("rotation", RotationMode.NONE.name)
+            put("angle", 0.0)
+            put("taper", 0.0)
+        }
+        File(dir, "brush.json").writeText(json.toString(2))
+        writeAlpha(tip, File(dir, "shape.png"))
+        return makePreset(id, json, readAlpha(File(dir, "shape.png")) ?: tip, null)
+    }
+
+    /** the stamp's shape: square, centered, darkness times coverage (only coverage for light pictures) */
+    private fun stampTip(src: Bitmap): Bitmap? {
+        val side = maxOf(src.width, src.height)
+        if (side < 2) return null
+        val sq = Bitmap.createBitmap(side, side, Bitmap.Config.ARGB_8888)
+        android.graphics.Canvas(sq).drawBitmap(src, (side - src.width) / 2f, (side - src.height) / 2f, null)
+        val bmp = scaled(sq, 256)
+        val w = bmp.width; val h = bmp.height
+        val px = IntArray(w * h)
+        bmp.getPixels(px, 0, w, 0, 0, w, h)
+        if (bmp !== sq) sq.recycle()
+        val dark = FloatArray(px.size) { i -> (px[i] ushr 24) / 255f * (1f - luminance(px[i])) }
+        val peak = dark.maxOrNull() ?: 0f
+        val a = ByteArray(px.size)
+        if (peak > 0.15f) {
+            for (i in px.indices) a[i] = (dark[i] / peak * 255).roundToInt().coerceIn(0, 255).toByte()
+        } else {
+            // a light picture (white lines, pale colors): its outline is the stamp
+            var any = false
+            for (i in px.indices) { val v = px[i] ushr 24; a[i] = v.toByte(); if (v > 20) any = true }
+            if (!any) return null
+        }
+        return Brushes.alphaBitmap(a, w, h)
+    }
+
     /** Renames a brush of the user's own (kept in brush.json). */
     fun rename(ctx: Context, preset: BrushPreset, name: String) {
         if (!preset.imported) return

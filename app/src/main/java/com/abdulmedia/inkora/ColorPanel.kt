@@ -43,6 +43,54 @@ class ColorPanel(
     private val sliders = ArrayList<HsvSlider>()
     private val paletteGrid = GridLayout(context).apply { columnCount = 10 }
     private val paletteBtn = Ui.button(context, "") {}
+    private val harmonyRow = LinearLayout(context)
+
+    /** the harmony's colors as swatches: each group is lighter, the color, darker */
+    private var harmonyBuiltFor: HarmonyMode? = null
+    private val harmonySwatches = ArrayList<ColorSwatchView>()
+
+    private fun harmonyVariants(): List<Int> {
+        val hues = listOf(hsv[0]) + disc.disc.getHarmonyHues()
+        return hues.flatMap { h ->
+            listOf(
+                floatArrayOf(h, (hsv[1] * 0.6f).coerceIn(0f, 1f), (hsv[2] + (1f - hsv[2]) * 0.45f).coerceIn(0f, 1f)),
+                floatArrayOf(h, hsv[1], hsv[2]),
+                floatArrayOf(h, (hsv[1] + (1f - hsv[1]) * 0.25f).coerceIn(0f, 1f), (hsv[2] * 0.6f).coerceIn(0f, 1f))
+            ).map { Color.HSVToColor(it) }
+        }
+    }
+
+    private fun refreshHarmony() {
+        val m = disc.disc.harmony
+        // while a color is dragged only the swatches' colors change
+        if (m == harmonyBuiltFor && m != HarmonyMode.NONE) {
+            harmonyVariants().forEachIndexed { i, c -> harmonySwatches.getOrNull(i)?.color = c }
+            return
+        }
+        harmonyBuiltFor = m
+        harmonySwatches.clear()
+        harmonyRow.removeAllViews()
+        if (m == HarmonyMode.NONE) {
+            harmonyRow.addView(Ui.text(context, "Pick a harmony to see colors that go with this one", 11.5f, Ui.TEXT_DIM))
+            return
+        }
+        val all = harmonyVariants()
+        all.chunked(3).forEachIndexed { gi, three ->
+            val group = LinearLayout(context).apply {
+                orientation = HORIZONTAL
+                background = Ui.rounded(Ui.PANEL_ROW, 10f)
+                setPadding(2.dp, 2.dp, 2.dp, 2.dp)
+            }
+            for (c0 in three) {
+                val sw = ColorSwatchView(context)
+                sw.color = c0
+                sw.setOnClickListener { setColor(sw.color, true); commitRecent() }
+                harmonySwatches.add(sw)
+                group.addView(sw, LayoutParams(34.dp, 34.dp))
+            }
+            harmonyRow.addView(group, LayoutParams(-2, -2).apply { if (gi > 0) marginStart = 8.dp })
+        }
+    }
 
     init {
         orientation = VERTICAL
@@ -64,19 +112,34 @@ class ColorPanel(
         disc.onCommit = { commitRecent() }
         addView(disc, LayoutParams(-1, -2).apply { topMargin = 10.dp })
 
-        val harmBtn = Ui.button(context, "Harmony: ${disc.disc.harmony.label}") {}
-        harmBtn.setOnClickListener {
-            val pm = InkMenu(context, harmBtn)
-            HarmonyMode.values().forEachIndexed { i, m -> pm.menu.add(0, i, i, m.label) }
-            pm.setOnMenuItemClickListener { item ->
-                disc.disc.harmony = HarmonyMode.values()[item.itemId]
-                harmBtn.text = "Harmony: ${disc.disc.harmony.label}"
-                disc.invalidate()
-                true
+        // color harmony: pick a kind, its colors (each a little lighter and darker too) are a tap away
+        disc.disc.harmony = lastHarmony
+        val modes = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        fun fillModes() {
+            modes.removeAllViews()
+            for (m in HarmonyMode.values()) {
+                val on = m == disc.disc.harmony
+                modes.addView(Ui.text(context, m.label, 12.5f, if (on) Ui.ON_ACCENT else Ui.TEXT_DIM, on).apply {
+                    gravity = Gravity.CENTER
+                    setPadding(12.dp, 7.dp, 12.dp, 7.dp)
+                    background = Ui.rounded(if (on) Ui.ACCENT else Ui.PANEL_ROW, 14f)
+                    setOnClickListener {
+                        disc.disc.harmony = m; lastHarmony = m
+                        fillModes(); refreshHarmony(); disc.invalidate()
+                    }
+                }, LayoutParams(-2, -2).apply { marginEnd = 6.dp })
             }
-            L10n.menu(pm.menu); pm.show()
         }
-        addView(harmBtn, LayoutParams(-1, -2).apply { topMargin = 4.dp })
+        fillModes()
+        addView(Ui.text(context, "Harmony", 12f, Ui.TEXT_DIM), LayoutParams(-2, -2).apply { topMargin = 8.dp })
+        addView(android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false; overScrollMode = OVER_SCROLL_NEVER; addView(modes)
+        }, LayoutParams(-1, -2).apply { topMargin = 4.dp })
+        harmonyRow.orientation = HORIZONTAL
+        harmonyRow.gravity = Gravity.CENTER_VERTICAL
+        addView(android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false; overScrollMode = OVER_SCROLL_NEVER; addView(harmonyRow)
+        }, LayoutParams(-1, -2).apply { topMargin = 6.dp })
 
         // Hue / Saturation / Brightness sliders
         for ((ch, label) in listOf(0 to "Hue", 1 to "Saturation", 2 to "Brightness")) {
@@ -227,6 +290,7 @@ class ColorPanel(
         disc.invalidate()
         sliders.forEach { it.invalidate() }
         if (!hex.hasFocus()) hex.setText(String.format(Locale.US, "%06X", c and 0xFFFFFF))
+        refreshHarmony()
     }
 
     private fun parseHex(s: String): Int? {
@@ -249,6 +313,9 @@ class ColorPanel(
             0xFF1565C0.toInt(), 0xFF3949AB.toInt(), 0xFF5E35B1.toInt(), 0xFF8E24AA.toInt(), 0xFFD81B60.toInt(),
             0xFF0D1B2A.toInt(), 0xFF1B263B.toInt(), 0xFF415A77.toInt(), 0xFF778DA9.toInt(), 0xFFE0E1DD.toInt()
         )
+
+        /** the harmony chosen last (kept while the app runs) */
+        var lastHarmony = HarmonyMode.COMPLEMENTARY
 
         fun addRecent(list: MutableList<Int>, c: Int) {
             list.remove(c)

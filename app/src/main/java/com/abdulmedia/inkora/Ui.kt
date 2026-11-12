@@ -291,8 +291,8 @@ object TipTexts {
         "Brush size" to "Drag up or down. Slide away for fine control; double-tap the handle to leave a mark; hold it for a number",
         "Brush opacity" to "How see-through the stroke is. Works like the size slider",
         "Modify" to "Tap, then touch the canvas to pick a color. Held down, it changes what touches do (Gesture controls)",
-        "Undo" to "Take back the last step. Also: tap with two fingers",
-        "Redo" to "Bring back the step you undid. Also: tap with three fingers",
+        "Undo" to "Take back the last step. Also: tap with two fingers. Hold: the whole history to drag along",
+        "Redo" to "Bring back the step you undid. Also: tap with three fingers. Hold: the whole history to drag along",
         "Brush preview" to "The brush in hand, at its size. Tap for the brush library",
         "Show interface" to "Brings the bars and tools back",
         "Customize toolbar" to "Choose the tools on this toolbar and their order"

@@ -24,6 +24,7 @@ object ToolCatalog {
         AdjustKind.SHARPEN -> Icon.SHARPEN
         AdjustKind.NOISE -> Icon.NOISE
         AdjustKind.POSTERIZE -> Icon.POSTERIZE
+        AdjustKind.GRADIENT_MAP -> Icon.GRADIENT
         AdjustKind.INVERT -> Icon.INVERT
         AdjustKind.GRAYSCALE -> Icon.BW
     }

@@ -656,9 +656,12 @@ class MainActivity : Activity(), CanvasView.Listener {
         side.addView(colorPair, LinearLayout.LayoutParams(44.dp, 44.dp))
         undoBtn = IconView(this, Icon.UNDO).apply { contentDescription = "Undo" }
         undoBtn.setOnClickListener { cv.undo() }
+        // hold: the whole history as a line to drag along
+        undoBtn.setOnLongClickListener { v -> if (cv.isDocReady() && !busy()) HistoryScrub.show(v, cv) {}; true }
         side.addView(undoBtn, LinearLayout.LayoutParams(44.dp, 44.dp))
         redoBtn = IconView(this, Icon.REDO).apply { contentDescription = "Redo" }
         redoBtn.setOnClickListener { cv.redo() }
+        redoBtn.setOnLongClickListener { v -> if (cv.isDocReady() && !busy()) HistoryScrub.show(v, cv) {}; true }
         side.addView(redoBtn, LinearLayout.LayoutParams(44.dp, 44.dp))
         root.addView(side, FrameLayout.LayoutParams(-2, -2))
 
@@ -2240,6 +2243,30 @@ class MainActivity : Activity(), CanvasView.Listener {
         openStudio(tool, nb)
     }
 
+    /** the selected part of the layer becomes a stamp brush in "My Brushes", ready in the brush */
+    private fun brushFromSelection() {
+        val pic = cv.selectedPixels() ?: run { hud.show("Select something first"); return }
+        val n = paintBrushes.count { it.preset.category == "My Brushes" && it.preset.name.startsWith(L10n.tr("Stamp")) } + 1
+        val size = maxOf(pic.width, pic.height).toFloat().coerceIn(Brushes.MIN_SIZE, Brushes.MAX_SIZE)
+        val p = runCatching { BrushImport.saveStamp(this, pic, L10n.tr("Stamp") + " $n", "My Brushes", size) }.getOrNull()
+        pic.recycle()
+        if (p == null) { hud.show("Nothing to make a brush from there"); return }
+        val made = HashMap<Tool, Brush>()
+        for (t in Tool.entries) {
+            val nb = Brush(p)
+            if (t == Tool.ERASER) nb.size = 40f
+            else if (t == Tool.SMUDGE) { nb.size = 50f; nb.opacity = 0.75f }
+            brushListFor(t).add(nb)
+            made[t] = nb
+        }
+        cv.selection = null
+        cv.interaction = Interaction.PAINT
+        hideBottomBar()
+        useBrush(Tool.BRUSH, made[Tool.BRUSH]!!)
+        refreshAll()
+        hud.show(L10n.tr("New brush in My Brushes") + " · " + p.name)
+    }
+
     /** a brush's preset was made again (renamed, new image): every tool's copy follows it */
     private fun replacePreset(old: BrushPreset, fresh: BrushPreset, keepTool: Tool): Brush? {
         var result: Brush? = null
@@ -3138,6 +3165,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val actions = barRow()
         actions.addBar(barButton("Transform") { if (cv.selection != null) enterTransform() else hud.show("Select something first") })
         actions.addBar(barButton("Copy & Paste") { cv.copySelectionToNewLayer() })
+        actions.addBar(barButton("Make a brush") { brushFromSelection() })
         actions.addBar(barButton("Fill") { cv.fillSelection(cv.color) })
         actions.addBar(barButton("Clear") { cv.clearSelection() })
         actions.addBar(barButton("Feather") {
@@ -3752,6 +3780,7 @@ class MainActivity : Activity(), CanvasView.Listener {
 
     private fun startAdjust(kind: AdjustKind) {
         val src = cv.beginAdjust() ?: return
+        GradientMaps.userColor = cv.color
         adjustKind = kind
         adjustSrc = src
         adjustFinish = null
@@ -3769,7 +3798,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             val start = (sl.default - sl.min) / (sl.max - sl.min)
             panel.addView(Ui.sliderRow(this, sl.name, start, { v ->
                 val value = sl.min + v * (sl.max - sl.min)
-                "${value.roundToInt()}${sl.unit}"
+                sl.names?.let { L10n.tr(it[value.roundToInt().coerceIn(0, it.size - 1)]) } ?: "${value.roundToInt()}${sl.unit}"
             }) { v ->
                 adjustValues[i] = sl.min + v * (sl.max - sl.min)
                 requestAdjust()

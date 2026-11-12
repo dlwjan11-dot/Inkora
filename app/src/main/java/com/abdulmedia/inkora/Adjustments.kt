@@ -29,11 +29,60 @@ enum class AdjustKind(val label: String, val sliders: List<AdjustSlider>) {
     SHARPEN("Sharpen", listOf(AdjustSlider("Amount", 0f, 300f, 80f, "%"))),
     NOISE("Noise", listOf(AdjustSlider("Amount", 0f, 100f, 20f, "%"))),
     POSTERIZE("Posterize", listOf(AdjustSlider("Levels", 2f, 16f, 5f, ""))),
+    GRADIENT_MAP("Gradient Map", listOf(
+        AdjustSlider("Gradient", 0f, (GradientMaps.presets.size - 1).toFloat(), 1f, "", GradientMaps.presets.map { it.first }),
+        AdjustSlider("Strength", 0f, 100f, 100f, "%"))),
     INVERT("Invert Colors", emptyList()),
     GRAYSCALE("Black & White", emptyList());
 }
 
-class AdjustSlider(val name: String, val min: Float, val max: Float, val default: Float, val unit: String)
+/** [names]: the slider picks one of these (shown instead of a number) */
+class AdjustSlider(val name: String, val min: Float, val max: Float, val default: Float, val unit: String, val names: List<String>? = null)
+
+/**
+ * Gradient Map: the dark parts of the picture take the first color of a gradient, the light parts the
+ * last, and everything between follows the gradient. "Your color" runs from black through the color
+ * you paint with to white.
+ */
+object GradientMaps {
+    /** set before an adjustment starts: the color in hand, for "Your color" */
+    @Volatile var userColor = 0xFF2F6FE0.toInt()
+
+    val presets: List<Pair<String, IntArray>> = listOf(
+        "Your color" to intArrayOf(),
+        "Sunset" to colors(0xFF1B0B33, 0xFF7A1F5C, 0xFFE0533D, 0xFFF6C35B, 0xFFFFF4D6),
+        "Ocean" to colors(0xFF04111F, 0xFF0E4C7A, 0xFF3FA7C9, 0xFFCFF3F2),
+        "Forest" to colors(0xFF0D1A0F, 0xFF2E5B2E, 0xFF9BBF5A, 0xFFF1F2C9),
+        "Sepia" to colors(0xFF1E140A, 0xFF7A5230, 0xFFE8D3A9, 0xFFFFF8EA),
+        "Moonlight" to colors(0xFF0A0F1E, 0xFF3B4A73, 0xFFA9B9D9, 0xFFF4F7FF),
+        "Neon" to colors(0xFF0B0221, 0xFF5A0FC8, 0xFFFF2E97, 0xFFFFE66D),
+        "Fire" to colors(0xFF000000, 0xFF5C0A00, 0xFFD23B00, 0xFFFF9F1C, 0xFFFFF3B0),
+        "Duotone" to colors(0xFF1D2B64, 0xFFF8CDDA)
+    )
+
+    private fun colors(vararg c: Long) = IntArray(c.size) { c[it].toInt() }
+
+    fun stops(i: Int): IntArray {
+        val p = presets[i.coerceIn(0, presets.size - 1)].second
+        return if (p.isNotEmpty()) p else intArrayOf(0xFF000000.toInt(), userColor or 0xFF000000.toInt(), 0xFFFFFFFF.toInt())
+    }
+
+    /** 256 colors, from the darkest to the lightest */
+    fun lut(i: Int): IntArray {
+        val st = stops(i)
+        return IntArray(256) { k ->
+            val f = k / 255f * (st.size - 1)
+            val a = f.toInt().coerceAtMost(st.size - 2).coerceAtLeast(0)
+            val t = (f - a).coerceIn(0f, 1f)
+            mix(st[a], st[(a + 1).coerceAtMost(st.size - 1)], t)
+        }
+    }
+
+    fun mix(x: Int, y: Int, t: Float): Int {
+        fun ch(sh: Int) = (((x shr sh) and 255) * (1 - t) + ((y shr sh) and 255) * t).roundToInt().coerceIn(0, 255)
+        return (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
+}
 
 object Adjust {
 
@@ -93,6 +142,19 @@ object Adjust {
                         (clamp(((c shr 16) and 0xFF) + n) shl 16) or
                         (clamp(((c shr 8) and 0xFF) + n) shl 8) or
                         clamp((c and 0xFF) + n)
+                }
+            }
+            AdjustKind.GRADIENT_MAP -> pixels(src, out) { px, _, _ ->
+                val lut = GradientMaps.lut(v[0].roundToInt())
+                val k = (v[1] / 100f).coerceIn(0f, 1f)
+                for (i in px.indices) {
+                    val c = px[i]
+                    val a = c ushr 24
+                    if (a == 0) continue
+                    val r = (c shr 16) and 0xFF; val g = (c shr 8) and 0xFF; val b = c and 0xFF
+                    val l = (r * 77 + g * 150 + b * 29) shr 8
+                    val m = lut[l]
+                    px[i] = (a shl 24) or (if (k >= 1f) m else GradientMaps.mix(c, m, k))
                 }
             }
             AdjustKind.POSTERIZE -> pixels(src, out) { px, _, _ ->

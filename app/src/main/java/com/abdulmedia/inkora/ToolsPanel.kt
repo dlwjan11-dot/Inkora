@@ -154,7 +154,7 @@ class ToolsPanel(
             content.addView(Ui.text(context, "Pick one: its sliders open in the bar at the top, with a live preview.", 12.5f, Ui.TEXT_DIM).apply { setPadding(4.dp, 0, 0, 4.dp) })
             caption("Color and tone")
             buildAdjust(listOf(AdjustKind.HSB, AdjustKind.BRIGHT_CONTRAST, AdjustKind.COLOR_BALANCE,
-                AdjustKind.POSTERIZE, AdjustKind.INVERT, AdjustKind.GRAYSCALE))
+                AdjustKind.GRADIENT_MAP, AdjustKind.POSTERIZE, AdjustKind.INVERT, AdjustKind.GRAYSCALE))
             caption("Filters")
             buildAdjust(listOf(AdjustKind.BLUR, AdjustKind.SHARPEN, AdjustKind.NOISE))
             return
@@ -213,7 +213,7 @@ class ToolsPanel(
             "select" -> buildSelect()
             "transform" -> buildTransform()
             "adjust" -> buildAdjust(listOf(AdjustKind.HSB, AdjustKind.BRIGHT_CONTRAST, AdjustKind.COLOR_BALANCE,
-                AdjustKind.POSTERIZE, AdjustKind.INVERT, AdjustKind.GRAYSCALE))
+                AdjustKind.GRADIENT_MAP, AdjustKind.POSTERIZE, AdjustKind.INVERT, AdjustKind.GRAYSCALE))
             "filters" -> buildAdjust(listOf(AdjustKind.BLUR, AdjustKind.SHARPEN, AdjustKind.NOISE))
         }
         scroll.scrollTo(0, 0)
@@ -540,6 +540,7 @@ class ToolsPanel(
         AdjustKind.SHARPEN -> floatArrayOf(250f, 0f, 0f, 0f)
         AdjustKind.NOISE -> floatArrayOf(45f, 0f, 0f, 0f)
         AdjustKind.POSTERIZE -> floatArrayOf(4f, 0f, 0f, 0f)
+        AdjustKind.GRADIENT_MAP -> floatArrayOf(1f, 100f, 0f, 0f)
         else -> FloatArray(4)
     }
 

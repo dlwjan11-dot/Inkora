@@ -170,6 +170,18 @@ class History {
 
     val canUndo get() = undoStack.isNotEmpty()
 
+    /** steps that can be taken back, and steps that can be brought back (the history scrubber) */
+    val undoCount get() = undoStack.size
+    val redoCount get() = redoStack.size
+
+    /** the name of step [i] of the whole history (0 = oldest; undo steps first, then redo steps) */
+    fun labelAt(i: Int): String? {
+        if (i < 0) return null
+        if (i < undoStack.size) return labelOf(undoStack.elementAt(i))
+        val r = i - undoStack.size
+        return if (r < redoStack.size) labelOf(redoStack.elementAt(redoStack.size - 1 - r)) else null
+    }
+
     /** goes up with every change and down with every undo: a tool remembers it to take back all it did */
     var mark = 0L
         private set
