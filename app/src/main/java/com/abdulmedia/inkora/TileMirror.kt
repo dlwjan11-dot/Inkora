@@ -16,7 +16,11 @@ import android.graphics.RectF
  * last frame change and travel; tiles the stroke never reached are not drawn at all.
  */
 class TileMirror(private val width: Int, private val height: Int) {
-    companion object { const val TILE = 256 }
+    companion object {
+        const val TILE = 256
+        /** each tile also keeps one pixel of its neighbours all round, so a zoomed screen shows no seams */
+        const val M = 1
+    }
 
     private val cols = (width + TILE - 1) / TILE
     private val rows = (height + TILE - 1) / TILE
@@ -26,6 +30,8 @@ class TileMirror(private val width: Int, private val height: Int) {
     private val copy = Paint().apply { blendMode = BlendMode.SRC }
     private val src = Rect()
     private val dst = Rect()
+    private val inner = Rect()
+    private val place = RectF()
 
     val isEmpty get() = tiles.all { it == null }
 
@@ -33,13 +39,15 @@ class TileMirror(private val width: Int, private val height: Int) {
     fun update(from: Bitmap, area: Rect) {
         val r = Rect(area)
         if (!r.intersect(0, 0, width, height)) return
-        val c0 = r.left / TILE; val c1 = (r.right - 1) / TILE
-        val r0 = r.top / TILE; val r1 = (r.bottom - 1) / TILE
+        // every tile whose area (with its border) the change reaches
+        val c0 = ((r.left - M).coerceAtLeast(0)) / TILE; val c1 = ((r.right - 1 + M) / TILE).coerceAtMost(cols - 1)
+        val r0 = ((r.top - M).coerceAtLeast(0)) / TILE; val r1 = ((r.bottom - 1 + M) / TILE).coerceAtMost(rows - 1)
         for (ty in r0..r1) for (tx in c0..c1) {
             val i = ty * cols + tx
-            val x = tx * TILE; val y = ty * TILE
+            val x = tx * TILE - M; val y = ty * TILE - M
+            src.set(maxOf(r.left, x), maxOf(r.top, y), minOf(r.right, x + TILE + 2 * M), minOf(r.bottom, y + TILE + 2 * M))
+            if (src.isEmpty) continue
             val c = canvases[i] ?: take().let { (b, cv) -> tiles[i] = b; canvases[i] = cv; cv }
-            src.set(maxOf(r.left, x), maxOf(r.top, y), minOf(r.right, x + TILE), minOf(r.bottom, y + TILE))
             dst.set(src.left - x, src.top - y, src.right - x, src.bottom - y)
             c.drawBitmap(from, src, dst, copy)
         }
@@ -65,10 +73,12 @@ class TileMirror(private val width: Int, private val height: Int) {
     fun draw(canvas: Canvas, paint: Paint?) {
         for (ty in 0 until rows) for (tx in 0 until cols) {
             val b = tiles[ty * cols + tx] ?: continue
-            canvas.drawBitmap(b, (tx * TILE).toFloat(), (ty * TILE).toFloat(), paint)
+            inner.set(M, M, M + TILE, M + TILE)
+            place.set((tx * TILE).toFloat(), (ty * TILE).toFloat(), (tx * TILE + TILE).toFloat(), (ty * TILE + TILE).toFloat())
+            canvas.drawBitmap(b, inner, place, paint)
         }
     }
 
     private fun take(): Pair<Bitmap, Canvas> = pool.removeLastOrNull()
-        ?: Bitmap.createBitmap(TILE, TILE, Bitmap.Config.ARGB_8888).let { it to Canvas(it) }
+        ?: Bitmap.createBitmap(TILE + 2 * M, TILE + 2 * M, Bitmap.Config.ARGB_8888).let { it to Canvas(it) }
 }

@@ -32,20 +32,20 @@ val Float.dp: Float get() = this * Resources.getSystem().displayMetrics.density
 
 /**
  * The interface typefaces: Inter for Latin text with Noto Sans Arabic for Arabic and Kurdish, in
- * three weights (400 text, 500 buttons, 600 titles). Shipped in assets/fonts (SIL Open Font License).
+ * three weights (400 text, 500 buttons, 600 titles). Shipped in res/font (SIL Open Font License); the
+ * app's theme gives every other text (dialogs, menus) Inter too.
  */
 object Fonts {
     private val faces = HashMap<Int, Typeface>()
 
-    fun init(assets: android.content.res.AssetManager) {
+    fun init(res: android.content.res.Resources) {
         if (faces.isNotEmpty()) return
         runCatching {
-            fun family(prefix: String) = android.graphics.fonts.FontFamily.Builder(
-                android.graphics.fonts.Font.Builder(assets, "fonts/${prefix}_400.ttf").setWeight(400).build()).apply {
-                for (w in listOf(500, 600)) addFont(android.graphics.fonts.Font.Builder(assets, "fonts/${prefix}_$w.ttf").setWeight(w).build())
-            }.build()
-            val latin = family("inter")
-            val arabic = family("noto_ar")
+            fun font(id: Int, w: Int) = android.graphics.fonts.Font.Builder(res, id).setWeight(w).build()
+            val latin = android.graphics.fonts.FontFamily.Builder(font(R.font.inter_400, 400))
+                .addFont(font(R.font.inter_500, 500)).addFont(font(R.font.inter_600, 600)).build()
+            val arabic = android.graphics.fonts.FontFamily.Builder(font(R.font.noto_ar_400, 400))
+                .addFont(font(R.font.noto_ar_500, 500)).addFont(font(R.font.noto_ar_600, 600)).build()
             for (w in listOf(400, 500, 600)) {
                 faces[w] = Typeface.CustomFallbackBuilder(latin)
                     .addCustomFallback(arabic)
@@ -80,14 +80,14 @@ object Ui {
     val BAR get() = pick(0xF21C1C1E, 0xF5FFFFFF)
     /** the accent color theme (Settings › Interface); blue at first */
     var accent = 0
-    /** name, color on the dark interface, color on the light one */
+    /** name, color on the dark interface, color on the light one (dark enough for small text, 4.5:1) */
     val ACCENTS = listOf(
-        Triple("Blue", 0xFF6E9FF5, 0xFF2F6FE0),
+        Triple("Blue", 0xFF6E9FF5, 0xFF2A66D4),
         Triple("Violet", 0xFFA78BFA, 0xFF7048D6),
-        Triple("Green", 0xFF5CC98A, 0xFF1E8A4F),
-        Triple("Orange", 0xFFF5A05A, 0xFFC0600E),
-        Triple("Pink", 0xFFF07FB0, 0xFFC93D7A),
-        Triple("Teal", 0xFF4FC6C6, 0xFF0E8383)
+        Triple("Green", 0xFF5CC98A, 0xFF1B7D47),
+        Triple("Orange", 0xFFF5A05A, 0xFFA95409),
+        Triple("Pink", 0xFFF07FB0, 0xFFB8336D),
+        Triple("Teal", 0xFF4FC6C6, 0xFF0B7676)
     )
     val ACCENT get() = ACCENTS[accent.coerceIn(0, ACCENTS.size - 1)].let { pick(it.second, it.third) }
     val ACCENT_SOFT get() = (ACCENT and 0x00FFFFFF) or 0x2E000000
@@ -242,10 +242,12 @@ object HoverTip {
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(12.dp, 9.dp, 12.dp, 10.dp)
-            background = Ui.rounded(0xF526282F.toInt(), 12f, 0x24FFFFFF, 1)
+            // follows the interface: dark on dark, light on light
+            background = Ui.rounded(Ui.PANEL, 12f, Ui.OUTLINE, 1)
+            elevation = 12f.dp
         }
         if (title.isNotBlank()) box.addView(Ui.text(ctx, title, 13.5f, bold = true))
-        if (!body.isNullOrBlank()) box.addView(Ui.text(ctx, body, 12.5f, 0xFFC5C8D2.toInt()).apply { setPadding(0, 2.dp, 0, 0) })
+        if (!body.isNullOrBlank()) box.addView(Ui.text(ctx, body, 12.5f, Ui.TEXT_DIM).apply { setPadding(0, 2.dp, 0, 0) })
         if (box.childCount == 0) return
         val root = anchor.rootView
         val maxW = minOf(280.dp, root.width - 24.dp)

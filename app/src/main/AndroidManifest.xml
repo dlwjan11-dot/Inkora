@@ -12,7 +12,7 @@
         android:label="${appLabel}"
         android:largeHeap="true"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+        android:theme="@style/Inkora">
 
         <activity
             android:name=".MainActivity"

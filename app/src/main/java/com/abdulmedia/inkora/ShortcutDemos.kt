@@ -44,7 +44,7 @@ object Demos {
     class Group(val title: String, val demos: List<Demo>)
 
     private val colors = mapOf(
-        "ink" to 0xFFE8E9ED.toInt(), "accent" to 0xFF6E9FF5.toInt(), "accentsoft" to 0xFF2B3D63.toInt(), "dim" to 0xFF5A5F6C.toInt(),
+        "ink" to 0xFFE8E9ED.toInt(), "accent" to Ui.ACCENT, "accentsoft" to 0xFF2B3D63.toInt(), "dim" to 0xFF5A5F6C.toInt(),
         "paper" to 0xFFF2F1EC.toInt(), "gold" to 0xFFFFBE3D.toInt(), "red" to 0xFFF0706A.toInt(), "green" to 0xFF6FCF97.toInt(),
         "panel" to 0xFF1B1D24.toInt(), "panel2" to 0xFF2C2F3A.toInt())
 

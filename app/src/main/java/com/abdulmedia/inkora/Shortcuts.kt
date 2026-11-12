@@ -75,7 +75,7 @@ class ShortcutsView(context: Context, closable: Boolean, private val onClose: ()
         if (closable) setOnClickListener { onClose() }
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.rounded(0xF21E1E22.toInt(), 28f, 0x24FFFFFF, 1)
+            background = Ui.rounded(Ui.PANEL, 28f, Ui.OUTLINE, 1)
             setPadding(24.dp, 22.dp, 24.dp, 20.dp)
             isClickable = true
         }
@@ -87,13 +87,13 @@ class ShortcutsView(context: Context, closable: Boolean, private val onClose: ()
         split.forEachIndexed { c, idxs ->
             for (i in idxs) {
                 val g = Shortcuts.GROUPS[i]
-                columns[c].addView(Ui.text(context, g.heading, 13f, 0xFF8E8E93.toInt(), true).apply { setPadding(0, 14.dp, 0, 6.dp) })
+                columns[c].addView(Ui.text(context, g.heading, 13f, Ui.TEXT_DIM, true).apply { setPadding(0, 14.dp, 0, 6.dp) })
                 for (r in g.rows) {
                     val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 3.dp, 0, 3.dp) }
-                    row.addView(Ui.text(context, r.keys, 13.5f, 0xFFE5E5E5.toInt(), true).apply {
+                    row.addView(Ui.text(context, r.keys, 13.5f, Ui.TEXT, true).apply {
                         textDirection = TEXT_DIRECTION_LTR
                     }, LinearLayout.LayoutParams(130.dp, -2))
-                    row.addView(Ui.text(context, r.does, 13.5f, 0xFFC5C5C5.toInt()), LinearLayout.LayoutParams(0, -2, 1f))
+                    row.addView(Ui.text(context, r.does, 13.5f, Ui.TEXT_DIM), LinearLayout.LayoutParams(0, -2, 1f))
                     columns[c].addView(row)
                 }
             }

@@ -130,7 +130,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         installCrashReporter()
         Ui.light = prefs.getBoolean("light_ui", false)
         Ui.accent = prefs.getInt("accent", 0)
-        Fonts.init(assets)
+        Fonts.init(resources)
         LivingBrushes.init(this)
         // the layer limit follows this device's memory
         runCatching {
@@ -161,9 +161,6 @@ class MainActivity : Activity(), CanvasView.Listener {
         cv.penHoldMs = prefs.getLong("penHoldMs", 600L)
         cv.showBrushCursor = prefs.getBoolean("brushCursor", true)
         cv.gpuTiles = prefs.getBoolean("gpu_tiles", false)
-        // the speed numbers showed the usual engine at 120 fps and about 4 ms behind the pen on the
-        // tablet: the GPU engine (GlStroke) is not needed and stays off
-        cv.gpuBrushes = false
         if (prefs.getBoolean("perf_numbers", false)) root.post { setPerf(true) }
         // off unless asked for: the watercolor look is there while you draw, nothing changes on pen-up
         cv.watercolorDrying = prefs.getBoolean("watercolorDrying", false)
@@ -686,8 +683,9 @@ class MainActivity : Activity(), CanvasView.Listener {
 
         // focus mode: a single small button brings the interface back
         focusExit = IconView(this, Icon.FOCUS).apply {
-            background = Ui.rounded(0xCC131316.toInt(), 14f)
-            contentDescription = "Show interface"
+            background = Ui.rounded(Ui.BAR, 14f, Ui.OUTLINE, 1)
+            elevation = 8f.dp
+            contentDescription = L10n.tr("Show interface")
             visibility = View.GONE
             setOnClickListener { setFocus(false) }
         }
@@ -752,7 +750,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         return b
     }
 
-    private fun barDivider() = View(this).apply { setBackgroundColor(0x16FFFFFF) }.also {
+    private fun barDivider() = View(this).apply { setBackgroundColor(Ui.DIVIDER) }.also {
         it.layoutParams = LinearLayout.LayoutParams(1.dp, 24.dp).apply { leftMargin = 6.dp; rightMargin = 4.dp }
     }
 
@@ -1486,7 +1484,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         popup?.dismiss()
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = Ui.rounded(0xF2202026.toInt(), 22f, 0x22FFFFFF, 1)
+            background = Ui.rounded(Ui.PANEL, 22f, Ui.OUTLINE, 1)
             setPadding(6.dp, 6.dp, 6.dp, 6.dp)
             elevation = 12f.dp
         }
@@ -2527,7 +2525,7 @@ class MainActivity : Activity(), CanvasView.Listener {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(12.dp, 12.dp, 12.dp, 12.dp)
-            background = Ui.rounded(Ui.PANEL, 18f, 0x14FFFFFF, 1)
+            background = Ui.rounded(Ui.PANEL, 18f, Ui.OUTLINE, 1)
         }
         box.addView(Ui.text(this, "Symmetry", 15f, bold = true).apply { setPadding(4.dp, 0, 0, 8.dp) })
         val grid = android.widget.GridLayout(this).apply { columnCount = 3 }
@@ -2662,9 +2660,6 @@ class MainActivity : Activity(), CanvasView.Listener {
         override var perfNumbers: Boolean
             get() = Perf.on
             set(v) { prefs.edit().putBoolean("perf_numbers", v).apply(); setPerf(v) }
-        override var gpuBrushes: Boolean
-            get() = cv.gpuBrushes
-            set(v) { cv.gpuBrushes = v; prefs.edit().putBoolean("gpu_engine", v).apply() }
         override var gpuTiles: Boolean
             get() = cv.gpuTiles
             set(v) { cv.gpuTiles = v; prefs.edit().putBoolean("gpu_tiles", v).apply() }
@@ -4290,7 +4285,7 @@ class MainActivity : Activity(), CanvasView.Listener {
             acts.addBar(barButton("Flip ↔") { ed.flip(true) })
             acts.addBar(barButton("Flip ↕") { ed.flip(false) })
             acts.addBar(barButton("Duplicate") { ed.duplicateSelected() })
-            acts.addBar(barButton("Delete") { ed.deleteSelected() }.apply { setTextColor(0xFFF07178.toInt()) })
+            acts.addBar(barButton("Delete") { ed.deleteSelected() }.apply { setTextColor(Ui.DANGER) })
             acts.addBar(barButton("Deselect") { ed.deselect() })
         }
         col.addView(android.widget.HorizontalScrollView(this).apply { addView(acts); isHorizontalScrollBarEnabled = false },

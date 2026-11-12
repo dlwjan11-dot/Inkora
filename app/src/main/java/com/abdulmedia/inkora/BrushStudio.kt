@@ -72,6 +72,11 @@ class BrushStudioView(
     private val bodyScroll = ScrollView(context)
     private val pad = DrawingPad(context, brush) { host.padColor }
 
+    /** true once it is closing (Done, Cancel or Back) */
+    var closing = false
+        private set
+    private var card: LinearLayout? = null
+
     init {
         setBackgroundColor(Ui.SURFACE)
         isClickable = true
@@ -117,9 +122,6 @@ class BrushStudioView(
         rebuild()
     }
 
-    /** true once it is closing (Done, Cancel or Back) */
-    var closing = false
-        private set
 
     /** Back or Esc: keeps the changes, as Done does */
     fun finish() = close(keep = true)
@@ -197,7 +199,6 @@ class BrushStudioView(
         }
     }
 
-    private var card: LinearLayout? = null
 
     private fun group(title: String? = null, fill: () -> Unit) {
         if (title != null) body.addView(Ui.text(context, title, 13f, Ui.TEXT_DIM, true).apply { setPadding(6.dp, 10.dp, 0, 6.dp) })

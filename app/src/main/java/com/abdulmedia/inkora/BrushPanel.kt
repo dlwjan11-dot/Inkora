@@ -114,6 +114,9 @@ class BrushPanel(
     /** the brush whose actions (pin, duplicate, reset) are showing */
     private var openActions: String? = null
 
+    /** the brush that is slid open, and its buttons */
+    private var openCard: Pair<View, View>? = null
+
     init {
         loadLists(context)
         orientation = VERTICAL
@@ -431,8 +434,6 @@ class BrushPanel(
         list.addView(Ui.text(context, hint, 12f, Ui.TEXT_DIM).apply { setPadding(6.dp, 4.dp, 8.dp, 8.dp) })
     }
 
-    /** the brush that is slid open, and its buttons */
-    private var openCard: Pair<View, View>? = null
 
     /** opens the set the brush belongs to, scrolls to the brush and flashes it */
     private fun find(b: Brush) {

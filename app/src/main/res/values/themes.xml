@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Every text in the app (dialogs and menus too) in the interface font. -->
+    <style name="Inkora" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:fontFamily">@font/inter</item>
+    </style>
+</resources>

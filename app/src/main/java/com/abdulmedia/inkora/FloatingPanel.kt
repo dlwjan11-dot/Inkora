@@ -25,7 +25,7 @@ class FloatingPanel(
 
     init {
         orientation = VERTICAL
-        background = Ui.rounded(0xE61E1E22.toInt(), 16f, 0x33FFFFFF, 1)
+        background = Ui.rounded(Ui.PANEL, 16f, Ui.OUTLINE, 1)
         elevation = 14f.dp
         alpha = 0f
         animate().alpha(idleAlpha).setDuration(180).start()

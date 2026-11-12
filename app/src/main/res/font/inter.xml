@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The interface font (SIL Open Font License, see assets/licenses.txt). -->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android">
+    <font android:font="@font/inter_400" android:fontWeight="400" android:fontStyle="normal" />
+    <font android:font="@font/inter_500" android:fontWeight="500" android:fontStyle="normal" />
+    <font android:font="@font/inter_600" android:fontWeight="600" android:fontStyle="normal" />
+</font-family>

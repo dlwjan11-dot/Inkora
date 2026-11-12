@@ -642,7 +642,7 @@ class LayersPanel(
             }
             val b = Ui.button(context, label) { act() }
             b.textSize = 12.5f
-            if (label == "Delete") b.setTextColor(0xFFF07178.toInt())
+            if (label == "Delete") b.setTextColor(Ui.DANGER)
             row!!.addView(b, LayoutParams(0, -2, 1f).apply { if (i % perRow != 0) leftMargin = 6.dp })
         }
     }

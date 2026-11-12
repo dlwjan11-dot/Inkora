@@ -84,7 +84,7 @@ class ToolsPanel(
 
     init {
         orientation = VERTICAL
-        background = Ui.rounded(Ui.PANEL, 20f, 0x14FFFFFF, 1)
+        background = Ui.rounded(Ui.PANEL, 20f, Ui.OUTLINE, 1)
         setPadding(0, 0, 0, 0)
 
         // ---- header: segmented tabs + close ----
@@ -242,7 +242,7 @@ class ToolsPanel(
                      art: View? = null, artHeight: Int = 74, onClick: () -> Unit): View {
         val box = LinearLayout(context).apply {
             orientation = VERTICAL
-            background = Ui.rounded(if (active) Ui.PANEL_ROW_ACTIVE else Ui.CARD, 14f, if (active) Ui.ACCENT else 0x0FFFFFFF, 1)
+            background = Ui.rounded(if (active) Ui.PANEL_ROW_ACTIVE else Ui.CARD, 14f, if (active) Ui.ACCENT else Ui.OUTLINE, 1)
             setPadding(6.dp, 6.dp, 6.dp, 9.dp)
             isClickable = true
             foreground = Ui.ripple(14f)
@@ -359,7 +359,7 @@ class ToolsPanel(
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = Ui.rounded(Ui.CARD, 14f, 0x0FFFFFFF, 1)
+            background = Ui.rounded(Ui.CARD, 14f, Ui.OUTLINE, 1)
             setPadding(10.dp, 8.dp, 12.dp, 8.dp)
         }
         row.addView(IconView(context, icon).apply { isClickable = false; this.active = checked }, LayoutParams(42.dp, 42.dp))
@@ -504,7 +504,7 @@ class ToolsPanel(
         if (host.hasSelection) content.addView(Ui.text(context, "Only the selected area will change.", 12f, Ui.ACCENT).apply { setPadding(4.dp, 0, 0, 8.dp) })
         val previews = ArrayList<Pair<AdjustKind, ImageView>>()
         grid(kinds.map { k ->
-            val img = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true; outlineProvider = android.view.ViewOutlineProvider.BACKGROUND; background = Ui.rounded(0xFF1C1D22.toInt(), 10f) }
+            val img = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; clipToOutline = true; outlineProvider = android.view.ViewOutlineProvider.BACKGROUND; background = Ui.rounded(Ui.SUNKEN, 10f) }
             previews.add(k to img)
             val art = FrameLayout(context)
             art.addView(img, FrameLayout.LayoutParams(-1, -1))

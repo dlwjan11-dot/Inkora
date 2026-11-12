@@ -66,8 +66,6 @@ class StrokeEngine {
     var dabHandler: ((Float, Float, Float, Float, Float) -> Unit)? = null
 
     private var canvas: Canvas? = null
-    /** when set, dabs are drawn on the canvas it gives (the graphics chip's recording, see GpuStroke) */
-    var canvasProvider: (() -> Canvas)? = null
     private var target: Bitmap? = null
     private var maskCanvas: Canvas? = null
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
@@ -321,8 +319,7 @@ class StrokeEngine {
     }
 
     private fun stamp(x: Float, y: Float, pressure: Float, tilt: Float, dist: Float, dirAngle: Float = lastAngle) {
-        val base = canvas ?: return
-        val c = canvasProvider?.invoke() ?: base
+        val c = canvas ?: return
         val dyn = brush.dyn
         var d = diameterFor(pressure, tilt, dist)
         val pc = pressure.coerceIn(0f, 1f)

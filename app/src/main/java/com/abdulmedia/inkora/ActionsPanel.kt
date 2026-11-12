@@ -51,8 +51,6 @@ interface ActionsHost {
     var fadeIslands: Boolean
     /** the stroke goes to the screen in tiles (test) */
     var gpuTiles: Boolean
-    /** the graphics chip paints the brush dabs (test) */
-    var gpuBrushes: Boolean
     /** speed numbers at the bottom of the screen */
     var perfNumbers: Boolean
     fun useWorkspace(w: Workspaces.Workspace)
@@ -102,17 +100,13 @@ interface ActionsHost {
 class ActionsPanel(
     context: Context,
     private val host: ActionsHost,
-    private val mode: String = MODE_ACTIONS,
-    /** the Settings screen's back arrow */
-    private val onBack: () -> Unit = {}
+    private val mode: String = MODE_ACTIONS
 ) : LinearLayout(context) {
 
     companion object {
         const val MODE_ACTIONS = "actions"
         const val MODE_ADD = "add"
         const val MODE_CANVAS = "canvas"
-        /** the full-screen Settings: sections on the side, search on top */
-        const val MODE_SETTINGS = "settings"
         /** Settings on their own, in a popup (from the Gallery) */
         const val MODE_PREFS = "prefs"
     }
@@ -126,8 +120,6 @@ class ActionsPanel(
     private val tabsRow = LinearLayout(context).apply { orientation = HORIZONTAL }
     private val body = LinearLayout(context).apply { orientation = VERTICAL }
     private val cv get() = host.canvas
-    /** this is the full-screen Settings */
-    val isSettings get() = mode == MODE_SETTINGS
     /** the settings are showing (their own popup, or the Settings tab) */
     private val inSettings get() = mode == MODE_PREFS || (mode == MODE_ACTIONS && tab == Tab.PREFS)
     /** an open sub-page of a tab (for now: "pressure" in Prefs) */
@@ -147,10 +139,8 @@ class ActionsPanel(
         Section("files", "Files and Backup", "backup back up restore files drive save"),
         Section("about", "About", "about version licence license open source tour guide help")
     )
-    private var section: String = host.prefs.getString("settings_section", "brushes") ?: "brushes"
     private var query = ""
     private var advanced = false
-    private val sectionList = LinearLayout(context).apply { orientation = VERTICAL }
     /** where the row helpers put their rows (the body, or the search results under the search field) */
     private var out: LinearLayout = LinearLayout(context)
     /** a page opened from another page (Pressure from Brushes and Pen) goes back there */
@@ -171,91 +161,8 @@ class ActionsPanel(
     )
 
     init {
-        if (mode == MODE_SETTINGS) buildSettingsFrame() else buildPopupFrame()
+        buildPopupFrame()
         rebuild()
-    }
-
-    /** Settings: a whole screen with the sections on the start side */
-    private fun buildSettingsFrame() {
-        orientation = VERTICAL
-        setBackgroundColor(Ui.SURFACE)
-        isClickable = true
-        val phone = context.narrow
-        setPadding(if (phone) 12.dp else 28.dp, if (phone) 12.dp else 20.dp, if (phone) 12.dp else 28.dp, 0)
-        val head = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        head.addView(IconView(context, if (L10n.isRtl) Icon.CHEV_RIGHT else Icon.CHEV_LEFT).apply {
-            iconScale = 0.5f
-            contentDescription = L10n.tr("Back")
-            setOnClickListener { onBack() }
-        }, LayoutParams(44.dp, 44.dp))
-        head.addView(Ui.text(context, "Settings", 28f, bold = true), LayoutParams(0, -2, 1f).apply { marginStart = 4.dp })
-        val field = LinearLayout(context).apply {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(12.dp, 0, 8.dp, 0)
-            background = Ui.rounded(Ui.CARD, 12f)
-        }
-        field.addView(IconView(context, Icon.SEARCH).apply { isClickable = false; tint = Ui.TEXT_DIM; iconScale = 0.6f }, LayoutParams(24.dp, 24.dp))
-        field.addView(android.widget.EditText(context).apply {
-            hint = L10n.tr("Search settings")
-            setHintTextColor(Ui.TEXT_DIM)
-            setTextColor(Ui.TEXT)
-            textSize = 14f
-            typeface = Fonts.get(400)
-            background = null
-            setSingleLine()
-            setPadding(8.dp, 0, 4.dp, 0)
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun afterTextChanged(e: android.text.Editable?) {
-                    query = e?.toString()?.trim() ?: ""
-                    page = null
-                    rebuild()
-                }
-            })
-        }, LayoutParams(0, -1, 1f))
-        if (phone) {
-            addView(head)
-            addView(field, LayoutParams(-1, 44.dp).apply { topMargin = 8.dp })
-        } else {
-            head.addView(field, LayoutParams(300.dp, 44.dp))
-            addView(head)
-        }
-        val row = LinearLayout(context).apply { orientation = if (phone) VERTICAL else HORIZONTAL }
-        val scroll = ScrollView(context).apply { isVerticalScrollBarEnabled = false; clipToPadding = false; setPadding(0, 0, 0, 32.dp) }
-        scroll.addView(body)
-        if (phone) {
-            sectionList.orientation = HORIZONTAL
-            row.addView(android.widget.HorizontalScrollView(context).apply { isHorizontalScrollBarEnabled = false; addView(sectionList) },
-                LayoutParams(-1, -2).apply { topMargin = 10.dp; bottomMargin = 8.dp })
-            row.addView(scroll, LayoutParams(-1, 0, 1f))
-        } else {
-            row.addView(ScrollView(context).apply { isVerticalScrollBarEnabled = false; addView(sectionList) }, LayoutParams(240.dp, -1))
-            row.addView(View(context).apply { setBackgroundColor(Ui.DIVIDER) }, LayoutParams(1, -1).apply { marginStart = 12.dp; marginEnd = 28.dp })
-            // a readable column, not the whole width of the tablet
-            row.addView(scroll, LayoutParams(0, -1, 1f))
-        }
-        addView(row, LayoutParams(-1, 0, 1f).apply { topMargin = 14.dp })
-    }
-
-    private fun fillSectionList() {
-        sectionList.removeAllViews()
-        val phone = context.narrow
-        for (sec in sections) {
-            val on = query.isEmpty() && sec.key == section
-            sectionList.addView(Ui.text(context, sec.label, 14.5f, if (on) Ui.ACCENT else Ui.TEXT, on).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(14.dp, 0, 14.dp, 0)
-                background = if (on) Ui.rounded(Ui.ACCENT_SOFT, 12f) else null
-                foreground = Ui.ripple(12f)
-                setOnClickListener {
-                    section = sec.key; page = null; advanced = false
-                    host.prefs.edit().putString("settings_section", sec.key).apply()
-                    rebuild()
-                }
-            }, if (phone) LayoutParams(-2, 40.dp).apply { marginEnd = 4.dp } else LayoutParams(-1, 46.dp).apply { bottomMargin = 2.dp })
-        }
     }
 
     private fun buildSection(key: String) = when (key) {
@@ -287,22 +194,7 @@ class ActionsPanel(
         else -> listOf("Guide", "Take the tour again", "Open-source licenses")
     }
 
-    private fun rebuildSettings() {
-        fillSectionList()
-        if (query.isNotEmpty()) {
-            val found = sections.filter { matches(it) }
-            if (found.isEmpty()) note("Nothing found. Try another word, like \"pressure\" or \"left hand\".")
-            for (sec in found) {
-                body.addView(Ui.text(context, sec.label, 20f, bold = true).apply { setPadding(4.dp, 10.dp, 0, 8.dp) })
-                buildSection(sec.key)
-            }
-            return
-        }
-        body.addView(Ui.text(context, sections.firstOrNull { it.key == section }?.label ?: "", 22f, bold = true).apply { setPadding(4.dp, 0, 0, 12.dp) })
-        buildSection(section)
-    }
-
-    /** the old popup frame (Actions, Add, Canvas) */
+    /** the popup frame (Actions, Add, Canvas, Settings) */
     private fun buildPopupFrame() {
         orientation = VERTICAL
         background = Ui.rounded(Ui.PANEL, 22f, Ui.OUTLINE, 1)
@@ -348,7 +240,6 @@ class ActionsPanel(
         if (page == "fill") { buildFill(); return }
         if (page == "guide") { subPage("Drawing guide", host.guideView()); return }
         if (page == "symmetry") { subPage("Symmetry", host.symmetryView { rebuild() }); return }
-        if (mode == MODE_SETTINGS) { rebuildSettings(); return }
         if (mode == MODE_PREFS) { buildPrefs(); return }
         if (mode == MODE_ADD) { buildAdd(); return }
         if (mode == MODE_CANVAS) { buildCanvas(); return }

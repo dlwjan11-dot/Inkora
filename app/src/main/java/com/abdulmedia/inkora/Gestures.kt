@@ -427,7 +427,7 @@ class GestureControlsView(
             val w = width - 2 * pad
             val rtl = layoutDirection == LAYOUT_DIRECTION_RTL
             val x = if (rtl) pad + (1f - fraction) * w else pad + fraction * w
-            p.color = 0xFF414148.toInt()
+            p.color = Ui.TRACK
             canvas.drawRect(pad, y - 1.5f.dp, pad + w, y + 1.5f.dp, p)
             p.color = Ui.ACCENT
             if (rtl) canvas.drawRect(x, y - 1.5f.dp, pad + w, y + 1.5f.dp, p)

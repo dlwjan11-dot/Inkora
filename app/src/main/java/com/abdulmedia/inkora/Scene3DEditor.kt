@@ -58,7 +58,7 @@ class Scene3DEditor(
     private val hint = Ui.text(context, "", 12.5f, Ui.TEXT_DIM)
 
     init {
-        setBackgroundColor(0xFF18191E.toInt())
+        setBackgroundColor(Ui.SURFACE)
         isClickable = true
         val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
 
@@ -77,7 +77,7 @@ class Scene3DEditor(
         left.addView(preview, LinearLayout.LayoutParams(-1, 0, 1f))
         row.addView(left, LinearLayout.LayoutParams(0, -1, 1f))
 
-        val scroll = ScrollView(context).apply { setBackgroundColor(0xFF1F2026.toInt()) }
+        val scroll = ScrollView(context).apply { setBackgroundColor(Ui.PANEL) }
         scroll.addView(panel)
         row.addView(scroll, LinearLayout.LayoutParams(min(380.dp, (resources.displayMetrics.widthPixels * 0.42f).toInt()), -1))
         addView(row, LayoutParams(-1, -1))

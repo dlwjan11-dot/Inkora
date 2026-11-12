@@ -816,7 +816,7 @@ class VectorEditor(private val host: Host) {
     }
 
     private fun drawNodes(c: Canvas, showAllHandles: Boolean) {
-        thin.color = 0xCC6E9FF5.toInt()
+        thin.color = (Ui.ACCENT and 0xFFFFFF) or 0xCC000000.toInt()
         thin.strokeWidth = 1f * d
         for (s in selected) for (con in s.contours) for (n in con.nodes) {
             val p = host.toScreen(n.x, n.y)
@@ -837,7 +837,7 @@ class VectorEditor(private val host: Host) {
             c.drawRect(p.x - r, p.y - r, p.x + r, p.y + r, handle)
             thin.color = Ui.ACCENT
             c.drawRect(p.x - r, p.y - r, p.x + r, p.y + r, thin)
-            thin.color = 0xCC6E9FF5.toInt()
+            thin.color = (Ui.ACCENT and 0xFFFFFF) or 0xCC000000.toInt()
         }
     }
 
@@ -850,7 +850,7 @@ class VectorEditor(private val host: Host) {
         val o = host.toScreen(last.outX, last.outY)
         p.moveTo(a.x, a.y)
         p.cubicTo(o.x, o.y, h.x, h.y, h.x, h.y)
-        thin.color = 0x994C8DFF.toInt()
+        thin.color = (Ui.ACCENT and 0xFFFFFF) or 0x99000000.toInt()
         thin.strokeWidth = 1.2f * d
         thin.pathEffect = DashPathEffect(floatArrayOf(5f * d, 4f * d), 0f)
         c.drawPath(p, thin)
