@@ -55,6 +55,8 @@ class CanvasView(context: Context) : View(context) {
         fun onPenLongPress(x: Float, y: Float) {}
         /** a gesture asked for something the screen around the canvas does (quick menu, full screen…) */
         fun onGesture(purpose: GesturePurpose, x: Float, y: Float) {}
+        /** four fingers held still on the canvas */
+        fun onFourFingerHold(x: Float, y: Float) {}
         /** the brush's size or opacity changed from the canvas (hover + finger) */
         fun onBrushAdjusted() {}
         /** a different layer became the active one */
@@ -410,6 +412,18 @@ class CanvasView(context: Context) : View(context) {
     private var hoverStartOpacity = 1f
     private var hoverStartSize = 10f
     private var hoverStartDist = 0f
+    /** four fingers held still: the workspaces to switch to */
+    private val fourHoldRunnable = Runnable {
+        if (mode != Mode.GESTURE || gMoved > 24f * density || gPointers != 4 || gFired) return@Runnable
+        gFired = true
+        viewMatrix.set(tapStartMatrix)
+        invalidate()
+        var x = 0f; var y = 0f
+        for (d in gDown.values) { x += d.x; y += d.y }
+        val n = gDown.size.coerceAtLeast(1)
+        listener?.onFourFingerHold(x / n, y / n)
+    }
+
     private val rapidRunnable = object : Runnable {
         override fun run() {
             if (mode != Mode.GESTURE || gMoved > 24f * density) return
@@ -683,8 +697,8 @@ class CanvasView(context: Context) : View(context) {
             })
         } else if (t != null) {
             val ov = HashMap<Layer, ActiveOverlay>()
-            ov[t.layer] = ActiveOverlay { c -> c.drawBitmap(t.floating, t.matrix, transformPaint) }
-            for (p in t.extras) ov[p.layer] = ActiveOverlay { c -> c.drawBitmap(p.floating, t.matrix, transformPaint) }
+            ov[t.layer] = ActiveOverlay { c -> t.drawPiece(c, t.floating, transformPaint) }
+            for (p in t.extras) ov[p.layer] = ActiveOverlay { c -> t.drawPiece(c, p.floating, transformPaint) }
             doc.draw(canvas, filter, null, extra = ov)
         } else {
             doc.draw(canvas, filter)
@@ -769,8 +783,32 @@ class CanvasView(context: Context) : View(context) {
     }
 
     /** screen-space box with corner handles and a rotation handle */
+    /** Distort: the four free corners joined; Warp: the 4 × 4 grid of handles */
+    private fun drawShapeHandles(canvas: Canvas, t: TransformSession, doc: FloatArray) {
+        val h = doc.copyOf(); viewMatrix.mapPoints(h)
+        boxPaint.strokeWidth = 1.5f * density
+        boxPaint.style = Paint.Style.STROKE
+        if (t.shape == TransformSession.Shape.DISTORT) {
+            for (i in 0 until 4) { val j = (i + 1) % 4; canvas.drawLine(h[i * 2], h[i * 2 + 1], h[j * 2], h[j * 2 + 1], boxPaint) }
+        } else {
+            for (j in 0 until 4) for (i in 0 until 4) {
+                val k = j * 4 + i
+                if (i < 3) canvas.drawLine(h[k * 2], h[k * 2 + 1], h[(k + 1) * 2], h[(k + 1) * 2 + 1], boxPaint)
+                if (j < 3) canvas.drawLine(h[k * 2], h[k * 2 + 1], h[(k + 4) * 2], h[(k + 4) * 2 + 1], boxPaint)
+            }
+        }
+        for (k in 0 until h.size / 2) {
+            handlePaint.style = Paint.Style.FILL; handlePaint.color = Color.WHITE
+            canvas.drawCircle(h[k * 2], h[k * 2 + 1], 7f * density, handlePaint)
+            handlePaint.style = Paint.Style.STROKE; handlePaint.color = Ui.ACCENT; handlePaint.strokeWidth = 2f * density
+            canvas.drawCircle(h[k * 2], h[k * 2 + 1], 7f * density, handlePaint)
+        }
+        handlePaint.style = Paint.Style.FILL
+    }
+
     private fun drawTransformBox(canvas: Canvas, t: TransformSession) {
         drawSnapGuides(canvas)
+        t.shapeHandles()?.let { drawShapeHandles(canvas, t, it); return }
         val c = t.corners()
         viewMatrix.mapPoints(c)
         boxPaint.strokeWidth = 1.5f * density
@@ -1106,7 +1144,7 @@ class CanvasView(context: Context) : View(context) {
                 selDrawing = false
                 gradA = null; gradB = null
                 removeCallbacks(fingerHoldRunnable)
-                removeCallbacks(rapidRunnable)
+                removeCallbacks(rapidRunnable); removeCallbacks(fourHoldRunnable)
                 mode = Mode.NONE
                 invalidate()
             }
@@ -1264,7 +1302,7 @@ class CanvasView(context: Context) : View(context) {
             }
             Mode.GESTURE -> {
                 if (newIsStylus) {
-                    removeCallbacks(rapidRunnable)
+                    removeCallbacks(rapidRunnable); removeCallbacks(fourHoldRunnable)
                     strokeOverride = penOverride()
                     startStroke(e, idx, true)
                 } else startGesture(e, -1, keepTapInfo = true)
@@ -1429,7 +1467,7 @@ class CanvasView(context: Context) : View(context) {
             Mode.TRANSFORM_DRAG -> endTransformDrag()
             Mode.GESTURE -> {
                 trackMove(e)
-                removeCallbacks(rapidRunnable)
+                removeCallbacks(rapidRunnable); removeCallbacks(fourHoldRunnable)
                 val quick = e.eventTime - gStartTime < 320 && gMoved < 24f * density
                 val noUndo = gOn(GesturePurpose.GENERAL, "NO_UNDO", false)
                 if (quick && !gFired && gMaxPointers >= 2) {
@@ -2093,11 +2131,12 @@ class CanvasView(context: Context) : View(context) {
         gLastScale = 1f
         gPointers = pts.size
         if (!keepTapInfo) { scrubDir = 0; scrubTurns = 0; scrubRefX = 0f }
-        removeCallbacks(rapidRunnable)
+        removeCallbacks(rapidRunnable); removeCallbacks(fourHoldRunnable)
         if (!gFired && (pts.size == 2 || pts.size == 3) && gMoved < 24f * density &&
             gOn(GesturePurpose.GENERAL, "RAPID_UNDO", true) && !gOn(GesturePurpose.GENERAL, "NO_UNDO", false)) {
             postDelayed(rapidRunnable, delayMs(GesturePurpose.GENERAL, 650))
         }
+        if (!gFired && pts.size == 4 && gMoved < 24f * density) postDelayed(fourHoldRunnable, 600)
         if (pts.size >= 2) {
             gStartMidX = (pts[0].x + pts[1].x) / 2
             gStartMidY = (pts[0].y + pts[1].y) / 2
@@ -2118,7 +2157,7 @@ class CanvasView(context: Context) : View(context) {
 
     private fun updateGesture(e: MotionEvent) {
         trackMove(e)
-        if (gMoved > 24f * density) removeCallbacks(rapidRunnable)
+        if (gMoved > 24f * density) removeCallbacks(rapidRunnable); removeCallbacks(fourHoldRunnable)
         if (gFired) return
         if (e.pointerCount == 3 && gMaxPointers == 3) {
             var dx = 0f; var dy = 0f; var n = 0
@@ -3179,6 +3218,9 @@ class CanvasView(context: Context) : View(context) {
             "rotate" -> t.rotate90()
             "fit" -> t.fitTo(doc.width, doc.height)
             "reset" -> t.reset()
+            "free" -> t.free()
+            "distort" -> t.distort()
+            "warp" -> t.warpMode()
         }
         invalidate()
     }
@@ -3190,7 +3232,7 @@ class CanvasView(context: Context) : View(context) {
             val r = t.resultBounds(doc.width, doc.height)
             val edits = ArrayList<Command>()
             for (p in all) {
-                Canvas(p.layer.bitmap).drawBitmap(p.floating, t.matrix, transformPaint)
+                t.drawPiece(Canvas(p.layer.bitmap), p.floating, transformPaint)
                 if (!r.isEmpty) {
                     val beforeRegion = Bitmap.createBitmap(p.before, r.left, r.top, r.width(), r.height())
                     val after = Bitmap.createBitmap(p.layer.bitmap, r.left, r.top, r.width(), r.height())
@@ -3199,7 +3241,9 @@ class CanvasView(context: Context) : View(context) {
             }
             transform = null
             if (edits.size == 1) pushCommand(edits[0]) else if (edits.isNotEmpty()) pushCommand(MultiCmd(edits, "move"))
-            selection = t.selection?.let { Selections.transformed(it, t.movement(), doc.width, doc.height) }
+            // a warped selection has no straight outline to follow: it is let go
+            selection = if (t.shape == TransformSession.Shape.WARP) null
+                else t.selection?.let { Selections.transformed(it, t.movement(), doc.width, doc.height) }
         } else {
             for (p in all) Canvas(p.layer.bitmap).drawBitmap(p.before, 0f, 0f, Paint().apply { blendMode = BlendMode.SRC })
         }
@@ -3210,8 +3254,27 @@ class CanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** Distort/Warp: the handle being dragged (-1: the whole piece) */
+    private var shapeGrab = -1
+    private var shapeLast = PointF()
+
     private fun startTransformDrag(e: MotionEvent) {
         val t = transform ?: run { mode = Mode.IGNORE; return }
+        val handles = t.shapeHandles()
+        if (handles != null) {
+            mode = Mode.TRANSFORM_DRAG
+            downTime = e.eventTime
+            tDrag = Drag.MOVE
+            tMoved = false
+            tDownScreen = PointF(e.x, e.y)
+            val scr = handles.copyOf(); viewMatrix.mapPoints(scr)
+            var best = -1; var bd = 30f * density
+            for (k in 0 until scr.size / 2) { val d = hypot(e.x - scr[k * 2], e.y - scr[k * 2 + 1]); if (d < bd) { bd = d; best = k } }
+            shapeGrab = best
+            shapeLast = toDoc(e.x, e.y)
+            return
+        }
+        shapeGrab = -1
         mode = Mode.TRANSFORM_DRAG
         downTime = e.eventTime
         tStart.set(t.matrix)
@@ -3265,6 +3328,16 @@ class CanvasView(context: Context) : View(context) {
         if (!tMoved && hypot(e.x - tDownScreen.x, e.y - tDownScreen.y) > 8f * density) tMoved = true
         if (!tMoved) return
         val p = toDoc(e.x, e.y)
+        if (t.shape != TransformSession.Shape.FREE) {
+            when {
+                shapeGrab < 0 -> t.shift(p.x - shapeLast.x, p.y - shapeLast.y)
+                t.shape == TransformSession.Shape.DISTORT -> t.moveCorner(shapeGrab, p.x, p.y)
+                else -> t.moveWarp(shapeGrab, p.x, p.y)
+            }
+            shapeLast = p
+            invalidate()
+            return
+        }
         t.matrix.set(tStart)
         t.box.set(tBoxStart)
         when (tDrag) {
@@ -3346,6 +3419,9 @@ class CanvasView(context: Context) : View(context) {
         invalidate()
     }
 
+    /** "free", "distort" or "warp" while transforming */
+    val transformShape: String get() = transform?.shape?.name?.lowercase() ?: "free"
+
     fun transformAngle(): Float = transform?.boxAngle() ?: 0f
     fun transformSize(): Pair<Float, Float> = transform?.boxSize() ?: (0f to 0f)
     fun setTransformAngle(deg: Float) { transform?.setAngle(deg); invalidate() }
@@ -3354,6 +3430,8 @@ class CanvasView(context: Context) : View(context) {
     private fun startTransformPinch(e: MotionEvent) {
         val t = transform ?: return
         if (e.pointerCount < 2) return
+        // Distort and Warp are shaped by their handles; two fingers do nothing there
+        if (t.shape != TransformSession.Shape.FREE) { mode = Mode.IGNORE; return }
         mode = Mode.TRANSFORM_PINCH
         tStart.set(t.matrix)
         tBoxStart.set(t.box)

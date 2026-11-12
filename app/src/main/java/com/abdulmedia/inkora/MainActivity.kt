@@ -3833,11 +3833,23 @@ class MainActivity : Activity(), CanvasView.Listener {
             prefs.edit().putBoolean("transform_snap", cv.transformSnap).apply()
             showTransformBar()
         })
-        bar.addBar(barButton("Flip ↔") { cv.transformAction("flipH") })
-        bar.addBar(barButton("Flip ↕") { cv.transformAction("flipV") })
-        bar.addBar(barButton("Rotate 90°") { cv.transformAction("rotate") })
-        bar.addBar(barButton("Fit to canvas") { cv.transformAction("fit") })
-        bar.addBar(barButton("Reset") { cv.transformAction("reset") })
+        val shape = cv.transformShape
+        // Free · Distort (each corner on its own) · Warp (bend with a grid)
+        if (shape != "warp") bar.addBar(barButton("Free", shape == "free") { cv.transformAction("free"); showTransformBar() })
+        bar.addBar(barButton("Distort", shape == "distort") {
+            if (shape == "warp") { hud.show("Tap Reset to leave Warp"); return@barButton }
+            cv.transformAction("distort"); showTransformBar(); hud.show("Drag a corner on its own to give the piece perspective")
+        })
+        bar.addBar(barButton("Warp", shape == "warp") {
+            cv.transformAction("warp"); showTransformBar(); hud.show("Drag the dots to bend the piece; drag elsewhere to move it")
+        })
+        if (shape == "free") {
+            bar.addBar(barButton("Flip ↔") { cv.transformAction("flipH") })
+            bar.addBar(barButton("Flip ↕") { cv.transformAction("flipV") })
+            bar.addBar(barButton("Rotate 90°") { cv.transformAction("rotate") })
+            bar.addBar(barButton("Fit to canvas") { cv.transformAction("fit") })
+        }
+        bar.addBar(barButton("Reset") { cv.transformAction("reset"); showTransformBar() })
         bar.addBar(barButton("Cancel") { leaveTransform(false) })
         bar.addBar(barButton("Done", true) { leaveTransform(true) })
         showBottomBar(bar)
@@ -5025,6 +5037,30 @@ class MainActivity : Activity(), CanvasView.Listener {
         popup?.dismiss()
         openQuickMenu(x, y)
     }
+
+    /** four fingers held on the canvas: switch the workspace */
+    override fun onFourFingerHold(x: Float, y: Float) {
+        if (busy()) return
+        popup?.dismiss()
+        val spaces = Workspaces.presets + listOfNotNull(Workspaces.mine(prefs))
+        val cur = Workspaces.current(prefs)
+        // a dot where the fingers were, for the menu to hang from (one, kept)
+        val spot = holdSpot ?: View(this).also { holdSpot = it; root.addView(it, FrameLayout.LayoutParams(1, 1)) }
+        (spot.layoutParams as FrameLayout.LayoutParams).apply { leftMargin = x.toInt(); topMargin = y.toInt() }
+        spot.requestLayout()
+        spot.post {
+            val m = InkMenu(this, spot)
+            spaces.forEachIndexed { i, w -> m.menu.add(0, i, i, w.name).apply { icon(Icon.LAYOUT); isChecked = w.key == cur } }
+            m.setOnMenuItemClickListener { item ->
+                spaces.getOrNull(item.itemId)?.let { actionsHost.useWorkspace(it) }
+                true
+            }
+            L10n.menu(m.menu)
+            m.show()
+        }
+    }
+
+    private var holdSpot: View? = null
 
     override fun onGesture(purpose: GesturePurpose, x: Float, y: Float) {
         if (quickMenu.isOpen || colorWheel.isOpen) return

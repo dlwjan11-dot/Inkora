@@ -360,7 +360,88 @@ class TransformSession(
     fun flipH() = apply(inBox(Matrix().apply { setScale(-1f, 1f, bw / 2, bh / 2) }))
     fun flipV() = apply(inBox(Matrix().apply { setScale(1f, -1f, bw / 2, bh / 2) }))
     fun rotate90() { val c = center(); apply(Matrix().apply { setRotate(90f, c[0], c[1]) }) }
-    fun reset() { matrix.set(start); boxToPiece() }
+    fun reset() { matrix.set(start); boxToPiece(); shape = Shape.FREE; warp = null }
+
+    // ---- Distort and Warp ----
+
+    /** Free: move, scale, turn. Distort: each corner on its own (perspective). Warp: a bendable grid. */
+    enum class Shape { FREE, DISTORT, WARP }
+    var shape = Shape.FREE
+        private set
+    /** Warp's 16 handles (4 × 4, row by row) in document coordinates: x0, y0, x1, y1 … */
+    var warp: FloatArray? = null
+        private set
+
+    /** the piece's four corners in the document (TL, TR, BR, BL) */
+    fun pieceCorners(): FloatArray = floatArrayOf(0f, 0f, fw, 0f, fw, fh, 0f, fh).also { matrix.mapPoints(it) }
+
+    /** back to Free (from Distort; a warp can only be undone with Reset) */
+    fun free() { if (shape == Shape.DISTORT) { shape = Shape.FREE; boxToPiece() } }
+
+    fun distort() { if (shape == Shape.WARP) return; shape = Shape.DISTORT; boxToPiece() }
+
+    fun warpMode() {
+        if (shape == Shape.WARP) return
+        val g = FloatArray(32)
+        for (j in 0 until 4) for (i in 0 until 4) { g[(j * 4 + i) * 2] = fw * i / 3f; g[(j * 4 + i) * 2 + 1] = fh * j / 3f }
+        matrix.mapPoints(g)
+        warp = g
+        shape = Shape.WARP
+    }
+
+    /** Distort: corner [i] (0 TL, 1 TR, 2 BR, 3 BL) goes to (x, y); the others stay */
+    fun moveCorner(i: Int, x: Float, y: Float) {
+        val dst = pieceCorners()
+        dst[i * 2] = x; dst[i * 2 + 1] = y
+        val m = Matrix()
+        if (m.setPolyToPoly(floatArrayOf(0f, 0f, fw, 0f, fw, fh, 0f, fh), 0, dst, 0, 4)) { matrix.set(m); boxToPiece() }
+    }
+
+    /** Warp: handle [i] goes to (x, y) */
+    fun moveWarp(i: Int, x: Float, y: Float) { warp?.let { it[i * 2] = x; it[i * 2 + 1] = y } }
+
+    /** moves the whole piece (any shape) by (dx, dy) */
+    fun shift(dx: Float, dy: Float) {
+        val w = warp
+        if (shape == Shape.WARP && w != null) { for (k in 0 until 16) { w[k * 2] += dx; w[k * 2 + 1] += dy } }
+        else apply(Matrix().apply { setTranslate(dx, dy) })
+    }
+
+    /** the handles to show and to grab for this shape (document coordinates), or null for Free */
+    fun shapeHandles(): FloatArray? = when (shape) {
+        Shape.FREE -> null
+        Shape.DISTORT -> pieceCorners()
+        Shape.WARP -> warp
+    }
+
+    private val meshN = 24
+
+    /** the warp surface (a bicubic patch over the 16 handles) as (meshN+1)² points for drawBitmapMesh */
+    private fun mesh(): FloatArray {
+        val w = warp ?: return FloatArray(0)
+        val out = FloatArray((meshN + 1) * (meshN + 1) * 2)
+        fun b(k: Int, t: Float): Float {
+            val u = 1 - t
+            return when (k) { 0 -> u * u * u; 1 -> 3 * t * u * u; 2 -> 3 * t * t * u; else -> t * t * t }
+        }
+        var o = 0
+        for (row in 0..meshN) {
+            val v = row / meshN.toFloat()
+            for (col in 0..meshN) {
+                val u = col / meshN.toFloat()
+                var x = 0f; var y = 0f
+                for (j in 0 until 4) { val bj = b(j, v); for (i in 0 until 4) { val f = b(i, u) * bj; x += w[(j * 4 + i) * 2] * f; y += w[(j * 4 + i) * 2 + 1] * f } }
+                out[o++] = x; out[o++] = y
+            }
+        }
+        return out
+    }
+
+    /** draws [piece] (the floating picture or one of the others) where it is now */
+    fun drawPiece(c: android.graphics.Canvas, piece: android.graphics.Bitmap, paint: android.graphics.Paint?) {
+        if (shape == Shape.WARP && warp != null) c.drawBitmapMesh(piece, meshN, meshN, mesh(), 0, null, 0, paint)
+        else c.drawBitmap(piece, matrix, paint)
+    }
 
     fun fitTo(w: Int, h: Int) {
         val s = minOf(w / fw, h / fh)
@@ -382,7 +463,12 @@ class TransformSession(
     /** document-space rectangle touched by the result */
     fun resultBounds(w: Int, h: Int): Rect {
         val rf = RectF(0f, 0f, fw, fh)
-        matrix.mapRect(rf)
+        val g = warp
+        if (shape == Shape.WARP && g != null) {
+            // the patch stays inside its handles
+            rf.set(g[0], g[1], g[0], g[1])
+            for (k in 1 until 16) rf.union(g[k * 2], g[k * 2 + 1])
+        } else matrix.mapRect(rf)
         val r = Rect()
         rf.roundOut(r)
         r.inset(-2, -2)
